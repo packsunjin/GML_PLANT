@@ -46,7 +46,9 @@ def load_dataset(spectrogram_dir):
         cls_dir = os.path.join(spectrogram_dir, cls)
         paths = sorted(glob.glob(os.path.join(cls_dir, "*.png")))
         for p in paths:
-            img = Image.open(p).convert("L").resize((IMG_SIZE, IMG_SIZE))  # grayscale, 고정 크기
+            img = Image.open(p).convert("L")  # grayscale, 고정 크기
+            if img.size != (IMG_SIZE, IMG_SIZE):  # 저장 시 이미 IMG_SIZE로 렌더링되므로 보통 그대로 통과
+                img = img.resize((IMG_SIZE, IMG_SIZE))
             arr = np.asarray(img, dtype=np.float32).flatten() / 255.0
             X.append(arr)
             y.append(label_idx)

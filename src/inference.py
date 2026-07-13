@@ -81,7 +81,9 @@ def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE):
     fig.canvas.draw()
     rgba = np.asarray(fig.canvas.buffer_rgba())
 
-    img = Image.fromarray(rgba).convert("L").resize((img_size, img_size))
+    img = Image.fromarray(rgba).convert("L")
+    if img.size != (img_size, img_size):  # 캔버스는 이미 img_size x img_size로 렌더링되므로 보통 그대로 통과
+        img = img.resize((img_size, img_size))
     arr = np.asarray(img, dtype=np.float32).flatten() / 255.0
     return arr, filtered, Sxx_db, f, t
 
