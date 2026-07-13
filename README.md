@@ -73,8 +73,8 @@ python3 train.py --spectrogram_dir ../data/spectrogram --models_dir ../models
 
 | 모델 | 최적 하이퍼파라미터 | Accuracy | Precision | Recall |
 |---|---|---|---|---|
-| SVM | kernel=linear, C=0.1, gamma=scale | **0.9259** | 1.0000 | 0.8889 |
-| Random Forest | n_estimators=100, max_depth=None | 0.8889 | 0.8947 | 0.9444 |
+| SVM | kernel=linear, C=0.1, gamma=scale | **0.9259** | 0.9444 | 0.9444 |
+| Random Forest | n_estimators=200, max_depth=None | 0.9259 | 0.9444 | 0.9444 |
 
 → 최적 모델(SVM, Accuracy 92.6%)이 `models/best_model.joblib`로 저장됨. **70% 이상 정확도 요구사항 충족 ✅**
 (`models/confusion_matrix_SVM.png`, `models/confusion_matrix_RandomForest.png` 참고)
@@ -192,3 +192,16 @@ Wayland 세션(`labwc`/`wayfire`)이 이미 떠 있는 상태에서 실행하면
 - [x] (4) 통합 스크립트가 GUI/헤드리스 모드에서 실시간 그래프·스펙트로그램·상태 표시 갱신 확인
 - [x] 하드웨어 미보유 시 `data/raw/`의 샘플 CSV를 시뮬레이션 입력으로 사용하는 모드(`--sim_csv`) 추가 확인
 - [x] Ctrl+C 안전 종료 확인
+
+---
+
+## 성능 최적화 내역
+
+라즈베리파이 실시간 구동을 고려해 다음과 같은 최적화를 적용했습니다.
+
+- **실시간 추론 주기 제한**: 원래는 버퍼가 찬 이후 매 샘플(최대 250~1000Hz)마다 필터링→스펙트로그램→추론 전체 파이프라인을 다시 실행했습니다. `RealtimeClassifier`가 `predict_hz`(기본 5Hz, GUI/헤드리스의 `refresh_hz`와 연동)로 무거운 연산 빈도를 제한하도록 수정했습니다.
+- **스펙트로그램 렌더링 방식 교체**: matplotlib Figure/Axes/Canvas 렌더링 대신 `src/spectro_render.py`의 viridis 컬러맵 룩업 테이블 기반 렌더링을 사용합니다. 스펙트로그램 1장당 렌더링 시간이 약 **19배** 단축되었고(약 14ms → 0.7ms), `preprocess.py`(데이터셋 생성)와 `inference.py`(실시간 추론)가 동일한 함수를 공유해 학습·추론 특징이 항상 일치하도록 했습니다. 이 방식은 기존 matplotlib 렌더링과 픽셀 단위로 완전히 동일하지는 않아(구조적으로는 매우 유사, 상관계수 0.99) 모델을 이 방식으로 재생성한 데이터셋으로 재학습했습니다.
+- **시뮬레이션 신호 생성 벡터화**: `sensor_control.py`의 시뮬레이션 모드 데이터 수집을 numpy 벡터 연산으로 일괄 처리해 약 9배 빨라졌습니다.
+- **Butterworth 필터 계수 캐싱, 불필요한 PIL 리사이즈 제거** 등 세부 최적화 다수 적용.
+
+재학습 결과 Accuracy는 기존과 동일한 수준(SVM 92.6%, Random Forest 92.6%)을 유지했습니다.

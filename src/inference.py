@@ -16,15 +16,9 @@ from functools import lru_cache
 import numpy as np
 import joblib
 from scipy.signal import butter, filtfilt, spectrogram
-from PIL import Image
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as _plt_font_setup
-_plt_font_setup.rcParams["font.family"] = "Noto Sans CJK JP"
-_plt_font_setup.rcParams["axes.unicode_minus"] = False
-import matplotlib.pyplot as plt
 
 from sensor_control import read_single_realtime, HARDWARE_AVAILABLE
+from spectro_render import render_gray_array
 
 SAMPLE_RATE_HZ = 250.0
 WINDOW_SEC = 2.0
@@ -46,45 +40,18 @@ def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4):
     return filtfilt(b, a, signal)
 
 
-# signal_to_feature()가 호출될 때마다 Figure/Axes를 새로 만들지 않고 재사용해
-# 반복적인 matplotlib 객체 생성/해제 비용을 줄인다.
-_feature_fig = None
-_feature_ax = None
-
-
-def _get_feature_axes(img_size, dpi):
-    global _feature_fig, _feature_ax
-    if _feature_fig is None:
-        _feature_fig = plt.figure(figsize=(img_size / dpi, img_size / dpi), dpi=dpi)
-        _feature_ax = plt.Axes(_feature_fig, [0.0, 0.0, 1.0, 1.0])
-        _feature_ax.set_axis_off()
-        _feature_fig.add_axes(_feature_ax)
-    else:
-        _feature_ax.cla()
-        _feature_ax.set_axis_off()
-    return _feature_fig, _feature_ax
-
-
 def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE):
-    """실시간 신호 버퍼 -> 필터링 -> 스펙트로그램 -> 학습 때와 동일한 grayscale flatten 벡터로 변환"""
+    """실시간 신호 버퍼 -> 필터링 -> 스펙트로그램 -> 학습 때와 동일한 grayscale flatten 벡터로 변환.
+
+    이미지화는 matplotlib Figure 렌더링이 아니라 spectro_render.render_gray_array()
+    (컬러맵 룩업 테이블 기반, preprocess.py와 공유)를 사용해 실시간 루프에서 가장 무거웠던
+    단계를 제거했다."""
     filtered = bandpass_filter(signal, fs)
     f, t, Sxx = spectrogram(filtered, fs=fs, nperseg=min(128, len(filtered)),
                              noverlap=64 if len(filtered) > 128 else 0)
     Sxx_db = 10 * np.log10(Sxx + 1e-12)
 
-    dpi = 100
-    fig, ax = _get_feature_axes(img_size, dpi)
-    ax.pcolormesh(t, f, Sxx_db, shading="auto", cmap="viridis")
-
-    # PNG로 인코딩 후 다시 디코딩하는 왕복 대신, 렌더링된 캔버스를 직접 배열로 읽어와
-    # 매 추론마다 발생하던 PNG 압축/해제 비용을 없앤다 (픽셀 결과는 동일).
-    fig.canvas.draw()
-    rgba = np.asarray(fig.canvas.buffer_rgba())
-
-    img = Image.fromarray(rgba).convert("L")
-    if img.size != (img_size, img_size):  # 캔버스는 이미 img_size x img_size로 렌더링되므로 보통 그대로 통과
-        img = img.resize((img_size, img_size))
-    arr = np.asarray(img, dtype=np.float32).flatten() / 255.0
+    arr = render_gray_array(Sxx_db, img_size=img_size)
     return arr, filtered, Sxx_db, f, t
 
 
