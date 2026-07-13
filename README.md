@@ -8,15 +8,18 @@ AD8232(생체전위 증폭기) + ADS1115(16비트 ADC)로 식물 잎/줄기의 A
 
 ```
 project/
-  data/raw/          # (1) 원시 시계열 CSV (정상.csv, 수분부족.csv, 자극.csv)
+  data/raw/          # (1) 원시 시계열 CSV (정상.csv, 수분부족.csv, 자극.csv 중 수집된 것만)
   data/spectrogram/  # (2) 전처리된 224x224 스펙트로그램 이미지 (정상/, 스트레스/)
+  data/features.csv  # (2) 윈도우별 명시적 통계/주파수 특징 14개 (features 모드 학습용)
   models/            # (3) 학습된 모델(.joblib) + confusion matrix 이미지
   src/
-    sensor_control.py   # (1) 하드웨어 제어 및 데이터 수집
-    preprocess.py        # (2) 대역통과필터 + 스펙트로그램 생성
-    train.py              # (3) SVM/RandomForest 학습 + 평가
-    inference.py          # (4) 실시간 추론 엔진
-    gui.py                 # (4) VNC용 실시간 GUI / 헤드리스 대시보드
+    sensor_control.py     # (1) 하드웨어 제어 및 데이터 수집
+    preprocess.py          # (2) 대역통과필터 + 스펙트로그램 생성 + 명시적 특징 추출
+    feature_extraction.py  # (2) 명시적 통계/주파수 특징 14개 정의 (preprocess/inference 공유)
+    spectro_render.py      # (2) 컬러맵 룩업 테이블 기반 스펙트로그램 렌더링 (preprocess/inference 공유)
+    train.py                # (3) SVM/RandomForest 학습 + 평가 (pixel/features 두 방식 비교 가능)
+    inference.py            # (4) 실시간 추론 엔진
+    gui.py                   # (4) VNC용 실시간 GUI / 헤드리스 대시보드
   main.py             # 최상위 실행 진입점
   requirements.txt
   README.md
@@ -48,6 +51,11 @@ python3 sensor_control.py --state 자극 --duration 30 --rate 250
 - I2C(ADS1115, 주소 0x48 기본) 채널 A0에서 AD8232 출력을 읽으며, `--rate`로 100~1000Hz 범위 샘플링 주기 설정 가능
 - **검증 결과**: 3개 상태 모두 30초 x 250Hz = 7,500 샘플씩 `data/raw/{정상,수분부족,자극}.csv`에 정상 저장 확인 ✅
 
+> **3가지 상태를 모두 수집하지 못해도 괜찮습니다.** `preprocess.py`/`train.py`는 `data/raw/`에 있는
+> 파일만으로 진행하며, 어떤 상태가 빠졌는지 안내 메시지를 출력합니다. 단, `정상.csv`는 반드시 있어야
+> 하고(정상 클래스가 통째로 없으면 학습이 불가능하므로 명확한 에러로 즉시 종료됩니다), `수분부족.csv`/
+> `자극.csv`는 둘 중 하나만 있어도 `스트레스` 클래스로 정상 학습됩니다.
+
 ### [2] 전처리 및 시각화 (`src/preprocess.py`)
 
 ```bash
@@ -56,31 +64,45 @@ python3 preprocess.py --raw_dir ../data/raw --out_dir ../data/spectrogram
 
 - SciPy Butterworth 대역통과필터(0.5~45Hz, order=4)로 50Hz 전원 노이즈 및 DC 드리프트 제거
 - 2초 윈도우 / 1초 스텝으로 슬라이딩하며 스펙트로그램(224x224, `viridis`) PNG 생성
+  - 동일한 윈도우에서 `feature_extraction.py`의 명시적 통계/주파수 특징 14개도 함께 계산해 `data/features.csv`에 저장
 - 정상 → `data/spectrogram/정상/`, 수분부족+자극 → `data/spectrogram/스트레스/` 로 클래스 통합 저장
-- **검증 결과**: CSV 3개 → 총 87개 이미지 생성 (정상 29장 / 스트레스 58장), 모든 이미지 224x224 확인 ✅
+- **검증 결과**: CSV 3개 → 총 87개 이미지 + `data/features.csv` 87행 생성 (정상 29장 / 스트레스 58장), 모든 이미지 224x224 확인 ✅
 
 ### [3] 모델 학습 (`src/train.py`)
 
+두 가지 특징 방식을 지원하며, `--mode`로 선택합니다.
+
 ```bash
-python3 train.py --spectrogram_dir ../data/spectrogram --models_dir ../models
+python3 train.py                     # pixel 모드만 (기존 방식, 기본값)
+python3 train.py --mode features     # 명시적 특징(14개)만
+python3 train.py --mode both         # 둘 다 학습하고 Accuracy/Precision/Recall 비교 표 출력
 ```
 
-- 이미지를 grayscale 224x224 → flatten(50,176차원) 픽셀 특징으로 사용
-- StandardScaler + PCA(차원축소) + SVM(Linear/RBF, `GridSearchCV`) / Random Forest(`GridSearchCV`) 비교
-- Confusion Matrix 이미지 자동 저장
+- **pixel 모드(기본)**: 이미지를 grayscale 224x224 → flatten(50,176차원) 픽셀 특징으로 사용, StandardScaler + PCA(차원축소) 적용
+- **features 모드(신규)**: `data/features.csv`의 통계(평균/표준편차/RMS/왜도/첨도/영교차율/피크투피크) + 주파수(대역별 파워/스펙트럴 센트로이드/대역폭/피크 주파수) 특징 14개를 그대로 사용, PCA 없이 StandardScaler만 적용 (이미 저차원이라 추가 축소가 오히려 해석성을 해침)
+- 두 모드 모두 SVM(Linear/RBF, `GridSearchCV`) / Random Forest(`GridSearchCV`) 비교, Confusion Matrix 이미지 자동 저장
+- 클래스 누락이나 샘플이 극소한 경우(예: 하드웨어로 일부 상태만 수집됨) 알아보기 힘든 sklearn 예외 대신 명확한 한국어 안내와 함께 종료하거나, GridSearchCV 폴드 수를 자동으로 줄여 계속 진행합니다.
 
-**검증 결과 (실제 실행 로그)**
+**검증 결과 (실제 실행 로그, `--mode both`)**
 
-| 모델 | 최적 하이퍼파라미터 | Accuracy | Precision | Recall |
-|---|---|---|---|---|
-| SVM | kernel=linear, C=0.1, gamma=scale | **0.9259** | 0.9444 | 0.9444 |
-| Random Forest | n_estimators=200, max_depth=None | 0.9259 | 0.9444 | 0.9444 |
+| 방식 | 모델 | 최적 하이퍼파라미터 | Accuracy | Precision | Recall |
+|---|---|---|---|---|---|
+| pixel | SVM | kernel=linear, C=0.1, gamma=scale | 0.9259 | 0.9444 | 0.9444 |
+| pixel | Random Forest | n_estimators=200, max_depth=None | 0.9259 | 0.9444 | 0.9444 |
+| **features** | **SVM** | kernel=linear, C=10, gamma=scale | **1.0000** | 1.0000 | 1.0000 |
+| features | Random Forest | n_estimators=100, max_depth=None | 1.0000 | 1.0000 | 1.0000 |
 
-→ 최적 모델(SVM, Accuracy 92.6%)이 `models/best_model.joblib`로 저장됨. **70% 이상 정확도 요구사항 충족 ✅**
-(`models/confusion_matrix_SVM.png`, `models/confusion_matrix_RandomForest.png` 참고)
+→ 최적 모델은 방식별로 각각 `models/best_model.joblib`(pixel) / `models/best_model_features.joblib`(features)로 저장됨.
+**70% 이상 정확도 요구사항 두 방식 모두 충족 ✅** (`models/confusion_matrix_*.png` 참고)
 
-> 참고: 본 검증은 하드웨어가 없는 개발 환경에서 시뮬레이션 신호로 생성한 샘플 데이터 기준입니다.
-> 실제 식물에서 수집한 데이터로 재학습하면 정확도가 달라질 수 있으니, 실측 데이터 확보 후 `train.py`를 재실행하세요.
+> 참고: features 모드의 100% 정확도는 테스트 샘플이 27개뿐인 작은 데이터셋 기준이라 다소 낙관적일 수
+> 있습니다. 그래도 50,176차원 픽셀보다 14개의 해석 가능한 특징만으로 동등하거나 더 나은 성능이 나온다는
+> 점은, 이 정도 규모의 데이터셋에서는 명시적 특징 추출이 이미지 픽셀 flatten보다 더 안정적인 접근일 수
+> 있음을 시사합니다. 실측 데이터로 재학습 후 더 큰 테스트셋으로 재검증을 권장합니다.
+>
+> 본 검증은 하드웨어가 없는 개발 환경에서 시뮬레이션 신호로 생성한 샘플 데이터 기준입니다.
+> 실제 식물에서 수집한 데이터로 재학습하면 정확도가 달라질 수 있으니, 실측 데이터 확보 후
+> `preprocess.py` → `train.py --mode both`를 재실행하세요.
 
 ### [4] 실시간 통합 시스템 (`main.py`)
 
@@ -93,9 +115,13 @@ python3 main.py --no-gui
 
 # 하드웨어 없이 저장된 CSV를 재생하여 테스트(시뮬레이션 입력)
 python3 main.py --no-gui --sim_csv data/raw/자극.csv
+
+# features 모드로 학습한 모델을 사용하고 싶다면 --model로 지정
+python3 main.py --no-gui --model models/best_model_features.joblib --sim_csv data/raw/자극.csv
 ```
 
-- `models/best_model.joblib` 로드 → ADS1115(또는 시뮬레이션) 실시간 샘플을 2초 버퍼로 모아 즉시 추론
+- `models/best_model.joblib`(기본, pixel 방식) 로드 → ADS1115(또는 시뮬레이션) 실시간 샘플을 2초 버퍼로 모아 즉시 추론
+  - joblib 번들에 담긴 `feature_mode` 값("pixel" 또는 "explicit")을 보고 자동으로 올바른 특징 추출 방식을 선택하므로, `--model`만 바꾸면 pixel/features 어느 모델이든 그대로 동작합니다.
 - GUI 모드: Matplotlib Figure(`plt.ion()`)에 ① 최근 5초 시계열, ② 실시간 스펙트로그램, ③ 상태 텍스트+이모티콘(🌱/😵) 표시
   - GUI 백엔드(Tk 등)가 없는 환경에서는 자동으로 파일 저장 모드(`dashboard_last.png`)로 폴백
 - `--no-gui`: 실제 터미널(TTY)에서는 Rich 대시보드, 파이프/리다이렉션 시에는 일반 텍스트 로그로 자동 전환
@@ -187,11 +213,13 @@ Wayland 세션(`labwc`/`wayfire`)이 이미 떠 있는 상태에서 실행하면
 
 ## 검증 요구사항 체크리스트
 
-- [x] (2) 전처리 스크립트가 CSV → 224x224 스펙트로그램 이미지 생성 확인 (총 87장)
-- [x] (3) 학습 스크립트 Accuracy 70% 이상 달성 확인 (SVM 92.6%)
+- [x] (2) 전처리 스크립트가 CSV → 224x224 스펙트로그램 이미지 생성 확인 (총 87장) + 명시적 특징 CSV 생성 확인
+- [x] (3) 학습 스크립트 Accuracy 70% 이상 달성 확인 (pixel SVM 92.6%, features SVM 100%)
 - [x] (4) 통합 스크립트가 GUI/헤드리스 모드에서 실시간 그래프·스펙트로그램·상태 표시 갱신 확인
 - [x] 하드웨어 미보유 시 `data/raw/`의 샘플 CSV를 시뮬레이션 입력으로 사용하는 모드(`--sim_csv`) 추가 확인
 - [x] Ctrl+C 안전 종료 확인
+- [x] 정상/수분부족/자극 중 일부 상태만 수집되어도 preprocess.py/train.py가 안내 메시지와 함께 정상 진행(또는 명확한 에러로 종료) 확인
+- [x] pixel/features 두 가지 특징 방식 모두 학습 및 실시간 추론(`--model`로 전환) 정상 동작 확인
 
 ---
 

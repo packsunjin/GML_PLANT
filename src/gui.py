@@ -42,7 +42,7 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0):
         fig = plt.figure(figsize=(9, 6))
 
     # 한글 라벨(상태 텍스트/축 이름)이 깨지지 않도록 CJK 폰트 지정 (Raspberry Pi OS에도 fonts-noto-cjk 설치 시 동일 적용)
-    matplotlib.rcParams["font.family"] = "Noto Sans CJK JP"
+    matplotlib.rcParams["font.family"] = "Noto Sans KR"
     matplotlib.rcParams["axes.unicode_minus"] = False
 
     gs = fig.add_gridspec(2, 2)

@@ -19,6 +19,7 @@ from scipy.signal import butter, filtfilt, spectrogram
 
 from sensor_control import read_single_realtime, HARDWARE_AVAILABLE
 from spectro_render import render_gray_array
+from feature_extraction import extract_features
 
 SAMPLE_RATE_HZ = 250.0
 WINDOW_SEC = 2.0
@@ -40,18 +41,24 @@ def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4):
     return filtfilt(b, a, signal)
 
 
-def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE):
-    """실시간 신호 버퍼 -> 필터링 -> 스펙트로그램 -> 학습 때와 동일한 grayscale flatten 벡터로 변환.
+def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode="pixel"):
+    """실시간 신호 버퍼 -> 필터링 -> 스펙트로그램 -> 학습 때와 동일한 특징 벡터로 변환.
 
-    이미지화는 matplotlib Figure 렌더링이 아니라 spectro_render.render_gray_array()
-    (컬러맵 룩업 테이블 기반, preprocess.py와 공유)를 사용해 실시간 루프에서 가장 무거웠던
-    단계를 제거했다."""
+    filtered/Sxx_db 계산은 feature_mode와 무관하게 공유하고, 마지막 특징 변환
+    단계만 분기한다 (preprocess.py와 정확히 같은 갈림길):
+    - feature_mode="pixel"(기본): spectro_render.render_gray_array() — 컬러맵 룩업
+      테이블 기반 grayscale flatten 벡터. matplotlib Figure 렌더링 없이 빠르다.
+    - feature_mode="explicit": feature_extraction.extract_features() — 통계/주파수
+      특징 14개."""
     filtered = bandpass_filter(signal, fs)
     f, t, Sxx = spectrogram(filtered, fs=fs, nperseg=min(128, len(filtered)),
                              noverlap=64 if len(filtered) > 128 else 0)
     Sxx_db = 10 * np.log10(Sxx + 1e-12)
 
-    arr = render_gray_array(Sxx_db, img_size=img_size)
+    if feature_mode == "explicit":
+        arr = extract_features(filtered, Sxx_db, f, t, fs=fs)
+    else:
+        arr = render_gray_array(Sxx_db, img_size=img_size)
     return arr, filtered, Sxx_db, f, t
 
 
@@ -68,6 +75,9 @@ class RealtimeClassifier:
         self.model = bundle["model"]
         self.classes = bundle["classes"]  # ["정상", "스트레스"]
         self.model_name = bundle.get("name", "unknown")
+        # 이 키가 없는 joblib은 모두 (이 기능이 생기기 전) pixel 방식으로 학습된 것이므로 "pixel"로 취급
+        self.feature_mode = bundle.get("feature_mode", "pixel")
+        self.img_size = bundle.get("img_size", IMG_SIZE)  # feature_mode=="explicit"일 때는 사용 안 함
 
         self.sample_rate = sample_rate
         self.window_len = int(window_sec * sample_rate)
@@ -111,7 +121,9 @@ class RealtimeClassifier:
         self._samples_since_predict = 0
 
         signal = np.array(self.buffer)
-        feature, filtered, Sxx_db, f, t = signal_to_feature(signal, self.sample_rate)
+        feature, filtered, Sxx_db, f, t = signal_to_feature(
+            signal, self.sample_rate, img_size=self.img_size, feature_mode=self.feature_mode
+        )
         pred_idx = self.model.predict([feature])[0]
         state = self.classes[pred_idx]
 
