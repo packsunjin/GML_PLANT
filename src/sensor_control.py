@@ -84,6 +84,31 @@ def simulate_sample(t, state):
     return baseline + signal + powerline_noise + noise
 
 
+def simulate_batch(t_array, state):
+    """simulate_sample()의 벡터화 버전. 시뮬레이션 모드에서는 실시간 페이싱이 필요 없으므로
+    전체 구간을 numpy 배열 연산으로 한 번에 계산해 샘플별 파이썬 함수 호출 오버헤드를 없앤다.
+    (수식은 simulate_sample()과 동일)"""
+    baseline = 0.0
+    powerline_noise = 0.01 * np.sin(2 * np.pi * 50 * t_array)
+
+    if state == "정상":
+        signal = 0.02 * np.sin(2 * np.pi * 0.2 * t_array) + 0.01 * np.sin(2 * np.pi * 0.05 * t_array)
+        noise = np.random.normal(0, 0.005, size=t_array.shape)
+    elif state == "수분부족":
+        drift = 0.03 * np.sin(2 * np.pi * 0.02 * t_array)
+        spike = np.where((t_array * 10).astype(np.int64) % 47 == 0, 0.04, 0.0)
+        signal = drift + spike
+        noise = np.random.normal(0, 0.008, size=t_array.shape)
+    elif state == "자극":
+        spike = 0.15 * np.exp(-((t_array % 1.3 - 0.15) ** 2) / (2 * 0.01 ** 2))
+        signal = spike + 0.02 * np.sin(2 * np.pi * 0.3 * t_array)
+        noise = np.random.normal(0, 0.01, size=t_array.shape)
+    else:
+        raise ValueError(f"알 수 없는 상태: {state}")
+
+    return baseline + signal + powerline_noise + noise
+
+
 def collect(state, duration_sec, sample_rate_hz, out_dir):
     """
     지정한 상태(state)에 대해 duration_sec 동안 sample_rate_hz로 샘플링하여
@@ -102,21 +127,25 @@ def collect(state, duration_sec, sample_rate_hz, out_dir):
     print(f"[sensor_control] 모드: {mode_str}")
     print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={duration_sec}s (총 {n_samples} 샘플) -> {out_path}")
 
-    rows = []
-    start = time.time()
-    for i in range(n_samples):
-        t = i * interval
-        if HARDWARE_AVAILABLE:
+    if HARDWARE_AVAILABLE:
+        rows = []
+        start = time.time()
+        for i in range(n_samples):
+            t = i * interval
             v = read_sample_hardware()
-        else:
-            v = simulate_sample(t, state)
-        rows.append((round(t, 6), v))
+            rows.append((round(t, 6), v))
 
-        # 실시간처럼 보이되, 테스트 환경에서 과도하게 느려지지 않도록 sleep은 짧게만 유지
-        elapsed = time.time() - start
-        target = (i + 1) * interval
-        if HARDWARE_AVAILABLE and target > elapsed:
-            time.sleep(min(target - elapsed, interval))
+            # 실제 하드웨어 샘플링 주기에 맞춰 페이싱
+            elapsed = time.time() - start
+            target = (i + 1) * interval
+            if target > elapsed:
+                time.sleep(min(target - elapsed, interval))
+    else:
+        # 시뮬레이션 모드는 실시간 페이싱이 필요 없으므로, 샘플별 파이썬 반복문 대신
+        # numpy 배열 연산으로 전체 구간을 한 번에 생성한다 (동일한 신호 수식 사용).
+        t_array = np.arange(n_samples) * interval
+        v_array = simulate_batch(t_array, state)
+        rows = list(zip(np.round(t_array, 6), v_array))
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
