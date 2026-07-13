@@ -51,7 +51,7 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0):
     ax_status = fig.add_subplot(gs[1, 1])   # 상태 텍스트/이모지 (우하단)
     ax_status.axis("off")
 
-    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv)
+    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv, predict_hz=refresh_hz)
     print(f"[gui] 모델 로드: {clf.model_name}, 클래스={clf.classes}")
     print("[gui] Ctrl+C 로 종료할 수 있습니다.")
 
@@ -103,7 +103,7 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0):
                     fig.savefig(out_path)
                     print(f"상태: {result['emoji']} {result['state']}  (확신도={result['proba']}) -> {out_path}")
 
-            time.sleep(1.0 / refresh_hz / clf.window_len if False else 1.0 / clf.sample_rate)
+            time.sleep(1.0 / clf.sample_rate)
     except KeyboardInterrupt:
         print("\n[gui] Ctrl+C 감지 - 안전 종료합니다.")
     finally:
@@ -123,7 +123,7 @@ def run_headless(model_path, sim_csv, refresh_hz=2.0):
         except ImportError:
             use_rich = False
 
-    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv)
+    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv, predict_hz=refresh_hz)
     print(f"[headless] 모델 로드: {clf.model_name}, 클래스={clf.classes}")
     print("[headless] Ctrl+C 로 종료할 수 있습니다.")
 
@@ -142,10 +142,13 @@ def run_headless(model_path, sim_csv, refresh_hz=2.0):
 
     try:
         if use_rich:
+            last_result = None
             with Live(refresh_per_second=refresh_hz) as live:
                 while True:
                     result = clf.step()
-                    live.update(render(result))
+                    if result is not None:
+                        last_result = result
+                    live.update(render(last_result))
                     time.sleep(1.0 / clf.sample_rate)
         else:
             while True:

@@ -48,19 +48,34 @@ def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4):
     return filtfilt(b, a, signal)
 
 
+# 파일당 수십 장씩 생성되는 배치 작업이므로, 매 이미지마다 Figure/Axes를 새로 만들고
+# 버리는 대신 하나만 만들어 재사용해 반복적인 matplotlib 객체 생성 비용을 줄인다.
+_spec_fig = None
+_spec_ax = None
+
+
+def _get_spectrogram_axes(img_size, dpi):
+    global _spec_fig, _spec_ax
+    if _spec_fig is None:
+        _spec_fig = plt.figure(figsize=(img_size / dpi, img_size / dpi), dpi=dpi)
+        _spec_ax = plt.Axes(_spec_fig, [0.0, 0.0, 1.0, 1.0])
+        _spec_ax.set_axis_off()
+        _spec_fig.add_axes(_spec_ax)
+    else:
+        _spec_ax.cla()
+        _spec_ax.set_axis_off()
+    return _spec_fig, _spec_ax
+
+
 def make_spectrogram_image(signal, fs, out_path, img_size=IMG_SIZE):
     """신호 구간 하나를 224x224 viridis 컬러맵 스펙트로그램 PNG로 저장"""
     f, t, Sxx = spectrogram(signal, fs=fs, nperseg=min(128, len(signal)), noverlap=64 if len(signal) > 128 else 0)
     Sxx_db = 10 * np.log10(Sxx + 1e-12)
 
     dpi = 100
-    fig = plt.figure(figsize=(img_size / dpi, img_size / dpi), dpi=dpi)
-    ax = plt.Axes(fig, [0.0, 0.0, 1.0, 1.0])
-    ax.set_axis_off()
-    fig.add_axes(ax)
+    fig, ax = _get_spectrogram_axes(img_size, dpi)
     ax.pcolormesh(t, f, Sxx_db, shading="auto", cmap="viridis")
     fig.savefig(out_path, dpi=dpi)
-    plt.close(fig)
 
 
 def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, step_sec=STEP_SEC):
