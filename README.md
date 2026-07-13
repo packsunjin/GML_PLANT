@@ -223,6 +223,47 @@ Wayland 세션(`labwc`/`wayfire`)이 이미 떠 있는 상태에서 실행하면
 
 ---
 
+## 데이터/모델 초기화(삭제) 방법
+
+파이프라인 산출물은 `원시 CSV → 스펙트로그램 이미지 + 특징 CSV → 학습된 모델` 순서로 쌓입니다.
+다시 수집/재실행하려는 단계에 맞춰 아래 명령으로 지우고 해당 스크립트를 다시 실행하세요.
+**`data/raw/`의 원시 CSV는 실측 데이터라면 지우면 복구할 수 없으니 특히 주의하세요.**
+
+**1) 특정 상태만 다시 수집하고 싶을 때** (다른 상태 CSV는 유지)
+```bash
+rm data/raw/자극.csv
+cd src && python3 sensor_control.py --state 자극 --duration 30 --rate 250
+```
+
+**2) 원시 CSV는 그대로 두고 전처리 결과만 다시 만들고 싶을 때**
+```bash
+rm -rf data/spectrogram
+rm -f data/features.csv
+cd src && python3 preprocess.py --raw_dir ../data/raw --out_dir ../data/spectrogram
+```
+> `data/spectrogram/`은 `os.makedirs(exist_ok=True)`로 생성되어 기존 파일을 자동으로 지우지
+> 않습니다. 원시 CSV 길이가 달라지면(윈도우 개수가 바뀌면) 이전에 생성된 이미지 일부가 지워지지
+> 않고 그대로 남을 수 있으므로, 재수집 후에는 폴더를 통째로 지우고 재실행하는 것을 권장합니다.
+
+**3) 전처리 결과는 그대로 두고 모델만 다시 학습하고 싶을 때**
+```bash
+rm -f models/*.joblib models/confusion_matrix_*.png
+cd src && python3 train.py --mode both
+```
+> `train.py`는 파일명이 겹치면 덮어쓰므로 사실 안 지워도 동작은 하지만, 예전 결과와 섞여
+> 헷갈리지 않도록 지우고 새로 학습하는 것을 권장합니다.
+
+**4) 완전 초기화** (한 번에 전부 지우고 처음부터)
+```bash
+rm -f data/raw/*.csv
+rm -rf data/spectrogram
+rm -f data/features.csv
+rm -rf models
+```
+이후 `sensor_control.py`(각 상태별) → `preprocess.py` → `train.py --mode both` 순서로 재실행하세요.
+
+---
+
 ## 성능 최적화 내역
 
 라즈베리파이 실시간 구동을 고려해 다음과 같은 최적화를 적용했습니다.
