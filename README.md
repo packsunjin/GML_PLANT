@@ -37,6 +37,67 @@ pip install -r requirements.txt
 > `sensor_control.py`가 자동으로 **SIMULATION 모드**로 전환되어 실제 신호와 유사한 합성 신호를 생성합니다.
 > 따라서 하드웨어 없이도 전체 파이프라인(수집→전처리→학습→실시간 추론)을 그대로 검증할 수 있습니다.
 
+## 하드웨어 모드 준비 (라즈베리파이 I2C 활성화)
+
+실제 AD8232+ADS1115로 신호를 수집하려면 라즈베리파이에서 **I2C 버스를 먼저 켜야** 합니다.
+(I2C가 꺼져 있으면 `busio.I2C(...)` 초기화가 실패해 `sensor_control.py`가 SIMULATION 모드로 폴백합니다.)
+
+### 1. I2C 활성화
+
+**방법 A: raspi-config (메뉴)**
+```bash
+sudo raspi-config
+# Interface Options → I2C → <Yes> 선택 → Enable → 재부팅
+sudo reboot
+```
+
+**방법 B: 커맨드라인 (비대화형)**
+```bash
+sudo raspi-config nonint do_i2c 0   # 0 = enable
+sudo reboot
+```
+
+> 최신 Raspberry Pi OS(Bookworm)에서는 부팅 설정 파일이 `/boot/firmware/config.txt`, 이전 버전은
+> `/boot/config.txt` 입니다. 직접 편집하려면 해당 파일에 `dtparam=i2c_arm=on` 한 줄이 있는지 확인하세요.
+
+### 2. I2C 도구 설치 및 배선 확인
+
+```bash
+sudo apt update
+sudo apt install -y i2c-tools python3-smbus
+
+i2cdetect -y 1     # I2C 버스 1번 스캔
+```
+ADS1115가 정상 연결되면 아래처럼 **주소 `0x48`** 이 표에 나타납니다(ADDR 핀 배선에 따라 0x49/0x4A/0x4B일 수 있음).
+```
+     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+40: -- -- -- -- -- -- -- -- 48 -- -- -- -- -- -- --
+```
+
+**배선(ADS1115 ↔ 라즈베리파이 GPIO 헤더)**
+
+| ADS1115 핀 | 라즈베리파이 핀 | 비고 |
+|---|---|---|
+| VDD | 3V3 (물리 1번) | 3.3V 권장 |
+| GND | GND (물리 6번) | AD8232와 공통 GND |
+| SCL | GPIO3 / SCL1 (물리 5번) | I2C 클럭 |
+| SDA | GPIO2 / SDA1 (물리 3번) | I2C 데이터 |
+| A0 | AD8232 OUTPUT | 측정할 아날로그 신호 입력 |
+
+> `i2cdetect`에 `0x48`이 안 보이면: ① 배선(SDA/SCL 바뀜, GND 공통 아님) 재확인, ② `sudo raspi-config`에서
+> I2C가 실제 Enable인지, ③ 재부팅했는지 확인하세요. 주소가 0x48이 아니면 `src/sensor_control.py`의
+> `ADS.ADS1115(i2c)` 부분에 `address=0x49`처럼 지정하면 됩니다.
+
+### 3. 하드웨어 라이브러리 설치 및 동작 확인
+
+```bash
+pip install adafruit-circuitpython-ads1x15 adafruit-blinka
+cd src
+python3 sensor_control.py --state 정상 --duration 5 --rate 250
+```
+실행 로그 첫 줄이 `모드: HARDWARE (AD8232+ADS1115)` 로 나오면 하드웨어 모드로 정상 동작하는 것입니다.
+(`SIMULATION (no I2C hardware detected)` 으로 나오면 위 1~2단계를 다시 점검하세요.)
+
 ## 단계별 실행 방법 및 검증 결과
 
 ### [1] 데이터 수집 (`src/sensor_control.py`)
@@ -126,6 +187,10 @@ python3 main.py --no-gui
 # 하드웨어 없이 저장된 CSV를 재생하여 테스트(시뮬레이션 입력)
 python3 main.py --no-gui --sim_csv data/raw/자극.csv
 
+# CSV도 없이 라이브 시뮬레이션으로 특정 상태를 생성 (하드웨어/CSV 둘 다 없을 때)
+python3 main.py --no-gui --sim_state 자극     # 스트레스 신호를 실시간 생성해 시연
+python3 main.py --no-gui --sim_state cycle    # 8초마다 정상→수분부족→자극 순환(데모용)
+
 # features 모드로 학습한 모델을 사용하고 싶다면 --model로 지정
 python3 main.py --no-gui --model models/best_model_features.joblib --sim_csv data/raw/자극.csv
 ```
@@ -134,6 +199,8 @@ python3 main.py --no-gui --model models/best_model_features.joblib --sim_csv dat
   - joblib 번들에 담긴 `feature_mode` 값("pixel" 또는 "explicit")을 보고 자동으로 올바른 특징 추출 방식을 선택하므로, `--model`만 바꾸면 pixel/features 어느 모델이든 그대로 동작합니다.
 - GUI 모드: Matplotlib Figure(`plt.ion()`)에 ① 최근 5초 시계열, ② 실시간 스펙트로그램, ③ 상태 텍스트+이모티콘(🌱/😵) 표시
   - GUI 백엔드(Tk 등)가 없는 환경에서는 자동으로 파일 저장 모드(`dashboard_last.png`)로 폴백
+- **예측 스무딩**: 인접 예측이 크게 겹치므로 최근 몇 개 예측을 확률 평균/다수결로 합쳐 순간적인 오검출 깜빡임을 줄입니다(`RealtimeClassifier(smooth_window=5)`, 기본 5). 정상 CSV 실시간 정확도가 pixel 89%→95%, features 90%→100%로 개선됨.
+- **라이브 상태 지정**(`--sim_state`): 하드웨어도 CSV도 없을 때 `정상/수분부족/자극` 중 원하는 상태를 실시간 생성하거나 `cycle`로 8초마다 순환시켜 시연할 수 있습니다.
 - `--no-gui`: 실제 터미널(TTY)에서는 Rich 대시보드, 파이프/리다이렉션 시에는 일반 텍스트 로그로 자동 전환
 - Ctrl+C(SIGINT) 시 예외 처리로 안전 종료
 
@@ -147,10 +214,10 @@ python3 main.py --no-gui --model models/best_model_features.joblib --sim_csv dat
 → 실시간 재생 결과(기본 pixel 모델 `best_model.joblib`): 자극·수분부족 CSV는 **100% 스트레스**,
 정상 CSV는 **약 89%가 정상**(나머지는 윈도우 위치에 따른 오검출)으로 분류됨을 확인. Ctrl+C 안전 종료 확인 ✅
 
-> 참고: `--model best_model_features.joblib`(features 방식)로 실시간 추론하면 정상 CSV 정확도가 더 낮습니다
-> (~55%). 14개 명시적 특징은 어느 2초 구간을 잡느냐에 더 민감해, 이 시뮬레이션 데이터의 실시간 스트리밍
-> 환경에서는 스펙트로그램 이미지(pixel) 방식이 더 안정적입니다. 학습 시 오프라인 정확도(위 표)와 별개로,
-> 실시간 스트리밍 강건성은 pixel 모델이 우수하므로 기본값으로 pixel 모델을 사용합니다.
+> 참고: 14개 명시적 특징(`features` 방식)은 어느 2초 구간을 잡느냐에 더 민감해, 스무딩 이전에는 실시간
+> 정상 CSV 정확도가 pixel보다 낮았습니다. **예측 스무딩**(`smooth_window`)을 적용하면 features도 정상
+> 정확도가 크게 올라(예: 100%) pixel과 대등해집니다. 다만 스무딩 없이도 안정적인 쪽은 pixel이므로
+> 기본값으로 pixel 모델(`best_model.joblib`)을 사용합니다.
 
 ---
 
@@ -298,6 +365,8 @@ rm -rf models
 - **50Hz 노치필터 추가**: 대역통과(0.5~45Hz)만으로는 남던 50Hz 전원 노이즈를 노치로 추가 감쇠(preprocess/inference 공유).
 - **GUI 시계열 중복 표시 수정**: 매 예측마다 2초 윈도우 전체를 밀어넣어 겹쳐 보이던 것을 새로 들어온 구간만 반영하도록 수정.
 - **영교차율 계산 안정화 / 죽은 코드 정리**: 정확히 0인 샘플의 이중 계수 방지, 사용되지 않던 ASCII 파일명 매핑 제거.
+- **실시간 예측 스무딩 추가**: 최근 예측을 확률 평균/다수결로 합쳐 오검출 깜빡임 감소(pixel 정상 89%→95%, features 90%→100%).
+- **라이브 상태 지정(`--sim_state`)**: 하드웨어·CSV가 없어도 원하는 상태(또는 `cycle` 순환)를 실시간 생성해 스트레스까지 시연 가능(기존에는 항상 정상만 생성).
 
 재학습 결과(시간순 그룹 분할 기준) pixel SVM / features RF 모두 Accuracy 1.0000이지만, 이는 위
 [3]절 ⚠️에서 설명했듯 **시뮬레이션 신호가 구조적으로 쉽게 구분되기 때문**이며 실측 데이터로 재검증이

@@ -25,7 +25,7 @@ import numpy as np
 from inference import RealtimeClassifier, SAMPLE_RATE_HZ, WINDOW_SEC
 
 
-def run_gui(model_path, sim_csv, refresh_hz=5.0):
+def run_gui(model_path, sim_csv, refresh_hz=5.0, sim_state="정상"):
     import matplotlib
     interactive_mode = True
     try:
@@ -51,7 +51,8 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0):
     ax_status = fig.add_subplot(gs[1, 1])   # 상태 텍스트/이모지 (우하단)
     ax_status.axis("off")
 
-    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv, predict_hz=refresh_hz)
+    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv,
+                             predict_hz=refresh_hz, sim_state=sim_state)
     print(f"[gui] 모델 로드: {clf.model_name}, 클래스={clf.classes}")
     print("[gui] Ctrl+C 로 종료할 수 있습니다.")
 
@@ -114,7 +115,7 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0):
         plt.close("all")
 
 
-def run_headless(model_path, sim_csv, refresh_hz=2.0):
+def run_headless(model_path, sim_csv, refresh_hz=2.0, sim_state="정상"):
     """--no-gui: Rich 라이브러리로 터미널(SSH/VNC 터미널) 대시보드 표시"""
     use_rich = False
     if sys.stdout.isatty():
@@ -127,7 +128,8 @@ def run_headless(model_path, sim_csv, refresh_hz=2.0):
         except ImportError:
             use_rich = False
 
-    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv, predict_hz=refresh_hz)
+    clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv,
+                             predict_hz=refresh_hz, sim_state=sim_state)
     print(f"[headless] 모델 로드: {clf.model_name}, 클래스={clf.classes}")
     print("[headless] Ctrl+C 로 종료할 수 있습니다.")
 
@@ -172,13 +174,15 @@ def main():
     parser = argparse.ArgumentParser(description="실시간 식물 상태 모니터링 GUI / 터미널 대시보드")
     parser.add_argument("--model", default="../models/best_model.joblib")
     parser.add_argument("--sim_csv", default=None, help="하드웨어 없을 때 재생할 샘플 CSV 경로")
+    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "cycle"],
+                        help="CSV도 하드웨어도 없을 때 라이브로 생성할 상태(cycle=8초마다 순환)")
     parser.add_argument("--no-gui", action="store_true", help="헤드리스(터미널) 모드로 실행")
     args = parser.parse_args()
 
     if args.no_gui:
-        run_headless(args.model, args.sim_csv)
+        run_headless(args.model, args.sim_csv, sim_state=args.sim_state)
     else:
-        run_gui(args.model, args.sim_csv)
+        run_gui(args.model, args.sim_csv, sim_state=args.sim_state)
 
 
 if __name__ == "__main__":

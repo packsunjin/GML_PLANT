@@ -80,9 +80,14 @@ class RealtimeClassifier:
     GUI 없이도(main.py --no-gui) 그대로 재사용 가능.
     """
 
+    # 데모용 순환 모드(sim_state="cycle")에서 순서대로 생성할 상태와 상태별 지속 시간(초)
+    SIM_CYCLE_STATES = ["정상", "수분부족", "자극"]
+    SIM_CYCLE_SEC = 8.0
+
     def __init__(self, model_path="../models/best_model.joblib",
                  sample_rate=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC,
-                 sim_source_csv=None, predict_hz=PREDICT_HZ):
+                 sim_source_csv=None, predict_hz=PREDICT_HZ,
+                 sim_state="정상", smooth_window=5):
         bundle = joblib.load(model_path)
         self.model = bundle["model"]
         self.classes = bundle["classes"]  # ["정상", "스트레스"]
@@ -100,6 +105,17 @@ class RealtimeClassifier:
         self.predict_every = max(1, int(round(sample_rate / predict_hz))) if predict_hz else 1
         self._samples_since_predict = 0
 
+        # 하드웨어도 CSV도 없을 때 라이브 시뮬레이션으로 생성할 상태.
+        # "정상"/"수분부족"/"자극" 중 하나, 또는 "cycle"(SIM_CYCLE_SEC마다 순환)로 지정한다.
+        # (예전에는 항상 "정상"만 생성해 하드웨어/CSV 없이는 스트레스 시연이 불가능했다.)
+        self.sim_state = sim_state
+
+        # 예측 스무딩: 인접 예측이 크게 겹치므로 최근 smooth_window개 예측을 평균/다수결로
+        # 합쳐 순간적인 오검출 깜빡임을 줄인다. 1이면 스무딩 없음(원래 동작).
+        self.smooth_window = max(1, int(smooth_window))
+        self._proba_history = deque(maxlen=self.smooth_window)
+        self._pred_history = deque(maxlen=self.smooth_window)
+
         # 하드웨어가 없을 때, 저장된 실제 CSV를 재생하며 시뮬레이션하는 옵션
         self._sim_rows = None
         self._sim_idx = 0
@@ -110,13 +126,20 @@ class RealtimeClassifier:
 
         self._t0 = time.time()
 
+    def _current_sim_state(self, t):
+        """라이브 시뮬레이션에서 지금 생성할 상태를 정한다. cycle 모드면 시간에 따라 순환."""
+        if self.sim_state == "cycle":
+            idx = int(t / self.SIM_CYCLE_SEC) % len(self.SIM_CYCLE_STATES)
+            return self.SIM_CYCLE_STATES[idx]
+        return self.sim_state
+
     def next_sample(self):
         if self._sim_rows is not None:
             v = self._sim_rows[self._sim_idx % len(self._sim_rows)]
             self._sim_idx += 1
             return v
         t = time.time() - self._t0
-        return read_single_realtime(state_for_sim="정상", t=t)
+        return read_single_realtime(state_for_sim=self._current_sim_state(t), t=t)
 
     def step(self):
         """샘플 1개를 버퍼에 추가하고, 버퍼가 가득 차면서 predict_hz 주기가 된 경우에만
@@ -136,13 +159,25 @@ class RealtimeClassifier:
         feature, filtered, Sxx_db, f, t = signal_to_feature(
             signal, self.sample_rate, img_size=self.img_size, feature_mode=self.feature_mode
         )
-        pred_idx = self.model.predict([feature])[0]
-        state = self.classes[pred_idx]
 
+        # 확률 벡터가 있으면 최근 창을 평균해 argmax로 스무딩(확률 평균), 없으면 예측 인덱스
+        # 다수결로 스무딩한다. smooth_window=1이면 스무딩 없이 단일 예측과 동일하게 동작한다.
         try:
-            proba = self.model.predict_proba([feature])[0][pred_idx]
+            proba_vec = self.model.predict_proba([feature])[0]
         except Exception:
+            proba_vec = None
+
+        if proba_vec is not None:
+            self._proba_history.append(np.asarray(proba_vec, dtype=np.float64))
+            mean_proba = np.mean(self._proba_history, axis=0)
+            pred_idx = int(np.argmax(mean_proba))
+            proba = float(mean_proba[pred_idx])
+        else:
+            self._pred_history.append(int(self.model.predict([feature])[0]))
+            vals, counts = np.unique(np.array(self._pred_history), return_counts=True)
+            pred_idx = int(vals[np.argmax(counts)])
             proba = None
+        state = self.classes[pred_idx]
 
         return {
             "state": state,
