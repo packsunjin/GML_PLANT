@@ -63,9 +63,13 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0):
             result = clf.step()
             if result is not None:
                 last_result = result
-                # 최근 5초 버퍼 갱신 (windows_sec 단위로 밀어넣기)
-                recent_signal = np.roll(recent_signal, -len(result["filtered_signal"]))
-                recent_signal[-len(result["filtered_signal"]):] = result["filtered_signal"]
+                # 최근 5초 버퍼 갱신: predict 주기(predict_every 샘플)마다 result가 나오므로,
+                # 그 사이 새로 들어온 샘플 수만큼만(=predict_every) 필터링 신호의 최신 구간을
+                # 밀어넣는다. 필터링 윈도우(2초=window_len) 전체를 매번 밀어넣으면 인접 예측끼리
+                # 대부분 겹쳐서 시계열이 중복 표시되므로 새 구간만 반영한다.
+                n_new = min(clf.predict_every, len(result["filtered_signal"]), len(recent_signal))
+                recent_signal = np.roll(recent_signal, -n_new)
+                recent_signal[-n_new:] = result["filtered_signal"][-n_new:]
 
                 ax_ts.cla()
                 t_axis = np.linspace(-5, 0, len(recent_signal))

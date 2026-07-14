@@ -42,9 +42,9 @@ except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSErr
     _HW_ERR = str(e)
 
 
-VALID_STATES = {"정상": "normal.csv", "수분부족": "water_deficit.csv", "자극": "stimulus.csv"}
-# 파일명은 ASCII로 저장 (요구사항의 한글 파일명도 함께 저장)
+# 상태별 저장 파일명(한글). 수집된 원시 CSV는 이 이름으로 data/raw/ 아래에 저장된다.
 KOR_FILENAMES = {"정상": "정상.csv", "수분부족": "수분부족.csv", "자극": "자극.csv"}
+VALID_STATES = tuple(KOR_FILENAMES.keys())
 
 
 def read_sample_hardware():
@@ -115,7 +115,7 @@ def collect(state, duration_sec, sample_rate_hz, out_dir):
     out_dir/<상태>.csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
     """
     if state not in VALID_STATES:
-        raise ValueError(f"state는 {list(VALID_STATES.keys())} 중 하나여야 합니다.")
+        raise ValueError(f"state는 {list(VALID_STATES)} 중 하나여야 합니다.")
 
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, KOR_FILENAMES[state])
@@ -170,7 +170,7 @@ def read_single_realtime(state_for_sim="정상", t=None):
 
 def main():
     parser = argparse.ArgumentParser(description="AD8232+ADS1115 식물 전위 신호 수집")
-    parser.add_argument("--state", required=True, choices=list(VALID_STATES.keys()))
+    parser.add_argument("--state", required=True, choices=list(VALID_STATES))
     parser.add_argument("--duration", type=float, default=30.0, help="수집 시간(초), 기본 30초")
     parser.add_argument("--rate", type=float, default=250.0, help="샘플링 주기(Hz), 100~1000 권장")
     parser.add_argument("--out", default="../data/raw", help="저장 폴더")

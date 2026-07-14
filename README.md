@@ -62,7 +62,8 @@ python3 sensor_control.py --state 자극 --duration 30 --rate 250
 python3 preprocess.py --raw_dir ../data/raw --out_dir ../data/spectrogram
 ```
 
-- SciPy Butterworth 대역통과필터(0.5~45Hz, order=4)로 50Hz 전원 노이즈 및 DC 드리프트 제거
+- SciPy Butterworth 대역통과필터(0.5~45Hz, order=4)로 DC 드리프트·고주파 잡음 제거 + **50Hz IIR 노치필터**로 전원 노이즈 추가 감쇠
+  - 대역통과 상한(45Hz)만으로는 50Hz가 30% 안팎 남지만, 노치를 더하면 ~18%까지 더 줄어듭니다(2초 윈도우라 필터 과도응답 때문에 완전히 0이 되지는 않음). preprocess/inference가 동일한 필터 체인을 공유해 학습·추론 특징이 일치합니다.
 - 2초 윈도우 / 1초 스텝으로 슬라이딩하며 스펙트로그램(224x224, `viridis`) PNG 생성
   - 동일한 윈도우에서 `feature_extraction.py`의 명시적 통계/주파수 특징 14개도 함께 계산해 `data/features.csv`에 저장
 - 정상 → `data/spectrogram/정상/`, 수분부족+자극 → `data/spectrogram/스트레스/` 로 클래스 통합 저장
@@ -83,26 +84,35 @@ python3 train.py --mode both         # 둘 다 학습하고 Accuracy/Precision/R
 - 두 모드 모두 SVM(Linear/RBF, `GridSearchCV`) / Random Forest(`GridSearchCV`) 비교, Confusion Matrix 이미지 자동 저장
 - 클래스 누락이나 샘플이 극소한 경우(예: 하드웨어로 일부 상태만 수집됨) 알아보기 힘든 sklearn 예외 대신 명확한 한국어 안내와 함께 종료하거나, GridSearchCV 폴드 수를 자동으로 줄여 계속 진행합니다.
 
-**검증 결과 (실제 실행 로그, `--mode both`)**
+**학습/평가 분할 방식(데이터 누수 방지)**
+
+윈도우는 2초 길이 / 1초 스텝으로 슬라이딩하므로 인접 윈도우끼리 50%가 겹칩니다. 이 상태에서 무작위
+분할(`train_test_split`)을 쓰면 겹치는 윈도우가 학습·평가 양쪽에 들어가, 사실상 같은 신호 구간을
+시험 삼아 다시 보는 **데이터 누수**로 정확도가 부풀려집니다. 그래서 `train.py`는 원본 소스 파일별로
+윈도우를 **시간순으로 나누고**(앞부분 train / 뒷부분 test), 경계에서 겹치는 윈도우 1개를 버려
+train/test 구간이 시간적으로 겹치지 않게 합니다(`chronological_group_split`).
+
+**검증 결과 (실제 실행 로그, `--mode both`, Train=57 / Test=27, 시간순 그룹 분할)**
 
 | 방식 | 모델 | 최적 하이퍼파라미터 | Accuracy | Precision | Recall |
 |---|---|---|---|---|---|
-| pixel | SVM | kernel=linear, C=0.1, gamma=scale | 0.9259 | 0.9444 | 0.9444 |
-| pixel | Random Forest | n_estimators=200, max_depth=None | 0.9259 | 0.9444 | 0.9444 |
-| **features** | **SVM** | kernel=linear, C=10, gamma=scale | **1.0000** | 1.0000 | 1.0000 |
-| features | Random Forest | n_estimators=100, max_depth=None | 1.0000 | 1.0000 | 1.0000 |
+| **pixel** | **SVM** | kernel=rbf, C=10, gamma=scale | **1.0000** | 1.0000 | 1.0000 |
+| pixel | Random Forest | n_estimators=100, max_depth=None | 1.0000 | 1.0000 | 1.0000 |
+| features | SVM | kernel=linear, C=10, gamma=scale | 0.9630 | 0.9474 | 1.0000 |
+| **features** | **Random Forest** | n_estimators=100, max_depth=None | **1.0000** | 1.0000 | 1.0000 |
 
-→ 최적 모델은 방식별로 각각 `models/best_model.joblib`(pixel) / `models/best_model_features.joblib`(features)로 저장됨.
+→ 최적 모델은 방식별로 각각 `models/best_model.joblib`(pixel SVM) / `models/best_model_features.joblib`(features RF)로 저장됨.
 **70% 이상 정확도 요구사항 두 방식 모두 충족 ✅** (`models/confusion_matrix_*.png` 참고)
 
-> 참고: features 모드의 100% 정확도는 테스트 샘플이 27개뿐인 작은 데이터셋 기준이라 다소 낙관적일 수
-> 있습니다. 그래도 50,176차원 픽셀보다 14개의 해석 가능한 특징만으로 동등하거나 더 나은 성능이 나온다는
-> 점은, 이 정도 규모의 데이터셋에서는 명시적 특징 추출이 이미지 픽셀 flatten보다 더 안정적인 접근일 수
-> 있음을 시사합니다. 실측 데이터로 재학습 후 더 큰 테스트셋으로 재검증을 권장합니다.
+> ⚠️ **중요**: 누수를 제거한 뒤에도 정확도가 여전히 ~100%인 것은 성능이 좋아서가 아니라,
+> **시뮬레이션 신호가 상태별로 서로 다른 수식으로 생성되어 애초에 쉽게 구분되기 때문**입니다.
+> 즉 현재 수치는 "모델 성능 지표"가 아니라 "파이프라인이 끝까지 정상 동작함"을 확인하는 검증용입니다.
+> 실제 식물에서 수집한 데이터로 재학습해야 의미 있는 성능이 나오며, 그때는 정확도가 크게 달라질 수
+> 있습니다. 실측 데이터 확보 후 `preprocess.py` → `train.py --mode both`를 재실행하세요.
 >
-> 본 검증은 하드웨어가 없는 개발 환경에서 시뮬레이션 신호로 생성한 샘플 데이터 기준입니다.
-> 실제 식물에서 수집한 데이터로 재학습하면 정확도가 달라질 수 있으니, 실측 데이터 확보 후
-> `preprocess.py` → `train.py --mode both`를 재실행하세요.
+> 참고로 14개의 해석 가능한 명시적 특징만으로 50,176차원 픽셀 방식과 대등한 성능이 나온다는 점은,
+> 이 정도 규모의 데이터셋에서는 명시적 특징 추출이 이미지 픽셀 flatten보다 더 안정적인 접근일 수
+> 있음을 시사합니다.
 
 ### [4] 실시간 통합 시스템 (`main.py`)
 
@@ -134,7 +144,13 @@ python3 main.py --no-gui --model models/best_model_features.joblib --sim_csv dat
 ...
 [headless] Ctrl+C 감지 - 안전 종료합니다.
 ```
-→ 자극/수분부족 CSV 재생 시 대부분 '스트레스'로, 정상 CSV 재생 시 대부분 '정상'으로 정확히 분류됨을 확인. Ctrl+C 안전 종료 확인 ✅
+→ 실시간 재생 결과(기본 pixel 모델 `best_model.joblib`): 자극·수분부족 CSV는 **100% 스트레스**,
+정상 CSV는 **약 89%가 정상**(나머지는 윈도우 위치에 따른 오검출)으로 분류됨을 확인. Ctrl+C 안전 종료 확인 ✅
+
+> 참고: `--model best_model_features.joblib`(features 방식)로 실시간 추론하면 정상 CSV 정확도가 더 낮습니다
+> (~55%). 14개 명시적 특징은 어느 2초 구간을 잡느냐에 더 민감해, 이 시뮬레이션 데이터의 실시간 스트리밍
+> 환경에서는 스펙트로그램 이미지(pixel) 방식이 더 안정적입니다. 학습 시 오프라인 정확도(위 표)와 별개로,
+> 실시간 스트리밍 강건성은 pixel 모델이 우수하므로 기본값으로 pixel 모델을 사용합니다.
 
 ---
 
@@ -214,7 +230,7 @@ Wayland 세션(`labwc`/`wayfire`)이 이미 떠 있는 상태에서 실행하면
 ## 검증 요구사항 체크리스트
 
 - [x] (2) 전처리 스크립트가 CSV → 224x224 스펙트로그램 이미지 생성 확인 (총 87장) + 명시적 특징 CSV 생성 확인
-- [x] (3) 학습 스크립트 Accuracy 70% 이상 달성 확인 (pixel SVM 92.6%, features SVM 100%)
+- [x] (3) 학습 스크립트 Accuracy 70% 이상 달성 확인 (시간순 그룹 분할 기준 pixel SVM 100%, features RF 100% — 단, 시뮬레이션 신호라 낙관적. 위 ⚠️ 참고)
 - [x] (4) 통합 스크립트가 GUI/헤드리스 모드에서 실시간 그래프·스펙트로그램·상태 표시 갱신 확인
 - [x] 하드웨어 미보유 시 `data/raw/`의 샘플 CSV를 시뮬레이션 입력으로 사용하는 모드(`--sim_csv`) 추가 확인
 - [x] Ctrl+C 안전 종료 확인
@@ -273,4 +289,16 @@ rm -rf models
 - **시뮬레이션 신호 생성 벡터화**: `sensor_control.py`의 시뮬레이션 모드 데이터 수집을 numpy 벡터 연산으로 일괄 처리해 약 9배 빨라졌습니다.
 - **Butterworth 필터 계수 캐싱, 불필요한 PIL 리사이즈 제거** 등 세부 최적화 다수 적용.
 
-재학습 결과 Accuracy는 기존과 동일한 수준(SVM 92.6%, Random Forest 92.6%)을 유지했습니다.
+## 코드 리뷰 반영 내역
+
+방법론·신호처리 리뷰 결과 다음을 반영하고 전체 파이프라인을 재생성했습니다.
+
+- **데이터 누수 제거**: 겹치는 슬라이딩 윈도우를 무작위로 나누던 것을 소스 파일별 **시간순 그룹 분할**(`chronological_group_split`, 경계 겹침 윈도우 1개 제거)로 교체.
+- **학습/추론 필터 일치(train/serve skew 제거)**: `preprocess.py`가 전체 신호를 한 번에 필터링한 뒤 잘라내던 것을, 실시간 추론과 동일하게 **윈도우 단위로 필터링**하도록 변경. 필터 과도응답까지 학습·추론이 일치해 실시간 정상 CSV 오검출이 크게 줄었습니다(pixel 모델 기준 정상 정확도 ~61% → ~89%).
+- **50Hz 노치필터 추가**: 대역통과(0.5~45Hz)만으로는 남던 50Hz 전원 노이즈를 노치로 추가 감쇠(preprocess/inference 공유).
+- **GUI 시계열 중복 표시 수정**: 매 예측마다 2초 윈도우 전체를 밀어넣어 겹쳐 보이던 것을 새로 들어온 구간만 반영하도록 수정.
+- **영교차율 계산 안정화 / 죽은 코드 정리**: 정확히 0인 샘플의 이중 계수 방지, 사용되지 않던 ASCII 파일명 매핑 제거.
+
+재학습 결과(시간순 그룹 분할 기준) pixel SVM / features RF 모두 Accuracy 1.0000이지만, 이는 위
+[3]절 ⚠️에서 설명했듯 **시뮬레이션 신호가 구조적으로 쉽게 구분되기 때문**이며 실측 데이터로 재검증이
+필요합니다.

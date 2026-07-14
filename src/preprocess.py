@@ -23,7 +23,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from scipy.signal import butter, filtfilt, spectrogram
+from scipy.signal import butter, filtfilt, iirnotch, spectrogram
 
 from spectro_render import render_rgb_image
 from feature_extraction import extract_features, FEATURE_NAMES
@@ -41,13 +41,21 @@ STEP_SEC = 1.0          # 슬라이딩 윈도우 이동 간격 (오버랩으로 
 IMG_SIZE = 224
 
 
-def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4):
-    """Butterworth 대역통과필터 (0.5Hz~45Hz) - 50Hz 전원 노이즈 및 저주파 드리프트 제거"""
+def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4, notch_freq=50.0, notch_q=30.0):
+    """Butterworth 대역통과필터(0.5Hz~45Hz)로 저주파 드리프트/고주파 잡음을 줄이고,
+    이어서 50Hz IIR 노치필터로 전원 노이즈를 추가로 감쇠시킨다.
+
+    대역통과 상한이 45Hz라 50Hz는 통과대역 밖이지만, order=4 Butterworth의 감쇠만으로는
+    50Hz 성분이 30% 안팎 남는다. 노치를 더하면 절반 수준(~18%)까지 더 줄어든다. 다만
+    윈도우가 2초로 짧아 필터 과도응답 때문에 완전히 0이 되지는 않는다.
+    (inference.py의 bandpass_filter와 동일한 필터 체인을 사용해야 학습/추론이 일치한다)"""
     nyq = 0.5 * fs
-    low_n = low / nyq
-    high_n = high / nyq
-    b, a = butter(order, [low_n, high_n], btype="band")
-    return filtfilt(b, a, signal)
+    b, a = butter(order, [low / nyq, high / nyq], btype="band")
+    filtered = filtfilt(b, a, signal)
+    if notch_freq and notch_freq < nyq:
+        bn, an = iirnotch(notch_freq, notch_q, fs)
+        filtered = filtfilt(bn, an, filtered)
+    return filtered
 
 
 def make_spectrogram_image(Sxx_db, out_path, img_size=IMG_SIZE):
@@ -75,16 +83,19 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     df = pd.read_csv(csv_path)
     raw_signal = df["voltage"].to_numpy(dtype=float)
 
-    filtered = bandpass_filter(raw_signal, fs)
-
     win_len = int(window_sec * fs)
     step_len = int(step_sec * fs)
 
     count = 0
     feature_rows = []
     base_name = os.path.splitext(fname)[0]
-    for start in range(0, len(filtered) - win_len + 1, step_len):
-        segment = filtered[start:start + win_len]
+    # 필터는 각 윈도우를 개별적으로 적용한다. 실시간 추론(inference.py)은 스트리밍으로 들어온
+    # 2초 버퍼만 필터링할 수 있으므로, 학습 특징도 반드시 "윈도우 단위 필터링"으로 만들어야
+    # 필터 과도응답까지 포함해 학습/추론 특징이 일치한다. (전체 신호를 한 번에 필터링한 뒤
+    # 잘라내면 윈도우 경계의 과도응답이 서로 달라 train/serve skew가 생긴다 — 특히 통계/주파수
+    # 특징 14개는 이 차이에 민감하다.)
+    for start in range(0, len(raw_signal) - win_len + 1, step_len):
+        segment = bandpass_filter(raw_signal[start:start + win_len], fs)
 
         f, t, Sxx = spectrogram(segment, fs=fs, nperseg=min(128, len(segment)),
                                  noverlap=64 if len(segment) > 128 else 0)

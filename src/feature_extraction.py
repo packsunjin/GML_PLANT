@@ -49,7 +49,10 @@ def extract_features(signal, Sxx_db, f, t, fs=None):
     # 표준편차가 0에 가까우면 skew/kurtosis가 정의되지 않으므로 0으로 처리
     skewness = float(_skew(signal)) if std > 1e-12 else 0.0
     kurt = float(_kurtosis(signal)) if std > 1e-12 else 0.0
-    sign_changes = np.sum(np.diff(np.sign(signal)) != 0)
+    # 정확히 0인 샘플은 np.sign이 0이 되어 한 번의 교차를 두 번으로 세므로,
+    # 0이 아닌 샘플만 남겨 부호 전환 횟수를 센다.
+    nonzero = signal[signal != 0.0]
+    sign_changes = int(np.sum(np.diff(np.signbit(nonzero)) != 0)) if nonzero.size > 1 else 0
     duration_sec = len(signal) / fs if fs else len(signal)
     zero_crossing_rate = float(sign_changes / duration_sec) if duration_sec > 0 else 0.0
     peak_to_peak = float(np.max(signal) - np.min(signal))

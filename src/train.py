@@ -38,7 +38,7 @@ _plt_font_setup.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, ConfusionMatrixDisplay
@@ -54,9 +54,21 @@ CLASSES_EN = ["Normal", "Stress"]  # confusion matrix 표시용 (한글 폰트 �
 CV_FOLDS_DEFAULT = 3
 
 
+def _parse_img_name(img_name):
+    """'정상_000123.png' -> ('정상', 123): 원본 소스 파일명(그룹)과 윈도우 시작 오프셋.
+    preprocess.py가 img_name을 f'{base_name}_{start:06d}.png'로 만들므로 마지막 '_' 기준으로 나눈다."""
+    base = os.path.splitext(img_name)[0]
+    src, _, off = base.rpartition("_")
+    try:
+        return src, int(off)
+    except ValueError:
+        return base, 0
+
+
 def load_dataset(spectrogram_dir):
-    """pixel 모드: data/spectrogram/{정상,스트레스}/*.png -> grayscale flatten 특징"""
-    X, y = [], []
+    """pixel 모드: data/spectrogram/{정상,스트레스}/*.png -> grayscale flatten 특징.
+    각 윈도우의 (원본 소스 파일, 시작 오프셋)도 함께 반환해 시간순 그룹 분할에 사용한다."""
+    X, y, groups, order = [], [], [], []
     for label_idx, cls in enumerate(CLASSES):
         cls_dir = os.path.join(spectrogram_dir, cls)
         paths = sorted(glob.glob(os.path.join(cls_dir, "*.png")))
@@ -65,19 +77,51 @@ def load_dataset(spectrogram_dir):
             if img.size != (IMG_SIZE, IMG_SIZE):  # 저장 시 이미 IMG_SIZE로 렌더링되므로 보통 그대로 통과
                 img = img.resize((IMG_SIZE, IMG_SIZE))
             arr = np.asarray(img, dtype=np.float32).flatten() / 255.0
+            src, off = _parse_img_name(os.path.basename(p))
             X.append(arr)
             y.append(label_idx)
-    return np.array(X), np.array(y)
+            groups.append(src)
+            order.append(off)
+    return np.array(X), np.array(y), np.array(groups), np.array(order)
 
 
 def load_feature_dataset(features_csv_path):
     """features 모드: data/features.csv -> 명시적 통계/주파수 특징 14개.
-    라벨은 train.py의 CLASSES 리스트로 매핑해 pixel 로더와 순서를 공유한다."""
+    라벨은 train.py의 CLASSES 리스트로 매핑해 pixel 로더와 순서를 공유한다.
+    시간순 그룹 분할을 위해 (source_file, 윈도우 오프셋)도 함께 반환한다."""
     df = pd.read_csv(features_csv_path)
     label_to_idx = {cls: i for i, cls in enumerate(CLASSES)}
     X = df[FEATURE_NAMES].to_numpy(dtype=np.float64)
     y = df["label"].map(label_to_idx).to_numpy()
-    return X, y
+    groups = df["source_file"].to_numpy()
+    order = df["img_name"].map(lambda n: _parse_img_name(n)[1]).to_numpy()
+    return X, y, groups, order
+
+
+def chronological_group_split(X, y, groups, order, test_size=0.3, guard=1):
+    """원본 소스 파일(그룹)별로 윈도우를 시간순 정렬한 뒤, 앞부분을 train, 뒷부분을 test로 나눈다.
+
+    preprocess.py가 2초 윈도우 / 1초 스텝으로 슬라이딩하므로 인접 윈도우는 50%가 겹친다.
+    무작위 분할(train_test_split)을 쓰면 겹치는 윈도우가 train과 test에 동시에 들어가
+    사실상 같은 신호 구간을 시험 삼아 다시 보는 데이터 누수가 생겨 정확도가 부풀려진다.
+    여기서는 그룹별로 시간축을 따라 나누고, train의 마지막 guard개 윈도우를 버려
+    train/test 경계 윈도우가 시간적으로 겹치지 않게 한다.
+
+    각 소스 파일은 단일 클래스라, 파일마다 앞/뒤로 나누면 두 클래스 모두 train과 test에
+    비례적으로 포함된다(stratify 없이도 클래스 균형이 유지된다)."""
+    train_idx, test_idx = [], []
+    for g in np.unique(groups):
+        g_idx = np.where(groups == g)[0]
+        g_idx = g_idx[np.argsort(order[g_idx])]  # 시간순
+        n = len(g_idx)
+        n_test = min(max(1, int(round(n * test_size))), n - 1)  # train도 최소 1개 확보
+        split = n - n_test
+        train_end = max(1, split - guard)  # guard 윈도우 제거(겹침 차단)
+        train_idx.extend(g_idx[:train_end].tolist())
+        test_idx.extend(g_idx[split:].tolist())
+    train_idx = np.array(train_idx)
+    test_idx = np.array(test_idx)
+    return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
 
 
 def validate_classes(y, context="전체"):
@@ -191,14 +235,13 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, mode="pixel", cv_f
     return results
 
 
-def run_pipeline(X, y, models_dir, mode):
+def run_pipeline(X, y, groups, order, models_dir, mode):
     print(f"[train] ({mode}) 총 샘플 수: {len(y)}, 정상={np.sum(y == 0)}, 스트레스={np.sum(y == 1)}")
     validate_classes(y)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
-    print(f"[train] ({mode}) Train={len(y_train)}, Test={len(y_test)}")
+    # 무작위 분할 대신 소스 파일별 시간순 분할로 윈도우 겹침에 의한 데이터 누수를 차단한다.
+    X_train, X_test, y_train, y_test = chronological_group_split(X, y, groups, order, test_size=0.3)
+    print(f"[train] ({mode}) Train={len(y_train)}, Test={len(y_test)} (시간순 그룹 분할, 겹침 제거)")
 
     # GridSearchCV가 실제로 나누는 대상은 y_train이므로, cv 폴드 수도 y_train 기준으로 정한다.
     cv_folds = cv_folds_for(y_train)
@@ -246,8 +289,8 @@ def main():
 
     if args.mode in ("pixel", "both"):
         print("[train] 데이터 로딩 중 (pixel)...")
-        X, y = load_dataset(args.spectrogram_dir)
-        _, best_name, best_acc = run_pipeline(X, y, args.models_dir, mode="pixel")
+        X, y, groups, order = load_dataset(args.spectrogram_dir)
+        _, best_name, best_acc = run_pipeline(X, y, groups, order, args.models_dir, mode="pixel")
         summary["pixel"] = (best_name, best_acc)
 
     if args.mode in ("features", "both"):
@@ -255,8 +298,8 @@ def main():
             print(f"❌ {args.features_csv} 가 없습니다. 먼저 preprocess.py를 실행해 생성하세요.")
             sys.exit(1)
         print("[train] 데이터 로딩 중 (features)...")
-        X, y = load_feature_dataset(args.features_csv)
-        _, best_name, best_acc = run_pipeline(X, y, args.models_dir, mode="features")
+        X, y, groups, order = load_feature_dataset(args.features_csv)
+        _, best_name, best_acc = run_pipeline(X, y, groups, order, args.models_dir, mode="features")
         summary["features"] = (best_name, best_acc)
 
     if len(summary) > 1:

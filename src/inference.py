@@ -15,7 +15,7 @@ from functools import lru_cache
 
 import numpy as np
 import joblib
-from scipy.signal import butter, filtfilt, spectrogram
+from scipy.signal import butter, filtfilt, iirnotch, spectrogram
 
 from sensor_control import read_single_realtime, HARDWARE_AVAILABLE
 from spectro_render import render_gray_array
@@ -36,9 +36,21 @@ def _design_bandpass(fs, low, high, order):
     return butter(order, [low / nyq, high / nyq], btype="band")
 
 
-def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4):
+@lru_cache(maxsize=8)
+def _design_notch(fs, notch_freq, notch_q):
+    """50Hz 노치필터 계수도 고정 파라미터에 대해 캐시하여 재사용한다."""
+    return iirnotch(notch_freq, notch_q, fs)
+
+
+def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4, notch_freq=50.0, notch_q=30.0):
+    """preprocess.py의 bandpass_filter와 동일한 대역통과 + 50Hz 노치 체인.
+    학습(preprocess)과 추론(inference)의 필터가 반드시 일치해야 하므로 두 곳을 동일하게 유지한다."""
     b, a = _design_bandpass(fs, low, high, order)
-    return filtfilt(b, a, signal)
+    filtered = filtfilt(b, a, signal)
+    if notch_freq and notch_freq < 0.5 * fs:
+        bn, an = _design_notch(fs, notch_freq, notch_q)
+        filtered = filtfilt(bn, an, filtered)
+    return filtered
 
 
 def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode="pixel"):
