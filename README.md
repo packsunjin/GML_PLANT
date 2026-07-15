@@ -63,13 +63,45 @@ python3 main.py --no-gui --model models/best_model_정상-자극.joblib --sim_cs
 python3 main.py --no-gui --sim_state 순환             # 정상→수분부족→자극 순환 데모
 ```
 
-## 설치
+## 설치 및 업데이트
 
+### 1. 저장소 받기 (처음 한 번, clone)
+
+```bash
+git clone https://github.com/P-SUNJiN/GML_SOURCECODE2.git project
+cd project
+```
+> `project`는 받을 폴더 이름입니다(원하는 이름으로 바꿔도 됨). 이렇게 받아야 이후 `git pull`로 업데이트할 수 있습니다.
+> 압축 파일을 수동 복사한 폴더는 git 저장소가 아니라 `git pull`이 안 됩니다.
+
+### 2. 의존성 설치
+
+**PC(개발/검증용):**
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+**라즈베리파이(권장):** 무거운 과학 라이브러리는 apt로 미리 빌드된 것을 받는 게 빠르고 안전합니다.
+```bash
+sudo apt install -y python3-numpy python3-pandas python3-scipy python3-matplotlib \
+                    python3-sklearn python3-rich i2c-tools python3-smbus fonts-noto-cjk
+python3 -m venv --system-site-packages venv   # apt로 깐 라이브러리를 venv에서 재사용
+source venv/bin/activate
+pip install adafruit-circuitpython-ads1x15 adafruit-blinka   # 하드웨어용(선택)
+```
+
+### 3. 업데이트 (코드가 바뀌었을 때, git pull)
+
+```bash
+cd project              # 프로젝트 폴더로 이동
+git pull                # GitHub의 최신 코드 받기
+rm -rf ~/.cache/matplotlib   # (그래프/폰트가 바뀌었을 때) matplotlib 폰트 캐시 새로고침
+```
+> - **동작 원리**: 코드는 GitHub(원격 저장소)에 있고, `git pull`로 각 기기(파이/PC)가 그 최신본을 당겨옵니다. GitHub에 반영해도 파이에 자동 적용되지는 않으니, 업데이트할 때마다 `git pull`을 실행하세요.
+> - **충돌 시**: 로컬에서 파일을 직접 고쳐 `git pull`이 막히면 `git stash` → `git pull` → (필요 시) `git stash pop` 순서로 진행하세요.
+> - **실측 데이터 보호**: `data/raw/`의 CSV는 직접 수집한 데이터라면 소중하니, 초기화/재클론 전에 다른 곳에 백업하세요.
 
 > 라즈베리파이가 아닌 PC에서 실행하면 `adafruit-circuitpython-ads1x15` 임포트가 실패하며,
 > `sensor_control.py`가 자동으로 **SIMULATION 모드**로 전환되어 실제 신호와 유사한 합성 신호를 생성합니다.
@@ -248,7 +280,8 @@ python3 main.py --no-gui --model models/best_model_정상-자극.joblib --sim_cs
 
 - 기본 `models/best_model.joblib`(**3종**, 픽셀 방식) 로드 → ADS1115(또는 시뮬레이션) 실시간 샘플을 2초 버퍼로 모아 즉시 추론
   - joblib 번들에 담긴 `feature_mode`("pixel"/"explicit")와 `classes`(예: `["정상","수분부족","자극"]`)를 보고 특징 추출 방식과 상태 라벨을 자동 선택하므로, `--model`만 바꾸면 3종든 2종든 그대로 동작합니다.
-- GUI 모드: Matplotlib Figure(`plt.ion()`)에 ① 최근 5초 시계열, ② 실시간 스펙트로그램, ③ 상태 텍스트+이모티콘(🌱 정상 / 💧 수분부족 / ⚡ 자극) 표시
+- GUI 모드: Matplotlib Figure(`plt.ion()`)에 ① 최근 5초 시계열, ② 실시간 스펙트로그램, ③ 상태별 **색상 원**(🟢정상 / 🔵수분부족 / 🟠자극) + 한글 상태명 + 확신도 표시
+  - matplotlib은 컬러 이모지를 못 그려 두부글자(□)가 되므로, GUI는 색상 원으로 표시합니다. 터미널/헤드리스(`--no-gui`)에서는 이모지(🌱/💧/⚡)가 잘 나오므로 그대로 사용합니다.
   - GUI 백엔드(Tk 등)가 없는 환경에서는 자동으로 파일 저장 모드(`dashboard_last.png`)로 폴백
 - **예측 스무딩**: 인접 예측이 크게 겹치므로 최근 몇 개 예측을 확률 평균/다수결로 합쳐 순간적인 오검출 깜빡임을 줄입니다(`RealtimeClassifier(smooth_window=5)`, 기본 5). 정상 CSV 실시간 정확도가 픽셀 89%→95%, 특징 90%→100%로 개선됨.
 - **라이브 상태 지정**(`--sim_state`): 하드웨어도 CSV도 없을 때 `정상/수분부족/자극` 중 원하는 상태를 실시간 생성하거나 `cycle`로 8초마다 순환시켜 시연할 수 있습니다.
@@ -310,7 +343,7 @@ hostname -I        # Pi의 IP 주소 확인 (예: 192.168.0.42)
 5. 화면에 아래 3가지가 실시간 갱신되는 것을 확인:
    - 상단: 최근 5초간 필터링된 전위 시계열 그래프
    - 좌하단: 실시간 스펙트로그램
-   - 우하단: 현재 상태 텍스트 + 큰 이모티콘(🌱 정상 / 💧 수분부족 / ⚡ 자극)
+   - 우하단: 상태별 색상 원(🟢 정상 / 🔵 수분부족 / 🟠 자극) + 한글 상태명 + 확신도
 6. 모니터링 종료 시 VNC 터미널에서 `Ctrl+C` → 안전 종료 메시지 확인 후 창이 닫힘
 
 ### 5-4. Headless(모니터 없는) 환경에서도 VNC로 접속하는 방법
@@ -420,7 +453,9 @@ rm -rf models
 - **실시간 예측 스무딩 추가**: 최근 예측을 확률 평균/다수결로 합쳐 오검출 깜빡임 감소(픽셀 정상 89%→95%, 특징 90%→100%).
 - **라이브 상태 지정(`--sim_state`)**: 하드웨어·CSV가 없어도 원하는 상태(또는 `cycle` 순환)를 실시간 생성해 스트레스까지 시연 가능(기존에는 항상 정상만 생성).
 - **3종 분류 + 정상 포함 2종 비교(`--task`)**: 수분부족·자극을 "스트레스"로 합치던 것을, **기본 3종(정상/수분부족/자극)** 로 바꾸고 정상을 반드시 포함한 2종 비교(`정상-수분부족`, `정상-자극`)도 선택 가능하게 확장. preprocess는 3가지 상태를 별도 폴더로 저장하고, 실시간 GUI/헤드리스도 세 상태(🌱/💧/⚡)를 그대로 표시.
-- **한글 폰트 자동 탐지**: 없는 폰트를 억지로 지정해 나던 `findfont` 경고를 없애고, 설치된 한글 폰트가 있으면 confusion matrix까지 한글로 표시.
+- **한글 폰트 자동 탐지**: 없는 폰트를 억지로 지정해 나던 `findfont` 경고를 없애고, 설치된 한글 폰트가 있으면 confusion matrix까지 한글로 표시. 라즈베리파이의 `fonts-noto-cjk`가 matplotlib에 `Noto Sans CJK JP` 이름으로만 잡히는 경우도 인식(통합 폰트라 한글 글리프 포함).
+- **CLI 한글 통일**: `--mode 픽셀/특징/둘다`, `--task 3종/전체/정상-수분부족/정상-자극`, `--sim_state ...순환` 등 옵션 값과 모델 파일명을 한글로 통일.
+- **GUI 상태 표시를 색상 원으로**: matplotlib이 컬러 이모지를 못 그려 두부글자(□)가 되던 것을, 상태별 색상 원(🟢/🔵/🟠) + 한글 상태명 + 확신도로 대체.
 
 재학습 결과 대부분 Accuracy가 높게 나오지만(3종 특징 100%, 2종 100% 등), 이는 위
 [3]절 ⚠️에서 설명했듯 **시뮬레이션 신호가 구조적으로 쉽게 구분되기 때문**이며 실측 데이터로 재검증이
