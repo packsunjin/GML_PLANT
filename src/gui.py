@@ -55,9 +55,12 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0, sim_state="정상"):
         plt.ioff()
         fig = plt.figure(figsize=(9, 6))
 
-    # 한글 라벨(상태 텍스트/축 이름)이 깨지지 않도록 CJK 폰트 지정 (Raspberry Pi OS에도 fonts-noto-cjk 설치 시 동일 적용)
-    matplotlib.rcParams["font.family"] = "Noto Sans KR"
-    matplotlib.rcParams["axes.unicode_minus"] = False
+    # 한글 라벨(상태 텍스트/축 이름)이 깨지지 않도록 설치된 한글 폰트를 자동 지정한다.
+    # (라즈베리파이 OS: sudo apt install fonts-noto-cjk 후 rm -rf ~/.cache/matplotlib)
+    from font_utils import setup_korean_font
+    if setup_korean_font() is None:
+        print("[gui] 한글 폰트를 찾지 못했습니다. 한글이 깨지면 `sudo apt install fonts-noto-cjk` 후 "
+              "`rm -rf ~/.cache/matplotlib` 하고 다시 실행하세요.")
 
     gs = fig.add_gridspec(2, 2)
     ax_ts = fig.add_subplot(gs[0, :])       # 시계열 (상단 전체)

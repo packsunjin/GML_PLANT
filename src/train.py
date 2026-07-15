@@ -32,11 +32,12 @@ import pandas as pd
 import joblib
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as _plt_font_setup
-_plt_font_setup.rcParams["font.family"] = "Noto Sans KR"
-_plt_font_setup.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 from PIL import Image
+
+from font_utils import setup_korean_font
+# 설치된 한글 폰트를 자동 지정(없으면 None). confusion matrix 라벨을 한글로 쓸지 여부에 사용.
+_KOREAN_FONT = setup_korean_font()
 
 from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
@@ -50,7 +51,7 @@ from feature_extraction import FEATURE_NAMES
 
 IMG_SIZE = 224
 CLASSES = ["정상", "스트레스"]  # label 0, 1 (features 모드 로더도 이 순서를 그대로 공유한다)
-CLASSES_EN = ["Normal", "Stress"]  # confusion matrix 표시용 (한글 폰트 미설치 환경 경고 방지)
+CLASSES_EN = ["Normal", "Stress"]  # 한글 폰트가 없는 환경에서 confusion matrix가 깨질 때의 대체 라벨
 CV_FOLDS_DEFAULT = 3
 
 
@@ -222,10 +223,13 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, mode="pixel", cv_f
         print(f"Recall   : {res['recall']:.4f}")
 
         cm = confusion_matrix(y_test, res["y_pred"])
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=CLASSES_EN)
+        # 한글 폰트가 있으면 한글 라벨/제목, 없으면 영어로 자동 대체(두부글자 방지)
+        labels = CLASSES if _KOREAN_FONT else CLASSES_EN
+        title = f"{name} 혼동행렬 ({mode})" if _KOREAN_FONT else f"{name} Confusion Matrix ({mode})"
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
         fig, ax = plt.subplots(figsize=(4, 4))
         disp.plot(ax=ax, cmap="viridis", colorbar=False)
-        ax.set_title(f"{name} Confusion Matrix ({mode})")
+        ax.set_title(title)
         fig.tight_layout()
         cm_path = os.path.join(out_dir, f"confusion_matrix_{name}{suffix}.png")
         fig.savefig(cm_path)
