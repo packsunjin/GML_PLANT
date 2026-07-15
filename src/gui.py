@@ -191,8 +191,8 @@ def main():
     parser = argparse.ArgumentParser(description="실시간 식물 상태 모니터링 GUI / 터미널 대시보드")
     parser.add_argument("--model", default="../models/best_model.joblib")
     parser.add_argument("--sim_csv", default=None, help="하드웨어 없을 때 재생할 샘플 CSV 경로")
-    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "cycle"],
-                        help="CSV도 하드웨어도 없을 때 라이브로 생성할 상태(cycle=8초마다 순환)")
+    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "순환"],
+                        help="CSV도 하드웨어도 없을 때 라이브로 생성할 상태(순환=8초마다 순환)")
     parser.add_argument("--no-gui", action="store_true", help="헤드리스(터미널) 모드로 실행")
     args = parser.parse_args()
 

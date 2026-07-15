@@ -3,26 +3,26 @@ train.py
 ========
 스펙트로그램 이미지/명시적 특징으로 SVM(Linear/RBF) + Random Forest 분류기를 학습·비교합니다.
 
-특징 방식(--mode):
-- pixel(기본): data/spectrogram/<상태>/*.png 이미지를 grayscale 224x224 -> flatten(50,176차원)
+특징 방식(--mode): 픽셀 / 특징 / 둘다
+- 픽셀(기본): data/spectrogram/<상태>/*.png 이미지를 grayscale 224x224 -> flatten(50,176차원)
   픽셀 특징으로 사용, PCA로 차원 축소.
-- features: data/features.csv (preprocess.py가 함께 생성하는 명시적 통계/주파수 특징 14개), PCA 없이 StandardScaler만.
-- both: 둘 다 학습 후 비교.
+- 특징: data/features.csv (preprocess.py가 함께 생성하는 명시적 통계/주파수 특징 14개), PCA 없이 StandardScaler만.
+- 둘다: 픽셀+특징 모두 학습 후 비교.
 
-비교 과제(--task): **기본은 3-class(정상/수분부족/자극)** 이고, 정상을 반드시 포함한 2-class 비교도 지원합니다.
-- 3class(기본): 정상 vs 수분부족 vs 자극  -> models/best_model.joblib (기본 실시간 모델)
-- 정상-수분부족: 정상 vs 수분부족          -> models/best_model_정상-수분부족.joblib
-- 정상-자극:     정상 vs 자극              -> models/best_model_정상-자극.joblib
-- all: 위 세 과제를 모두 학습하고 비교 표 출력
+비교 과제(--task): **기본은 3종(정상/수분부족/자극)** 이고, 정상을 반드시 포함한 2종 비교도 지원합니다.
+- 3종(기본): 정상 vs 수분부족 vs 자극  -> models/best_model.joblib (기본 실시간 모델)
+- 정상-수분부족: 정상 vs 수분부족       -> models/best_model_정상-수분부족.joblib
+- 정상-자극:     정상 vs 자극           -> models/best_model_정상-자극.joblib
+- 전체: 위 세 과제를 모두 학습하고 비교 표 출력
 
-- GridSearchCV로 하이퍼파라미터 최적화, Accuracy/Precision/Recall 출력(3-class는 macro 평균)
+- GridSearchCV로 하이퍼파라미터 최적화, Accuracy/Precision/Recall 출력(3종은 macro 평균)
 - Confusion Matrix 이미지 저장, 최적 모델 저장(bundle에 classes/feature_mode 포함)
 
 실행:
-    python train.py                          # 3-class, pixel
-    python train.py --mode both              # 3-class, pixel+features
-    python train.py --task 정상-자극 --mode both
-    python train.py --task all --mode both   # 3과제 x 2방식 전부 학습·비교
+    python train.py                          # 3종, 픽셀 (기본)
+    python train.py --mode 둘다               # 3종, 픽셀+특징
+    python train.py --task 정상-자극 --mode 둘다
+    python train.py --task 전체 --mode 둘다    # 3과제 × 2방식 전부 학습·비교
 """
 
 import argparse
@@ -59,11 +59,17 @@ STATE_EN = {"정상": "Normal", "수분부족": "WaterDeficit", "자극": "Stimu
 
 # 비교 과제 정의. 정상은 모든 과제에 반드시 포함된다. 첫 원소가 label 0.
 TASKS = {
-    "3class": ["정상", "수분부족", "자극"],   # 기본
+    "3종": ["정상", "수분부족", "자극"],   # 기본
     "정상-수분부족": ["정상", "수분부족"],
     "정상-자극": ["정상", "자극"],
 }
-DEFAULT_TASK = "3class"
+DEFAULT_TASK = "3종"
+ALL_TASKS = "전체"
+
+# --mode 한글 CLI 값 -> 내부 처리용 값. 파일명/표시에는 다시 한글(_특징 등)을 쓴다.
+MODE_CHOICES = {"픽셀": "pixel", "특징": "features", "둘다": "both"}
+MODE_KO = {"pixel": "픽셀", "features": "특징"}  # 내부값 -> 표시/파일명용 한글
+
 CV_FOLDS_DEFAULT = 3
 
 
@@ -79,7 +85,7 @@ def _parse_img_name(img_name):
 
 
 def load_dataset(spectrogram_dir, classes):
-    """pixel 모드: data/spectrogram/<상태>/*.png -> grayscale flatten 특징.
+    """픽셀 모드: data/spectrogram/<상태>/*.png -> grayscale flatten 특징.
     classes에 포함된 상태 폴더만 읽고, 라벨은 classes에서의 순서(index)로 매긴다.
     시간순 그룹 분할을 위해 (원본 상태, 윈도우 오프셋)도 함께 반환한다."""
     X, y, groups, order = [], [], [], []
@@ -100,8 +106,8 @@ def load_dataset(spectrogram_dir, classes):
 
 
 def load_feature_dataset(features_csv_path, classes):
-    """features 모드: data/features.csv -> 명시적 통계/주파수 특징 14개.
-    classes에 포함된 상태만 골라 라벨을 classes 순서로 매핑한다(pixel 로더와 순서 공유)."""
+    """특징 모드: data/features.csv -> 명시적 통계/주파수 특징 14개.
+    classes에 포함된 상태만 골라 라벨을 classes 순서로 매핑한다(픽셀 로더와 순서 공유)."""
     df = pd.read_csv(features_csv_path)
     df = df[df["label"].isin(classes)].reset_index(drop=True)
     label_to_idx = {cls: i for i, cls in enumerate(classes)}
@@ -170,13 +176,14 @@ def cv_folds_for(y_train, classes, cv_default=CV_FOLDS_DEFAULT):
 
 
 def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pixel",
-                   cv_folds=CV_FOLDS_DEFAULT, task_suffix=""):
+                   cv_folds=CV_FOLDS_DEFAULT, task=DEFAULT_TASK):
     results = {}
-    # 2-class는 양성 클래스(정상 아닌 상태) 기준 binary, 3-class 이상은 macro 평균.
+    # 2종은 양성 클래스(정상 아닌 상태) 기준 binary, 3종 이상은 macro 평균.
     avg = "binary" if len(classes) == 2 else "macro"
-    mode_suffix = "" if mode == "pixel" else "_features"
-    file_suffix = mode_suffix + task_suffix   # 파일명용 (예: _features_정상-자극)
-    tag = f"{mode}{task_suffix}"              # 화면 표시용 (예: features_정상-자극)
+    mode_file = "" if mode == "pixel" else "_특징"
+    task_file = "" if task == DEFAULT_TASK else f"_{task}"
+    file_suffix = mode_file + task_file        # 파일명용 (예: _특징_정상-자극)
+    tag = f"{MODE_KO[mode]}·{task}"            # 화면 표시용 (예: 특징·정상-자극)
 
     if mode == "pixel":
         # PCA로 차원 축소 (224*224=50176차원 -> 계산 효율화). 특징은 여전히 "이미지 픽셀 기반".
@@ -250,24 +257,22 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
         plt.close(fig)
         print(f"Confusion matrix saved -> {cm_path}")
 
-    return results
+    return results, file_suffix, tag
 
 
-def run_pipeline(X, y, groups, order, models_dir, mode, classes, task_suffix):
+def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
+    tag_prefix = f"{MODE_KO[mode]}·{task}"
     dist = ", ".join(f"{c}={int(np.sum(y == i))}" for i, c in enumerate(classes))
-    print(f"[train] ({mode}{task_suffix}) 총 샘플 수: {len(y)}  [{dist}]")
+    print(f"[train] ({tag_prefix}) 총 샘플 수: {len(y)}  [{dist}]")
     validate_classes(y, classes)
 
     # 무작위 분할 대신 상태별 시간순 분할로 윈도우 겹침에 의한 데이터 누수를 차단한다.
     X_train, X_test, y_train, y_test = chronological_group_split(X, y, groups, order, test_size=0.3)
-    print(f"[train] ({mode}{task_suffix}) Train={len(y_train)}, Test={len(y_test)} (시간순 그룹 분할, 겹침 제거)")
+    print(f"[train] ({tag_prefix}) Train={len(y_train)}, Test={len(y_test)} (시간순 그룹 분할, 겹침 제거)")
 
     cv_folds = cv_folds_for(y_train, classes)
-
-    mode_suffix = "" if mode == "pixel" else "_features"
-    file_suffix = mode_suffix + task_suffix  # 예: _features_정상-자극 (모델/이미지 파일명용)
-    results = train_and_eval(X_train, X_test, y_train, y_test, models_dir, classes,
-                             mode=mode, cv_folds=cv_folds, task_suffix=task_suffix)
+    results, file_suffix, tag = train_and_eval(X_train, X_test, y_train, y_test, models_dir,
+                                                classes, mode=mode, cv_folds=cv_folds, task=task)
 
     best_name = max(results, key=lambda k: results[k]["accuracy"])
     best_model = results[best_name]["model"]
@@ -287,37 +292,35 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task_suffix):
     joblib.dump(results["SVM"]["model"], os.path.join(models_dir, f"svm_model{file_suffix}.joblib"))
     joblib.dump(results["RandomForest"]["model"], os.path.join(models_dir, f"rf_model{file_suffix}.joblib"))
 
-    print(f"\n[train] ({mode}{task_suffix}) 최적 모델: {best_name} (Accuracy={best_acc:.4f}) -> {best_path}")
+    print(f"\n[train] ({tag}) 최적 모델: {best_name} (Accuracy={best_acc:.4f}) -> {best_path}")
     if best_acc >= 0.70:
-        print(f"[train] ({mode}{task_suffix}) ✅ 검증 요구사항 충족: Accuracy 70% 이상 달성")
+        print(f"[train] ({tag}) ✅ 검증 요구사항 충족: Accuracy 70% 이상 달성")
     else:
-        print(f"[train] ({mode}{task_suffix}) ⚠️ Accuracy가 70% 미만입니다. 데이터/파라미터를 조정하세요.")
+        print(f"[train] ({tag}) ⚠️ Accuracy가 70% 미만입니다. 데이터/파라미터를 조정하세요.")
 
     return results, best_name, best_acc
 
 
-def run_task(task, args):
-    """하나의 비교 과제(task)에 대해 --mode(pixel/features/both)를 학습한다."""
+def run_task(task, mode, args):
+    """하나의 비교 과제(task)에 대해 mode(pixel/features/both)를 학습한다."""
     classes = TASKS[task]
-    # 기본 과제(3class)는 접미사 없이 canonical 파일명(best_model.joblib)으로 저장 -> main.py 기본 모델.
-    task_suffix = "" if task == DEFAULT_TASK else f"_{task}"
     print(f"\n########## 과제: {task}  (클래스: {' vs '.join(classes)}) ##########")
 
     summary = {}
-    if args.mode in ("pixel", "both"):
-        print(f"[train] 데이터 로딩 중 (pixel, {task})...")
+    if mode in ("pixel", "both"):
+        print(f"[train] 데이터 로딩 중 (픽셀, {task})...")
         X, y, groups, order = load_dataset(args.spectrogram_dir, classes)
-        _, best_name, best_acc = run_pipeline(X, y, groups, order, args.models_dir, "pixel", classes, task_suffix)
-        summary[("pixel", task)] = (best_name, best_acc)
+        _, best_name, best_acc = run_pipeline(X, y, groups, order, args.models_dir, "pixel", classes, task)
+        summary[("픽셀", task)] = (best_name, best_acc)
 
-    if args.mode in ("features", "both"):
+    if mode in ("features", "both"):
         if not os.path.exists(args.features_csv):
             print(f"❌ {args.features_csv} 가 없습니다. 먼저 preprocess.py를 실행해 생성하세요.")
             sys.exit(1)
-        print(f"[train] 데이터 로딩 중 (features, {task})...")
+        print(f"[train] 데이터 로딩 중 (특징, {task})...")
         X, y, groups, order = load_feature_dataset(args.features_csv, classes)
-        _, best_name, best_acc = run_pipeline(X, y, groups, order, args.models_dir, "features", classes, task_suffix)
-        summary[("features", task)] = (best_name, best_acc)
+        _, best_name, best_acc = run_pipeline(X, y, groups, order, args.models_dir, "features", classes, task)
+        summary[("특징", task)] = (best_name, best_acc)
     return summary
 
 
@@ -326,21 +329,23 @@ def main():
     parser.add_argument("--spectrogram_dir", default="../data/spectrogram")
     parser.add_argument("--features_csv", default="../data/features.csv")
     parser.add_argument("--models_dir", default="../models")
-    parser.add_argument("--mode", choices=["pixel", "features", "both"], default="pixel",
-                         help="pixel(기본) / features(명시적 특징) / both(둘 다)")
-    parser.add_argument("--task", choices=list(TASKS) + ["all"], default=DEFAULT_TASK,
-                         help="3class(기본) / 정상-수분부족 / 정상-자극 / all(전부). 정상은 항상 포함")
+    parser.add_argument("--mode", choices=list(MODE_CHOICES), default="픽셀",
+                         help="픽셀(기본) / 특징(명시적 특징) / 둘다")
+    parser.add_argument("--task", choices=list(TASKS) + [ALL_TASKS], default=DEFAULT_TASK,
+                         help="3종(기본) / 정상-수분부족 / 정상-자극 / 전체. 정상은 항상 포함")
     args = parser.parse_args()
 
-    tasks = list(TASKS) if args.task == "all" else [args.task]
+    mode = MODE_CHOICES[args.mode]  # 내부 처리용(pixel/features/both)
+    tasks = list(TASKS) if args.task == ALL_TASKS else [args.task]
+
     summary = {}
     for task in tasks:
-        summary.update(run_task(task, args))
+        summary.update(run_task(task, mode, args))
 
     if len(summary) > 1:
         print("\n=== 전체 비교 (과제 x 방식) ===")
-        for (mode, task), (name, acc) in summary.items():
-            print(f"  [{task:10s}] {mode:8s}: 최적 모델={name:14s} Accuracy={acc:.4f}")
+        for (mode_ko, task), (name, acc) in summary.items():
+            print(f"  [{task:10s}] {mode_ko:4s}: 최적 모델={name:14s} Accuracy={acc:.4f}")
 
 
 if __name__ == "__main__":

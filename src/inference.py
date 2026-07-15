@@ -81,7 +81,7 @@ class RealtimeClassifier:
     GUI 없이도(main.py --no-gui) 그대로 재사용 가능.
     """
 
-    # 데모용 순환 모드(sim_state="cycle")에서 순서대로 생성할 상태와 상태별 지속 시간(초)
+    # 데모용 순환 모드(sim_state="순환")에서 순서대로 생성할 상태와 상태별 지속 시간(초)
     SIM_CYCLE_STATES = ["정상", "수분부족", "자극"]
     SIM_CYCLE_SEC = 8.0
 
@@ -128,8 +128,8 @@ class RealtimeClassifier:
         self._t0 = time.time()
 
     def _current_sim_state(self, t):
-        """라이브 시뮬레이션에서 지금 생성할 상태를 정한다. cycle 모드면 시간에 따라 순환."""
-        if self.sim_state == "cycle":
+        """라이브 시뮬레이션에서 지금 생성할 상태를 정한다. 순환 모드면 시간에 따라 순환."""
+        if self.sim_state == "순환":
             idx = int(t / self.SIM_CYCLE_SEC) % len(self.SIM_CYCLE_STATES)
             return self.SIM_CYCLE_STATES[idx]
         return self.sim_state
