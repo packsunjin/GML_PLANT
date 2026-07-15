@@ -24,6 +24,10 @@ import numpy as np
 
 from inference import RealtimeClassifier, SAMPLE_RATE_HZ, WINDOW_SEC
 
+# 상태별 표시 색상. matplotlib은 컬러 이모지를 못 그려 두부글자(□)가 되므로, GUI에서는
+# 이모지 대신 이 색상 원으로 상태를 표시한다. (터미널/헤드리스는 이모지가 잘 나오므로 그대로 사용)
+STATE_COLOR = {"정상": "#2e7d32", "수분부족": "#1565c0", "자극": "#ef6c00", "스트레스": "#c62828"}
+
 
 def _has_display():
     """GUI 창을 실제로 띄울 수 있는 디스플레이가 있는지 확인한다.
@@ -58,6 +62,7 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0, sim_state="정상"):
     # 한글 라벨(상태 텍스트/축 이름)이 깨지지 않도록 설치된 한글 폰트를 자동 지정한다.
     # (라즈베리파이 OS: sudo apt install fonts-noto-cjk 후 rm -rf ~/.cache/matplotlib)
     from font_utils import setup_korean_font
+    import matplotlib.patches as mpatches
     if setup_korean_font() is None:
         print("[gui] 한글 폰트를 찾지 못했습니다. 한글이 깨지면 `sudo apt install fonts-noto-cjk` 후 "
               "`rm -rf ~/.cache/matplotlib` 하고 다시 실행하세요.")
@@ -105,10 +110,15 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0, sim_state="정상"):
 
                 ax_status.cla()
                 ax_status.axis("off")
+                ax_status.set_xlim(0, 1)
+                ax_status.set_ylim(0, 1)
                 proba_str = f"{result['proba']*100:.1f}%" if result["proba"] is not None else "N/A"
-                ax_status.text(0.5, 0.6, result["emoji"], fontsize=80, ha="center", va="center")
-                ax_status.text(0.5, 0.15, f"상태: {result['state']}  (확신도 {proba_str})",
-                                fontsize=14, ha="center", va="center")
+                color = STATE_COLOR.get(result["state"], "gray")
+                # 이모지 대신 상태별 색상 원 + 상태명(원 안) + 확신도(아래)
+                ax_status.add_patch(mpatches.Circle((0.5, 0.62), 0.28, color=color, ec="black", lw=2))
+                ax_status.text(0.5, 0.62, result["state"], color="white", fontsize=18,
+                                fontweight="bold", ha="center", va="center")
+                ax_status.text(0.5, 0.12, f"확신도 {proba_str}", fontsize=14, ha="center", va="center")
 
                 fig.tight_layout()
                 if interactive_mode:
