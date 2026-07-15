@@ -26,6 +26,43 @@ project/
   README.md
 ```
 
+## 실행 모드 설정 (한눈에 보기)
+
+### 학습 모드 (`src/train.py`)
+
+| 옵션 | 값 | 의미 |
+|---|---|---|
+| **`--task`** | `3class` (기본) | 정상 vs 수분부족 vs 자극 (3-class) → `models/best_model.joblib` |
+| | `정상-수분부족` | 정상 vs 수분부족 (2-class) → `models/best_model_정상-수분부족.joblib` |
+| | `정상-자극` | 정상 vs 자극 (2-class) → `models/best_model_정상-자극.joblib` |
+| | `all` | 위 3과제 전부 학습·비교 |
+| **`--mode`** | `pixel` (기본) | 스펙트로그램 이미지 픽셀 특징(50,176차원 + PCA) |
+| | `features` | 명시적 통계/주파수 특징 14개 |
+| | `both` | pixel + features 둘 다 학습 후 비교 |
+
+> **정상은 모든 과제에 반드시 포함**됩니다. 2-class는 "정상 vs 특정 스트레스 상태"만 지원합니다.
+
+```bash
+python3 train.py                              # 3-class, pixel (기본)
+python3 train.py --task 정상-자극 --mode both  # 정상 vs 자극, pixel+features
+python3 train.py --task all --mode both        # 전체 조합 학습·비교
+```
+
+### 실시간 추론 모드 (`main.py`)
+
+| 옵션 | 값 | 의미 |
+|---|---|---|
+| **`--model`** | (기본 `best_model.joblib`) | 사용할 모델. 3-class/2-class/features 모델로 교체 가능 |
+| **`--sim_state`** | `정상`(기본)/`수분부족`/`자극`/`cycle` | 하드웨어·CSV 없을 때 라이브로 생성할 상태(`cycle`=8초마다 순환) |
+| **`--sim_csv`** | CSV 경로 | 저장된 CSV를 재생해 시뮬레이션 입력으로 사용 |
+| **`--no-gui`** | (플래그) | GUI 대신 헤드리스(터미널/Rich) 대시보드 |
+
+```bash
+python3 main.py                                       # 기본 3-class 모델, GUI
+python3 main.py --no-gui --model models/best_model_정상-자극.joblib --sim_csv data/raw/자극.csv
+python3 main.py --no-gui --sim_state cycle            # 정상→수분부족→자극 순환 데모
+```
+
 ## 설치
 
 ```bash
