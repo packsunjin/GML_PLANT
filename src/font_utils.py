@@ -25,11 +25,33 @@ KOREAN_FONT_CANDIDATES = [
 
 
 def find_korean_font():
-    """설치된 한글 폰트 중 우선순위가 가장 높은 것의 이름을 반환한다. 없으면 None."""
-    available = {f.name for f in font_manager.fontManager.ttflist}
+    """설치된 한글 폰트 중 우선순위가 가장 높은 것의 이름을 반환한다. 없으면 None.
+
+    주의: Debian/라즈베리파이의 fonts-noto-cjk는 하나의 통합(.ttc) 폰트라 matplotlib이
+    'Noto Sans CJK JP' 한 이름으로만 잡는 경우가 많다. 이 폰트는 이름이 JP여도 한글 글리프를
+    그대로 포함하므로, CJK 계열이면 KR/JP/SC/TC 어느 이름이든 한글 표시에 사용할 수 있다."""
+    fonts = font_manager.fontManager.ttflist
+    names = [f.name for f in fonts]
+    available = set(names)
+
+    # 1) 우선순위 정확 매칭
     for name in KOREAN_FONT_CANDIDATES:
         if name in available:
             return name
+
+    # 2) Noto CJK 통합 폰트: Sans 계열 우선(제목/라벨 가독성), 없으면 아무 CJK
+    cjk_sans = [n for n in names if "CJK" in n and "Serif" not in n]
+    if cjk_sans:
+        return cjk_sans[0]
+    cjk_any = [n for n in names if "CJK" in n]
+    if cjk_any:
+        return cjk_any[0]
+
+    # 3) 나눔/윈도우/맥 계열 부분 매칭
+    for f in fonts:
+        low = f.name.lower()
+        if any(h in low for h in ("nanum", "malgun", "gulim", "dotum", "batang", "baekmuk")):
+            return f.name
     return None
 
 
