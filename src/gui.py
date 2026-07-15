@@ -25,17 +25,31 @@ import numpy as np
 from inference import RealtimeClassifier, SAMPLE_RATE_HZ, WINDOW_SEC
 
 
+def _has_display():
+    """GUI 창을 실제로 띄울 수 있는 디스플레이가 있는지 확인한다.
+    X11(DISPLAY) 또는 Wayland(WAYLAND_DISPLAY) 환경변수가 있어야 한다. 둘 다 없으면
+    (SSH/헤드리스) matplotlib.use('TkAgg')는 예외를 안 내고 나중에 draw에서야 조용히
+    실패하므로, 여기서 미리 판별해 파일 저장 모드로 명확히 폴백한다."""
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
 def run_gui(model_path, sim_csv, refresh_hz=5.0, sim_state="정상"):
     import matplotlib
-    interactive_mode = True
-    try:
-        matplotlib.use("TkAgg")  # VNC 데스크톱에서 창으로 표시 (헤드리스면 Agg로 자동 폴백)
-        import matplotlib.pyplot as plt
-        plt.ion()
-        fig = plt.figure(figsize=(9, 6))
-    except Exception as e:
-        print(f"[gui] GUI 백엔드(TkAgg)를 사용할 수 없어 Agg(비대화형, 파일 저장 모드)로 전환합니다: {e}")
-        interactive_mode = False
+    interactive_mode = False
+    if _has_display():
+        try:
+            matplotlib.use("TkAgg")  # VNC 데스크톱에서 창으로 표시
+            import matplotlib.pyplot as plt
+            plt.ion()
+            fig = plt.figure(figsize=(9, 6))
+            interactive_mode = True
+        except Exception as e:
+            print(f"[gui] GUI 백엔드(TkAgg)를 사용할 수 없어 Agg(파일 저장 모드)로 전환합니다: {e}")
+
+    if not interactive_mode:
+        # 디스플레이가 없거나 TkAgg 실패 → Agg 비대화형(매 갱신마다 dashboard_last.png 저장)
+        print("[gui] 표시할 디스플레이(DISPLAY/WAYLAND_DISPLAY)가 없어 Agg 파일 저장 모드로 실행합니다 "
+              "-> dashboard_last.png (헤드리스면 `--no-gui` 텍스트 대시보드도 사용 가능)")
         matplotlib.use("Agg", force=True)
         import matplotlib.pyplot as plt
         plt.ioff()
