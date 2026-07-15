@@ -1,15 +1,16 @@
 # 실시간 식물 상태 분류 시스템
 
 AD8232(생체전위 증폭기) + ADS1115(16비트 ADC)로 식물 잎/줄기의 Ag 전극 미세 전위를 측정하고,
-스펙트로그램 이미지 기반 머신러닝(SVM/Random Forest)으로 **정상 / 스트레스(수분부족+물리적 자극)**
+스펙트로그램 이미지 기반 머신러닝(SVM/Random Forest)으로 **정상 / 수분부족 / 물리적 자극** 3가지
 상태를 실시간으로 분류하여 VNC로 원격 모니터링하는 시스템입니다.
+기본은 **3-class(정상/수분부족/자극)** 분류이며, **정상을 포함한 2-class 비교**(정상+수분부족, 정상+자극)도 지원합니다.
 
 ## 폴더 구조
 
 ```
 project/
   data/raw/          # (1) 원시 시계열 CSV (정상.csv, 수분부족.csv, 자극.csv 중 수집된 것만)
-  data/spectrogram/  # (2) 전처리된 224x224 스펙트로그램 이미지 (정상/, 스트레스/)
+  data/spectrogram/  # (2) 전처리된 224x224 스펙트로그램 이미지 (정상/, 수분부족/, 자극/)
   data/features.csv  # (2) 윈도우별 명시적 통계/주파수 특징 14개 (features 모드 학습용)
   models/            # (3) 학습된 모델(.joblib) + confusion matrix 이미지
   src/
@@ -115,7 +116,7 @@ python3 sensor_control.py --state 자극 --duration 30 --rate 250
 > **3가지 상태를 모두 수집하지 못해도 괜찮습니다.** `preprocess.py`/`train.py`는 `data/raw/`에 있는
 > 파일만으로 진행하며, 어떤 상태가 빠졌는지 안내 메시지를 출력합니다. 단, `정상.csv`는 반드시 있어야
 > 하고(정상 클래스가 통째로 없으면 학습이 불가능하므로 명확한 에러로 즉시 종료됩니다), `수분부족.csv`/
-> `자극.csv`는 둘 중 하나만 있어도 `스트레스` 클래스로 정상 학습됩니다.
+> `자극.csv`는 둘 중 하나만 있어도 해당 2-class 비교(정상+수분부족 또는 정상+자극)는 정상 학습됩니다.
 
 ### [2] 전처리 및 시각화 (`src/preprocess.py`)
 
@@ -127,17 +128,25 @@ python3 preprocess.py --raw_dir ../data/raw --out_dir ../data/spectrogram
   - 대역통과 상한(45Hz)만으로는 50Hz가 30% 안팎 남지만, 노치를 더하면 ~18%까지 더 줄어듭니다(2초 윈도우라 필터 과도응답 때문에 완전히 0이 되지는 않음). preprocess/inference가 동일한 필터 체인을 공유해 학습·추론 특징이 일치합니다.
 - 2초 윈도우 / 1초 스텝으로 슬라이딩하며 스펙트로그램(224x224, `viridis`) PNG 생성
   - 동일한 윈도우에서 `feature_extraction.py`의 명시적 통계/주파수 특징 14개도 함께 계산해 `data/features.csv`에 저장
-- 정상 → `data/spectrogram/정상/`, 수분부족+자극 → `data/spectrogram/스트레스/` 로 클래스 통합 저장
-- **검증 결과**: CSV 3개 → 총 87개 이미지 + `data/features.csv` 87행 생성 (정상 29장 / 스트레스 58장), 모든 이미지 224x224 확인 ✅
+- 3가지 상태를 각각 `data/spectrogram/{정상,수분부족,자극}/` 폴더로 분리 저장 (2-class 비교는 train.py에서 필요한 상태만 골라 수행하므로 여기서 합치지 않음)
+- **검증 결과**: CSV 3개 → 총 87개 이미지 + `data/features.csv` 87행 생성 (정상 29 / 수분부족 29 / 자극 29장), 모든 이미지 224x224 확인 ✅
 
 ### [3] 모델 학습 (`src/train.py`)
 
-두 가지 특징 방식을 지원하며, `--mode`로 선택합니다.
+**비교 과제(`--task`)** 와 **특징 방식(`--mode`)** 을 조합해 선택합니다.
+
+- `--task` (기본 `3class`): 어떤 상태들을 분류할지. **정상은 항상 포함**됩니다.
+  - `3class`(기본): 정상 vs 수분부족 vs 자극 → `models/best_model.joblib` (실시간 기본 모델)
+  - `정상-수분부족`: 정상 vs 수분부족 → `models/best_model_정상-수분부족.joblib`
+  - `정상-자극`: 정상 vs 자극 → `models/best_model_정상-자극.joblib`
+  - `all`: 위 3과제 전부 학습·비교
+- `--mode` (기본 `pixel`): `pixel` / `features` / `both`
 
 ```bash
-python3 train.py                     # pixel 모드만 (기존 방식, 기본값)
-python3 train.py --mode features     # 명시적 특징(14개)만
-python3 train.py --mode both         # 둘 다 학습하고 Accuracy/Precision/Recall 비교 표 출력
+python3 train.py                          # 3-class, pixel (기본)
+python3 train.py --mode both              # 3-class, pixel+features
+python3 train.py --task 정상-자극 --mode both     # 정상 vs 자극 2-class
+python3 train.py --task all --mode both   # 3과제 × 2방식 전부 학습하고 비교 표 출력
 ```
 
 - **pixel 모드(기본)**: 이미지를 grayscale 224x224 → flatten(50,176차원) 픽셀 특징으로 사용, StandardScaler + PCA(차원축소) 적용
@@ -153,23 +162,27 @@ python3 train.py --mode both         # 둘 다 학습하고 Accuracy/Precision/R
 윈도우를 **시간순으로 나누고**(앞부분 train / 뒷부분 test), 경계에서 겹치는 윈도우 1개를 버려
 train/test 구간이 시간적으로 겹치지 않게 합니다(`chronological_group_split`).
 
-**검증 결과 (실제 실행 로그, `--mode both`, Train=57 / Test=27, 시간순 그룹 분할)**
+**검증 결과 (실제 실행 로그, `--task all --mode both`, 시간순 그룹 분할)**
 
-| 방식 | 모델 | 최적 하이퍼파라미터 | Accuracy | Precision | Recall |
-|---|---|---|---|---|---|
-| **pixel** | **SVM** | kernel=rbf, C=10, gamma=scale | **1.0000** | 1.0000 | 1.0000 |
-| pixel | Random Forest | n_estimators=100, max_depth=None | 1.0000 | 1.0000 | 1.0000 |
-| features | SVM | kernel=linear, C=10, gamma=scale | 0.9630 | 0.9474 | 1.0000 |
-| **features** | **Random Forest** | n_estimators=100, max_depth=None | **1.0000** | 1.0000 | 1.0000 |
+3-class는 Precision/Recall을 macro 평균, 2-class는 정상 아닌 상태를 양성으로 한 binary로 계산합니다.
 
-→ 최적 모델은 방식별로 각각 `models/best_model.joblib`(pixel SVM) / `models/best_model_features.joblib`(features RF)로 저장됨.
-**70% 이상 정확도 요구사항 두 방식 모두 충족 ✅** (`models/confusion_matrix_*.png` 참고)
+| 과제 | 방식 | 최적 모델 | Train/Test | Accuracy |
+|---|---|---|---|---|
+| **3class (정상/수분부족/자극)** | pixel | SVM | 57 / 27 | 0.9630 |
+| **3class (정상/수분부족/자극)** | features | SVM | 57 / 27 | 1.0000 |
+| 정상-수분부족 | pixel | SVM | 38 / 18 | 1.0000 |
+| 정상-수분부족 | features | SVM | 38 / 18 | 1.0000 |
+| 정상-자극 | pixel | SVM | 38 / 18 | 1.0000 |
+| 정상-자극 | features | SVM | 38 / 18 | 1.0000 |
 
-> ⚠️ **중요**: 누수를 제거한 뒤에도 정확도가 여전히 ~100%인 것은 성능이 좋아서가 아니라,
+→ 과제별 최적 모델이 각각 `models/best_model{,_features}[_과제].joblib` 로 저장됨(3class는 접미사 없이 `best_model.joblib`).
+**모든 과제·방식이 70% 이상 정확도 요구사항 충족 ✅** (`models/confusion_matrix_*.png` 참고)
+
+> ⚠️ **중요**: 정확도가 대부분 ~100%인 것은 성능이 좋아서가 아니라,
 > **시뮬레이션 신호가 상태별로 서로 다른 수식으로 생성되어 애초에 쉽게 구분되기 때문**입니다.
 > 즉 현재 수치는 "모델 성능 지표"가 아니라 "파이프라인이 끝까지 정상 동작함"을 확인하는 검증용입니다.
 > 실제 식물에서 수집한 데이터로 재학습해야 의미 있는 성능이 나오며, 그때는 정확도가 크게 달라질 수
-> 있습니다. 실측 데이터 확보 후 `preprocess.py` → `train.py --mode both`를 재실행하세요.
+> 있습니다. 실측 데이터 확보 후 `preprocess.py` → `train.py --task all --mode both`를 재실행하세요.
 >
 > 참고로 14개의 해석 가능한 명시적 특징만으로 50,176차원 픽셀 방식과 대등한 성능이 나온다는 점은,
 > 이 정도 규모의 데이터셋에서는 명시적 특징 추출이 이미지 픽셀 flatten보다 더 안정적인 접근일 수
@@ -188,36 +201,37 @@ python3 main.py --no-gui
 python3 main.py --no-gui --sim_csv data/raw/자극.csv
 
 # CSV도 없이 라이브 시뮬레이션으로 특정 상태를 생성 (하드웨어/CSV 둘 다 없을 때)
-python3 main.py --no-gui --sim_state 자극     # 스트레스 신호를 실시간 생성해 시연
+python3 main.py --no-gui --sim_state 자극     # 자극(스트레스성) 신호를 실시간 생성해 시연
 python3 main.py --no-gui --sim_state cycle    # 8초마다 정상→수분부족→자극 순환(데모용)
 
-# features 모드로 학습한 모델을 사용하고 싶다면 --model로 지정
+# 다른 모델로 추론하고 싶으면 --model로 지정 (features 3-class / 2-class 비교 모델 등)
 python3 main.py --no-gui --model models/best_model_features.joblib --sim_csv data/raw/자극.csv
+python3 main.py --no-gui --model models/best_model_정상-자극.joblib --sim_csv data/raw/자극.csv
 ```
 
-- `models/best_model.joblib`(기본, pixel 방식) 로드 → ADS1115(또는 시뮬레이션) 실시간 샘플을 2초 버퍼로 모아 즉시 추론
-  - joblib 번들에 담긴 `feature_mode` 값("pixel" 또는 "explicit")을 보고 자동으로 올바른 특징 추출 방식을 선택하므로, `--model`만 바꾸면 pixel/features 어느 모델이든 그대로 동작합니다.
-- GUI 모드: Matplotlib Figure(`plt.ion()`)에 ① 최근 5초 시계열, ② 실시간 스펙트로그램, ③ 상태 텍스트+이모티콘(🌱/😵) 표시
+- 기본 `models/best_model.joblib`(**3-class**, pixel 방식) 로드 → ADS1115(또는 시뮬레이션) 실시간 샘플을 2초 버퍼로 모아 즉시 추론
+  - joblib 번들에 담긴 `feature_mode`("pixel"/"explicit")와 `classes`(예: `["정상","수분부족","자극"]`)를 보고 특징 추출 방식과 상태 라벨을 자동 선택하므로, `--model`만 바꾸면 3-class든 2-class든 그대로 동작합니다.
+- GUI 모드: Matplotlib Figure(`plt.ion()`)에 ① 최근 5초 시계열, ② 실시간 스펙트로그램, ③ 상태 텍스트+이모티콘(🌱 정상 / 💧 수분부족 / ⚡ 자극) 표시
   - GUI 백엔드(Tk 등)가 없는 환경에서는 자동으로 파일 저장 모드(`dashboard_last.png`)로 폴백
 - **예측 스무딩**: 인접 예측이 크게 겹치므로 최근 몇 개 예측을 확률 평균/다수결로 합쳐 순간적인 오검출 깜빡임을 줄입니다(`RealtimeClassifier(smooth_window=5)`, 기본 5). 정상 CSV 실시간 정확도가 pixel 89%→95%, features 90%→100%로 개선됨.
 - **라이브 상태 지정**(`--sim_state`): 하드웨어도 CSV도 없을 때 `정상/수분부족/자극` 중 원하는 상태를 실시간 생성하거나 `cycle`로 8초마다 순환시켜 시연할 수 있습니다.
 - `--no-gui`: 실제 터미널(TTY)에서는 Rich 대시보드, 파이프/리다이렉션 시에는 일반 텍스트 로그로 자동 전환
 - Ctrl+C(SIGINT) 시 예외 처리로 안전 종료
 
-**검증 결과 (실제 실행 로그 발췌, `--sim_csv data/raw/자극.csv`)**
+**검증 결과 (실제 실행 로그 발췌, `--sim_csv data/raw/수분부족.csv`)**
 ```
-상태: 😵 스트레스  확신도= 100.0%
-상태: 😵 스트레스  확신도=  99.7%
+상태: 💧 수분부족  확신도=  94.7%
+상태: 💧 수분부족  확신도=  94.5%
 ...
 [headless] Ctrl+C 감지 - 안전 종료합니다.
 ```
-→ 실시간 재생 결과(기본 pixel 모델 `best_model.joblib`): 자극·수분부족 CSV는 **100% 스트레스**,
-정상 CSV는 **약 89%가 정상**(나머지는 윈도우 위치에 따른 오검출)으로 분류됨을 확인. Ctrl+C 안전 종료 확인 ✅
+→ 실시간 재생 결과(기본 3-class 모델 `best_model.joblib`, 스무딩 적용): 각 CSV가 자기 상태로 최다 분류됨을 확인 —
+**정상 86% / 수분부족 96% / 자극 100%** (나머지는 윈도우 위치에 따른 오검출). Ctrl+C 안전 종료 확인 ✅
 
-> 참고: 14개 명시적 특징(`features` 방식)은 어느 2초 구간을 잡느냐에 더 민감해, 스무딩 이전에는 실시간
-> 정상 CSV 정확도가 pixel보다 낮았습니다. **예측 스무딩**(`smooth_window`)을 적용하면 features도 정상
-> 정확도가 크게 올라(예: 100%) pixel과 대등해집니다. 다만 스무딩 없이도 안정적인 쪽은 pixel이므로
-> 기본값으로 pixel 모델(`best_model.joblib`)을 사용합니다.
+> 참고: 14개 명시적 특징(`features` 방식)은 어느 2초 구간을 잡느냐에 더 민감합니다. **예측 스무딩**
+> (`smooth_window`)을 적용하면 features 3-class 모델도 실시간 정확도가 크게 올라(예: 수분부족 100%)
+> pixel과 대등해집니다. 스무딩 없이도 안정적인 쪽은 pixel이라 기본 모델은 pixel을 사용합니다.
+> `정상+수분부족`, `정상+자극` 같은 2-class 모델은 해당 두 상태만 구분하면 되므로 실시간에서 더 또렷하게 나옵니다.
 
 ---
 
@@ -259,7 +273,7 @@ hostname -I        # Pi의 IP 주소 확인 (예: 192.168.0.42)
 5. 화면에 아래 3가지가 실시간 갱신되는 것을 확인:
    - 상단: 최근 5초간 필터링된 전위 시계열 그래프
    - 좌하단: 실시간 스펙트로그램
-   - 우하단: 현재 상태 텍스트 + 큰 이모티콘(🌱 정상 / 😵 스트레스)
+   - 우하단: 현재 상태 텍스트 + 큰 이모티콘(🌱 정상 / 💧 수분부족 / ⚡ 자극)
 6. 모니터링 종료 시 VNC 터미널에서 `Ctrl+C` → 안전 종료 메시지 확인 후 창이 닫힘
 
 ### 5-4. Headless(모니터 없는) 환경에서도 VNC로 접속하는 방법
@@ -303,6 +317,7 @@ Wayland 세션(`labwc`/`wayfire`)이 이미 떠 있는 상태에서 실행하면
 - [x] Ctrl+C 안전 종료 확인
 - [x] 정상/수분부족/자극 중 일부 상태만 수집되어도 preprocess.py/train.py가 안내 메시지와 함께 정상 진행(또는 명확한 에러로 종료) 확인
 - [x] pixel/features 두 가지 특징 방식 모두 학습 및 실시간 추론(`--model`로 전환) 정상 동작 확인
+- [x] 3-class(정상/수분부족/자극) 기본 분류 + 정상 포함 2-class 비교(`--task 정상-수분부족`/`정상-자극`) 학습·실시간 추론 정상 동작 확인
 
 ---
 
@@ -331,7 +346,7 @@ cd src && python3 preprocess.py --raw_dir ../data/raw --out_dir ../data/spectrog
 **3) 전처리 결과는 그대로 두고 모델만 다시 학습하고 싶을 때**
 ```bash
 rm -f models/*.joblib models/confusion_matrix_*.png
-cd src && python3 train.py --mode both
+cd src && python3 train.py --task all --mode both
 ```
 > `train.py`는 파일명이 겹치면 덮어쓰므로 사실 안 지워도 동작은 하지만, 예전 결과와 섞여
 > 헷갈리지 않도록 지우고 새로 학습하는 것을 권장합니다.
@@ -343,7 +358,7 @@ rm -rf data/spectrogram
 rm -f data/features.csv
 rm -rf models
 ```
-이후 `sensor_control.py`(각 상태별) → `preprocess.py` → `train.py --mode both` 순서로 재실행하세요.
+이후 `sensor_control.py`(각 상태별) → `preprocess.py` → `train.py --task all --mode both` 순서로 재실행하세요.
 
 ---
 
@@ -367,7 +382,9 @@ rm -rf models
 - **영교차율 계산 안정화 / 죽은 코드 정리**: 정확히 0인 샘플의 이중 계수 방지, 사용되지 않던 ASCII 파일명 매핑 제거.
 - **실시간 예측 스무딩 추가**: 최근 예측을 확률 평균/다수결로 합쳐 오검출 깜빡임 감소(pixel 정상 89%→95%, features 90%→100%).
 - **라이브 상태 지정(`--sim_state`)**: 하드웨어·CSV가 없어도 원하는 상태(또는 `cycle` 순환)를 실시간 생성해 스트레스까지 시연 가능(기존에는 항상 정상만 생성).
+- **3-class 분류 + 정상 포함 2-class 비교(`--task`)**: 수분부족·자극을 "스트레스"로 합치던 것을, **기본 3-class(정상/수분부족/자극)** 로 바꾸고 정상을 반드시 포함한 2-class 비교(`정상-수분부족`, `정상-자극`)도 선택 가능하게 확장. preprocess는 3가지 상태를 별도 폴더로 저장하고, 실시간 GUI/헤드리스도 세 상태(🌱/💧/⚡)를 그대로 표시.
+- **한글 폰트 자동 탐지**: 없는 폰트를 억지로 지정해 나던 `findfont` 경고를 없애고, 설치된 한글 폰트가 있으면 confusion matrix까지 한글로 표시.
 
-재학습 결과(시간순 그룹 분할 기준) pixel SVM / features RF 모두 Accuracy 1.0000이지만, 이는 위
+재학습 결과 대부분 Accuracy가 높게 나오지만(3class features 100%, 2-class 100% 등), 이는 위
 [3]절 ⚠️에서 설명했듯 **시뮬레이션 신호가 구조적으로 쉽게 구분되기 때문**이며 실측 데이터로 재검증이
 필요합니다.

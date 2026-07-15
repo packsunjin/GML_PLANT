@@ -26,7 +26,8 @@ WINDOW_SEC = 2.0
 IMG_SIZE = 224
 PREDICT_HZ = 5.0  # 실시간 루프에서 무거운 특징추출+추론을 반복할 최대 빈도
 
-STATE_EMOJI = {"정상": "🌱", "스트레스": "😵"}
+# 3-class(정상/수분부족/자극) 및 구버전 2-class(정상/스트레스) 모두 지원하는 이모지 매핑
+STATE_EMOJI = {"정상": "🌱", "수분부족": "💧", "자극": "⚡", "스트레스": "😵"}
 
 
 @lru_cache(maxsize=8)
@@ -90,7 +91,7 @@ class RealtimeClassifier:
                  sim_state="정상", smooth_window=5):
         bundle = joblib.load(model_path)
         self.model = bundle["model"]
-        self.classes = bundle["classes"]  # ["정상", "스트레스"]
+        self.classes = bundle["classes"]  # 예: ["정상","수분부족","자극"] 또는 2-class ["정상","자극"]
         self.model_name = bundle.get("name", "unknown")
         # 이 키가 없는 joblib은 모두 (이 기능이 생기기 전) pixel 방식으로 학습된 것이므로 "pixel"로 취급
         self.feature_mode = bundle.get("feature_mode", "pixel")

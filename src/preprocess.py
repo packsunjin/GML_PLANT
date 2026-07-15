@@ -3,12 +3,12 @@ preprocess.py
 =============
 data/raw/*.csv 의 원시 전위 신호를 다음과 같이 처리합니다.
 
-1. SciPy Butterworth 대역통과필터(0.5Hz~45Hz)로 50Hz 전원 노이즈 및 DC 드리프트 제거
+1. SciPy Butterworth 대역통과필터(0.5Hz~45Hz) + 50Hz 노치필터로 전원 노이즈 및 DC 드리프트 제거
 2. 필터링된 신호를 일정 길이의 윈도우로 나누어 스펙트로그램(224x224, viridis) 이미지 생성
    + 동일한 윈도우에서 명시적 통계/주파수 특징 14개(feature_extraction.py) 추출
-3. data/spectrogram/정상/ , data/spectrogram/스트레스/ 폴더에 이미지 저장
-   (요구사항: 정상 / 스트레스(수분부족+자극) 2개 클래스로 구분)
-4. data/features.csv 에 윈도우별 특징 벡터 저장 (train.py --mode features/both에서 사용)
+3. data/spectrogram/{정상,수분부족,자극}/ 폴더에 상태별로 이미지 저장
+   (3가지 상태를 각각 별도 클래스로. 2-class 비교는 train.py에서 필요한 상태만 골라 수행)
+4. data/features.csv 에 윈도우별 특징 벡터 저장 (train.py의 features/both 모드에서 사용)
 
 data/raw/ 에 정상.csv, 수분부족.csv, 자극.csv 중 일부만 있어도(예: 하드웨어로 2가지
 상태만 수집된 경우) 있는 파일만으로 진행하며, 어떤 상태가 빠졌는지 안내만 출력합니다.
@@ -28,11 +28,13 @@ from scipy.signal import butter, filtfilt, iirnotch, spectrogram
 from spectro_render import render_rgb_image
 from feature_extraction import extract_features, FEATURE_NAMES
 
-# 원시 파일명 -> 최종 클래스 매핑 (정상 / 스트레스)
-FILE_TO_CLASS = {
+# 원시 파일명 -> 상태(클래스) 매핑. 3가지 상태를 각각 별도 클래스로 저장한다.
+# 수분부족/자극을 "스트레스"로 합치지 않는다 - 3-class(정상/수분부족/자극) 분류가 기본이고,
+# 2-class 비교(정상+수분부족 / 정상+자극)는 train.py에서 필요한 상태만 골라 수행한다.
+FILE_TO_STATE = {
     "정상.csv": "정상",
-    "수분부족.csv": "스트레스",
-    "자극.csv": "스트레스",
+    "수분부족.csv": "수분부족",
+    "자극.csv": "자극",
 }
 
 SAMPLE_RATE_HZ = 250.0  # sensor_control.py 기본 샘플링과 일치
@@ -72,11 +74,11 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고, 각 윈도우의 명시적
     특징 벡터를 (img_name, source_file, label, *features) 행 리스트로 함께 반환한다."""
     fname = os.path.basename(csv_path)
-    if fname not in FILE_TO_CLASS:
+    if fname not in FILE_TO_STATE:
         print(f"  [건너뜀] 매핑되지 않은 파일: {fname}")
         return 0, []
 
-    cls = FILE_TO_CLASS[fname]
+    cls = FILE_TO_STATE[fname]
     out_dir = os.path.join(out_root, cls)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -125,10 +127,10 @@ def main():
     print(f"[preprocess] 출력(스펙트로그램): {args.out_dir}")
 
     existing = set(os.listdir(args.raw_dir)) if os.path.isdir(args.raw_dir) else set()
-    missing_states = [fname.replace(".csv", "") for fname in FILE_TO_CLASS if fname not in existing]
+    missing_states = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname not in existing]
     if missing_states:
         print(f"⚠️  다음 상태가 수집되지 않았습니다: {', '.join(missing_states)}")
-        collected = [fname.replace(".csv", "") for fname in FILE_TO_CLASS if fname in existing]
+        collected = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname in existing]
         print(f"   ({' + '.join(collected) if collected else '수집된 상태 없음'} 데이터만으로 진행합니다)")
 
     total = 0
