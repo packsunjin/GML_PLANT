@@ -191,10 +191,16 @@ python3 sensor_control.py --state 자극 --duration 30 --rate 250
 
 ```bash
 python3 preprocess.py --raw_dir ../data/raw --out_dir ../data/spectrogram
+
+# 필터 대역 조절 (느린 식물 신호를 살리고 싶을 때 하한을 낮춤)
+python3 preprocess.py --lowcut 0.05          # 대역통과 하한 0.5→0.05Hz
+python3 preprocess.py --lowcut 0.05 --highcut 45 --notch 60   # 하한/상한/노치(60Hz 전원지역)
 ```
 
-- SciPy Butterworth 대역통과필터(0.5~45Hz, order=4)로 DC 드리프트·고주파 잡음 제거 + **50Hz IIR 노치필터**로 전원 노이즈 추가 감쇠
+- SciPy Butterworth 대역통과필터(기본 0.5~45Hz, order=4)로 DC 드리프트·고주파 잡음 제거 + **50Hz IIR 노치필터**로 전원 노이즈 추가 감쇠
   - 대역통과 상한(45Hz)만으로는 50Hz가 30% 안팎 남지만, 노치를 더하면 ~18%까지 더 줄어듭니다(2초 윈도우라 필터 과도응답 때문에 완전히 0이 되지는 않음). preprocess/inference가 동일한 필터 체인을 공유해 학습·추론 특징이 일치합니다.
+  - **`--lowcut`(하한) / `--highcut`(상한) / `--notch`(전원 주파수, 0이면 끔)** 로 대역을 바꿀 수 있습니다. 식물의 **수분부족** 같은 느린 신호는 정보가 0.5Hz 아래에 있을 수 있어 기본 하한이 지워버릴 수 있으니, 실측에서 잘 안 잡히면 `--lowcut 0.05`처럼 낮춰보세요.
+  - 선택한 필터 대역은 `data/preprocess_meta.json`에 기록되고 `train.py`가 이를 읽어 **모델(joblib)에 저장**하므로, 실시간 추론(`inference.py`)이 학습과 **자동으로 같은 필터**를 사용합니다(대역을 바꿨으면 preprocess→train을 다시 실행).
 - 2초 윈도우 / 1초 스텝으로 슬라이딩하며 스펙트로그램(224x224, `viridis`) PNG 생성
   - 동일한 윈도우에서 `feature_extraction.py`의 명시적 통계/주파수 특징 14개도 함께 계산해 `data/features.csv`에 저장
 - 3가지 상태를 각각 `data/spectrogram/{정상,수분부족,자극}/` 폴더로 분리 저장 (2종 비교는 train.py에서 필요한 상태만 골라 수행하므로 여기서 합치지 않음)
@@ -456,6 +462,7 @@ rm -rf models
 - **한글 폰트 자동 탐지**: 없는 폰트를 억지로 지정해 나던 `findfont` 경고를 없애고, 설치된 한글 폰트가 있으면 confusion matrix까지 한글로 표시. 라즈베리파이의 `fonts-noto-cjk`가 matplotlib에 `Noto Sans CJK JP` 이름으로만 잡히는 경우도 인식(통합 폰트라 한글 글리프 포함).
 - **CLI 한글 통일**: `--mode 픽셀/특징/둘다`, `--task 3종/전체/정상-수분부족/정상-자극`, `--sim_state ...순환` 등 옵션 값과 모델 파일명을 한글로 통일.
 - **GUI 상태 표시를 색상 원으로**: matplotlib이 컬러 이모지를 못 그려 두부글자(□)가 되던 것을, 상태별 색상 원(🟢/🔵/🟠) + 한글 상태명 + 확신도로 대체.
+- **필터 대역 선택(`--lowcut`/`--highcut`/`--notch`)**: 느린 식물 신호(수분부족 등)를 살릴 수 있도록 대역통과 하한 등을 조절 가능. 선택 대역을 `preprocess_meta.json`→모델 번들에 저장해 학습/추론 필터를 자동 일치.
 
 재학습 결과 대부분 Accuracy가 높게 나오지만(3종 특징 100%, 2종 100% 등), 이는 위
 [3]절 ⚠️에서 설명했듯 **시뮬레이션 신호가 구조적으로 쉽게 구분되기 때문**이며 실측 데이터로 재검증이

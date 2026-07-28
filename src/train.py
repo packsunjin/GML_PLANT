@@ -27,6 +27,7 @@ train.py
 
 import argparse
 import glob
+import json
 import os
 import sys
 
@@ -65,6 +66,23 @@ TASKS = {
 }
 DEFAULT_TASK = "3종"
 ALL_TASKS = "전체"
+
+# preprocess.py가 사용한 필터 대역. 모델 번들에 저장해 inference가 동일 필터를 쓰게 한다.
+DEFAULT_FILTER = {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0}
+FILTER_META = dict(DEFAULT_FILTER)
+
+
+def load_filter_meta(features_csv):
+    """preprocess.py가 남긴 preprocess_meta.json에서 필터 대역을 읽는다(없으면 기본값)."""
+    p = os.path.join(os.path.dirname(features_csv) or ".", "preprocess_meta.json")
+    if os.path.exists(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                m = json.load(f)
+            return {k: float(m.get(k, DEFAULT_FILTER[k])) for k in DEFAULT_FILTER}
+        except Exception:
+            pass
+    return dict(DEFAULT_FILTER)
 
 # --mode 한글 CLI 값 -> 내부 처리용 값. 파일명/표시에는 다시 한글(_특징 등)을 쓴다.
 MODE_CHOICES = {"픽셀": "pixel", "특징": "features", "둘다": "both"}
@@ -281,7 +299,8 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     feature_mode = "pixel" if mode == "pixel" else "explicit"
     os.makedirs(models_dir, exist_ok=True)
 
-    bundle = {"model": best_model, "classes": classes, "name": best_name, "feature_mode": feature_mode}
+    bundle = {"model": best_model, "classes": classes, "name": best_name,
+              "feature_mode": feature_mode, "filter": FILTER_META}
     if mode == "pixel":
         bundle["img_size"] = IMG_SIZE
     else:
@@ -334,6 +353,11 @@ def main():
     parser.add_argument("--task", choices=list(TASKS) + [ALL_TASKS], default=DEFAULT_TASK,
                          help="3종(기본) / 정상-수분부족 / 정상-자극 / 전체. 정상은 항상 포함")
     args = parser.parse_args()
+
+    global FILTER_META
+    FILTER_META = load_filter_meta(args.features_csv)
+    print(f"[train] 필터 대역: 대역통과 {FILTER_META['lowcut']}~{FILTER_META['highcut']}Hz, "
+          f"노치 {FILTER_META['notch_freq']}Hz (모델에 저장 -> 추론과 자동 일치)")
 
     mode = MODE_CHOICES[args.mode]  # 내부 처리용(pixel/features/both)
     tasks = list(TASKS) if args.task == ALL_TASKS else [args.task]

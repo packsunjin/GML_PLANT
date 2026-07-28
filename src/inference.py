@@ -54,8 +54,12 @@ def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4, notch_freq=50.0, no
     return filtered
 
 
-def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode="pixel"):
+def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode="pixel",
+                      low=0.5, high=45.0, notch_freq=50.0, notch_q=30.0):
     """실시간 신호 버퍼 -> 필터링 -> 스펙트로그램 -> 학습 때와 동일한 특징 벡터로 변환.
+
+    low/high/notch_freq/notch_q는 학습 때(preprocess.py) 쓴 필터 대역과 반드시 같아야 한다.
+    RealtimeClassifier가 모델 번들의 filter 값을 그대로 넘겨 학습/추론 필터를 일치시킨다.
 
     filtered/Sxx_db 계산은 feature_mode와 무관하게 공유하고, 마지막 특징 변환
     단계만 분기한다 (preprocess.py와 정확히 같은 갈림길):
@@ -63,7 +67,7 @@ def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode
       테이블 기반 grayscale flatten 벡터. matplotlib Figure 렌더링 없이 빠르다.
     - feature_mode="explicit": feature_extraction.extract_features() — 통계/주파수
       특징 14개."""
-    filtered = bandpass_filter(signal, fs)
+    filtered = bandpass_filter(signal, fs, low=low, high=high, notch_freq=notch_freq, notch_q=notch_q)
     f, t, Sxx = spectrogram(filtered, fs=fs, nperseg=min(128, len(filtered)),
                              noverlap=64 if len(filtered) > 128 else 0)
     Sxx_db = 10 * np.log10(Sxx + 1e-12)
@@ -96,6 +100,8 @@ class RealtimeClassifier:
         # 이 키가 없는 joblib은 모두 (이 기능이 생기기 전) pixel 방식으로 학습된 것이므로 "pixel"로 취급
         self.feature_mode = bundle.get("feature_mode", "pixel")
         self.img_size = bundle.get("img_size", IMG_SIZE)  # feature_mode=="explicit"일 때는 사용 안 함
+        # 학습 때 쓴 필터 대역(없는 예전 번들은 기본 0.5~45Hz + 50Hz 노치). 추론도 동일 대역 사용.
+        self.filter = bundle.get("filter", {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0})
 
         self.sample_rate = sample_rate
         self.window_len = int(window_sec * sample_rate)
@@ -158,7 +164,9 @@ class RealtimeClassifier:
 
         signal = np.array(self.buffer)
         feature, filtered, Sxx_db, f, t = signal_to_feature(
-            signal, self.sample_rate, img_size=self.img_size, feature_mode=self.feature_mode
+            signal, self.sample_rate, img_size=self.img_size, feature_mode=self.feature_mode,
+            low=self.filter["lowcut"], high=self.filter["highcut"],
+            notch_freq=self.filter["notch_freq"], notch_q=self.filter["notch_q"]
         )
 
         # 확률 벡터가 있으면 최근 창을 평균해 argmax로 스무딩(확률 평균), 없으면 예측 인덱스

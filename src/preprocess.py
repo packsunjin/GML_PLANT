@@ -19,6 +19,7 @@ data/raw/ 에 정상.csv, 수분부족.csv, 자극.csv 중 일부만 있어도(�
 """
 
 import argparse
+import json
 import os
 
 import numpy as np
@@ -70,9 +71,11 @@ def make_spectrogram_image(Sxx_db, out_path, img_size=IMG_SIZE):
     img.save(out_path)
 
 
-def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, step_sec=STEP_SEC):
+def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, step_sec=STEP_SEC,
+                 low=0.5, high=45.0, notch_freq=50.0):
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고, 각 윈도우의 명시적
-    특징 벡터를 (img_name, source_file, label, *features) 행 리스트로 함께 반환한다."""
+    특징 벡터를 (img_name, source_file, label, *features) 행 리스트로 함께 반환한다.
+    low/high/notch_freq로 대역통과·노치 필터 대역을 조절한다(느린 식물 신호 보존 시 low를 낮춤)."""
     fname = os.path.basename(csv_path)
     if fname not in FILE_TO_STATE:
         print(f"  [건너뜀] 매핑되지 않은 파일: {fname}")
@@ -97,7 +100,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     # 잘라내면 윈도우 경계의 과도응답이 서로 달라 train/serve skew가 생긴다 — 특히 통계/주파수
     # 특징 14개는 이 차이에 민감하다.)
     for start in range(0, len(raw_signal) - win_len + 1, step_len):
-        segment = bandpass_filter(raw_signal[start:start + win_len], fs)
+        segment = bandpass_filter(raw_signal[start:start + win_len], fs,
+                                  low=low, high=high, notch_freq=notch_freq)
 
         f, t, Sxx = spectrogram(segment, fs=fs, nperseg=min(128, len(segment)),
                                  noverlap=64 if len(segment) > 128 else 0)
@@ -121,10 +125,16 @@ def main():
     parser.add_argument("--raw_dir", default="../data/raw")
     parser.add_argument("--out_dir", default="../data/spectrogram")
     parser.add_argument("--features_csv", default="../data/features.csv")
+    parser.add_argument("--lowcut", type=float, default=0.5,
+                        help="대역통과 하한(Hz). 느린 식물 신호(수분부족 등)를 살리려면 0.05~0.1 처럼 낮추세요")
+    parser.add_argument("--highcut", type=float, default=45.0, help="대역통과 상한(Hz)")
+    parser.add_argument("--notch", type=float, default=50.0, help="노치 주파수(Hz). 0이면 노치 끔")
     args = parser.parse_args()
 
     print(f"[preprocess] 원시 데이터: {args.raw_dir}")
     print(f"[preprocess] 출력(스펙트로그램): {args.out_dir}")
+    print(f"[preprocess] 필터: 대역통과 {args.lowcut}~{args.highcut}Hz"
+          + (f" + 노치 {args.notch}Hz" if args.notch else " (노치 없음)"))
 
     existing = set(os.listdir(args.raw_dir)) if os.path.isdir(args.raw_dir) else set()
     missing_states = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname not in existing]
@@ -138,9 +148,18 @@ def main():
     for fname in sorted(existing):
         if fname.endswith(".csv"):
             csv_path = os.path.join(args.raw_dir, fname)
-            count, feature_rows = process_file(csv_path, args.out_dir)
+            count, feature_rows = process_file(csv_path, args.out_dir,
+                                               low=args.lowcut, high=args.highcut, notch_freq=args.notch)
             total += count
             all_feature_rows.extend(feature_rows)
+
+    # 사용한 필터 대역을 사이드카로 기록 -> train.py가 읽어 모델 번들에 저장 -> inference가 동일 필터 사용.
+    meta_path = os.path.join(os.path.dirname(args.features_csv) or ".", "preprocess_meta.json")
+    with open(meta_path, "w", encoding="utf-8") as mf:
+        json.dump({"lowcut": args.lowcut, "highcut": args.highcut,
+                   "notch_freq": args.notch, "notch_q": 30.0,
+                   "sample_rate": SAMPLE_RATE_HZ, "window_sec": WINDOW_SEC, "step_sec": STEP_SEC}, mf)
+    print(f"[preprocess] 필터 메타 저장 -> {meta_path}")
 
     print(f"[preprocess] 총 {total}개 스펙트로그램 이미지 생성 완료")
 

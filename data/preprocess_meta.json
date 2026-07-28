@@ -1,0 +1,1 @@
+{"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0, "sample_rate": 250.0, "window_sec": 2.0, "step_sec": 1.0}
