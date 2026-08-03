@@ -36,6 +36,7 @@ FILE_TO_STATE = {
     "정상.csv": "정상",
     "수분부족.csv": "수분부족",
     "자극.csv": "자극",
+    "꺾임.csv": "꺾임",
 }
 
 SAMPLE_RATE_HZ = 250.0  # sensor_control.py 기본 샘플링과 일치

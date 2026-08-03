@@ -175,7 +175,7 @@ PAGE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 </div>
 <script>
 const CSS=getComputedStyle(document.documentElement),C=n=>CSS.getPropertyValue(n).trim();
-const COLOR={"정상":"#1f9d5f","수분부족":"#1667c2","자극":"#c07216","스트레스":"#c62828"};
+const COLOR={"정상":"#1f9d5f","수분부족":"#1667c2","자극":"#c07216","꺾임":"#c1121f","스트레스":"#c62828"};
 const VIR=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
 const lut=i=>{const t=i/255*4,k=Math.floor(t),f=t-k,a=VIR[k],b=VIR[Math.min(4,k+1)];
   return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;};
@@ -232,7 +232,7 @@ def main():
     parser = argparse.ArgumentParser(description="실시간 식물 상태 웹 대시보드")
     parser.add_argument("--model", default=os.path.join(here, "..", "models", "best_model.joblib"))
     parser.add_argument("--sim_csv", default=None, help="하드웨어 없을 때 재생할 샘플 CSV")
-    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "순환"],
+    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "꺾임", "순환"],
                         help="CSV·하드웨어 없을 때 라이브로 생성할 상태")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=5000)
