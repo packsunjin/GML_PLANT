@@ -35,7 +35,9 @@ try:
 
     i2c = busio.I2C(board.SCL, board.SDA)
     ads = ADS.ADS1115(i2c)
-    chan = AnalogIn(ads, ADS.P0)  # AD8232 출력 -> A0
+    # 채널 0(A0) 지정. 라이브러리 버전에 따라 ADS.P0가 없을 수 있어(P0는 곧 정수 0) 안전하게 폴백한다.
+    _CH0 = getattr(ADS, "P0", 0)
+    chan = AnalogIn(ads, _CH0)  # AD8232 출력 -> A0
     HARDWARE_AVAILABLE = True
 except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSError(I2C 없음) 등
     HARDWARE_AVAILABLE = False
