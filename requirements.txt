@@ -6,6 +6,7 @@ matplotlib
 scikit-learn
 joblib
 rich
+flask
 
 # === 라즈베리파이 하드웨어(AD8232+ADS1115) 전용, PC 개발/검증 환경에서는 없어도 자동 시뮬레이션 모드로 동작 ===
 adafruit-circuitpython-ads1x15

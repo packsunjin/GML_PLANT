@@ -21,6 +21,7 @@ project/
     train.py                # (3) SVM/RandomForest 학습 + 평가 (픽셀/특징 두 방식 비교 가능)
     inference.py            # (4) 실시간 추론 엔진
     gui.py                   # (4) VNC용 실시간 GUI / 헤드리스 대시보드
+    web_dashboard.py         # (4) 브라우저용 실시간 웹 대시보드 (Flask, --web)
   main.py             # 최상위 실행 진입점
   requirements.txt
   README.md
@@ -269,6 +270,9 @@ train/test 구간이 시간적으로 겹치지 않게 합니다(`chronological_g
 # GUI 모드 (기본, VNC 데스크톱 접속 가정)
 python3 main.py
 
+# 웹 대시보드 모드 (VNC 없이 브라우저로 봄)
+python3 main.py --web            # 뒤에 http://<파이 IP>:5000 를 브라우저로 접속
+
 # 헤드리스 모드 (터미널/SSH/VNC 터미널)
 python3 main.py --no-gui
 
@@ -286,6 +290,7 @@ python3 main.py --no-gui --model models/best_model_정상-자극.joblib --sim_cs
 
 - 기본 `models/best_model.joblib`(**3종**, 픽셀 방식) 로드 → ADS1115(또는 시뮬레이션) 실시간 샘플을 2초 버퍼로 모아 즉시 추론
   - joblib 번들에 담긴 `feature_mode`("pixel"/"explicit")와 `classes`(예: `["정상","수분부족","자극"]`)를 보고 특징 추출 방식과 상태 라벨을 자동 선택하므로, `--model`만 바꾸면 3종든 2종든 그대로 동작합니다.
+- **웹 대시보드 모드(`--web`)**: `src/web_dashboard.py`가 Flask 웹서버를 띄웁니다. 분석은 `RealtimeClassifier`를 그대로 재사용하고, 백그라운드 스레드가 실시간 결과를 갱신하며 `/`(페이지)와 `/data`(JSON)로 내보냅니다. **VNC 없이 브라우저로 `http://<파이 IP>:5000`** 에 접속해서 보고, 폰에서도 됩니다. 배치는 VNC 화면과 동일(상단 시계열 / 하단 좌 스펙트로그램·우 상태). 브라우저가 0.2초마다 `/data`를 받아 시계열·스펙트로그램·상태를 다시 그립니다.
 - GUI 모드: Matplotlib Figure(`plt.ion()`)에 ① 최근 5초 시계열, ② 실시간 스펙트로그램, ③ 상태별 **색상 원**(🟢정상 / 🔵수분부족 / 🟠자극) + 한글 상태명 + 확신도 표시
   - matplotlib은 컬러 이모지를 못 그려 두부글자(□)가 되므로, GUI는 색상 원으로 표시합니다. 터미널/헤드리스(`--no-gui`)에서는 이모지(🌱/💧/⚡)가 잘 나오므로 그대로 사용합니다.
   - GUI 백엔드(Tk 등)가 없는 환경에서는 자동으로 파일 저장 모드(`dashboard_last.png`)로 폴백
@@ -463,6 +468,7 @@ rm -rf models
 - **CLI 한글 통일**: `--mode 픽셀/특징/둘다`, `--task 3종/전체/정상-수분부족/정상-자극`, `--sim_state ...순환` 등 옵션 값과 모델 파일명을 한글로 통일.
 - **GUI 상태 표시를 색상 원으로**: matplotlib이 컬러 이모지를 못 그려 두부글자(□)가 되던 것을, 상태별 색상 원(🟢/🔵/🟠) + 한글 상태명 + 확신도로 대체.
 - **필터 대역 선택(`--lowcut`/`--highcut`/`--notch`)**: 느린 식물 신호(수분부족 등)를 살릴 수 있도록 대역통과 하한 등을 조절 가능. 선택 대역을 `preprocess_meta.json`→모델 번들에 저장해 학습/추론 필터를 자동 일치.
+- **웹 대시보드(`--web`)**: VNC(matplotlib) 없이 브라우저로 접속하는 실시간 웹 대시보드 추가(Flask). 분석 코드(`inference.py`)를 재활용하고 배치는 기존 VNC 화면과 동일. 폰에서도 접속 가능.
 
 재학습 결과 대부분 Accuracy가 높게 나오지만(3종 특징 100%, 2종 100% 등), 이는 위
 [3]절 ⚠️에서 설명했듯 **시뮬레이션 신호가 구조적으로 쉽게 구분되기 때문**이며 실측 데이터로 재검증이

@@ -181,17 +181,20 @@ class RealtimeClassifier:
             mean_proba = np.mean(self._proba_history, axis=0)
             pred_idx = int(np.argmax(mean_proba))
             proba = float(mean_proba[pred_idx])
+            probs = {cls: float(mean_proba[i]) for i, cls in enumerate(self.classes)}
         else:
             self._pred_history.append(int(self.model.predict([feature])[0]))
             vals, counts = np.unique(np.array(self._pred_history), return_counts=True)
             pred_idx = int(vals[np.argmax(counts)])
             proba = None
+            probs = None
         state = self.classes[pred_idx]
 
         return {
             "state": state,
             "emoji": STATE_EMOJI.get(state, "❓"),
             "proba": proba,
+            "probs": probs,  # {상태: 확률} 전체 (웹 대시보드 등에서 사용). predict_proba 없으면 None
             "raw_signal": signal,
             "filtered_signal": filtered,
             "spectrogram_db": Sxx_db,

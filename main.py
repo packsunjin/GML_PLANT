@@ -10,6 +10,7 @@ main.py
 사용 예:
     python main.py                       # GUI 모드, 실제 하드웨어 또는 자동 시뮬레이션
     python main.py --no-gui              # 헤드리스 모드
+    python main.py --web                 # 웹 대시보드 (브라우저로 http://<파이 IP>:5000 접속)
     python main.py --sim_csv data/raw/정상.csv   # 하드웨어 없을 때 저장된 CSV를 재생하며 테스트
 """
 
@@ -30,6 +31,9 @@ def main():
     parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "순환"],
                          help="CSV도 하드웨어도 없을 때 라이브로 생성할 상태 (순환=8초마다 정상→수분부족→자극 순환). --sim_csv가 있으면 무시됨")
     parser.add_argument("--no-gui", action="store_true", help="헤드리스 모드로 실행 (기본은 GUI 모드)")
+    parser.add_argument("--web", action="store_true",
+                         help="웹 대시보드 모드 (브라우저로 http://<파이 IP>:5000 접속). VNC 없이 봄")
+    parser.add_argument("--port", type=int, default=5000, help="웹 대시보드 포트 (--web일 때)")
     args = parser.parse_args()
 
     if not os.path.exists(args.model):
@@ -37,7 +41,10 @@ def main():
         print("[main] 먼저 src/train.py 를 실행해 모델을 학습/저장하세요.")
         sys.exit(1)
 
-    if args.no_gui:
+    if args.web:
+        from web_dashboard import run_web
+        run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, port=args.port)
+    elif args.no_gui:
         run_headless(args.model, args.sim_csv, sim_state=args.sim_state)
     else:
         run_gui(args.model, args.sim_csv, sim_state=args.sim_state)
