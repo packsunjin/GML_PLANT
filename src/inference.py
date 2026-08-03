@@ -126,12 +126,24 @@ class RealtimeClassifier:
         # 하드웨어가 없을 때, 저장된 실제 CSV를 재생하며 시뮬레이션하는 옵션
         self._sim_rows = None
         self._sim_idx = 0
+        self._sim_csv_path = None
         if sim_source_csv and os.path.exists(sim_source_csv):
             import pandas as pd
             df = pd.read_csv(sim_source_csv)
             self._sim_rows = df["voltage"].to_numpy(dtype=float)
+            self._sim_csv_path = sim_source_csv
 
         self._t0 = time.time()
+
+    def input_source(self):
+        """현재 입력 신호의 출처를 (kind, 사람이 읽는 라벨)로 반환한다.
+        우선순위: CSV 재생 > 하드웨어 > 시뮬레이션. GUI/웹에서 모드 표시에 사용."""
+        if self._sim_rows is not None:
+            return ("csv", f"CSV 재생 · {os.path.basename(self._sim_csv_path)}")
+        if HARDWARE_AVAILABLE:
+            return ("hardware", "하드웨어 (실제 센서)")
+        label = "순환(정상→수분부족→자극)" if self.sim_state == "순환" else self.sim_state
+        return ("sim", f"시뮬레이션 · {label}")
 
     def _current_sim_state(self, t):
         """라이브 시뮬레이션에서 지금 생성할 상태를 정한다. 순환 모드면 시간에 따라 순환."""

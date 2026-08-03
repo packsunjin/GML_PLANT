@@ -49,8 +49,9 @@ def _payload(result, recent, clf):
     }
 
 
-def _worker(clf):
+def _worker(clf, source):
     """백그라운드: 실시간으로 step()을 돌리며 최근 5초 버퍼와 최신 결과를 갱신한다."""
+    src_kind, src_label = source
     recent = np.zeros(int(5 * clf.sample_rate))
     while True:
         result = clf.step()
@@ -58,9 +59,12 @@ def _worker(clf):
             n_new = min(clf.predict_every, len(result["filtered_signal"]), len(recent))
             recent = np.roll(recent, -n_new)
             recent[-n_new:] = result["filtered_signal"][-n_new:]
+            payload = _payload(result, recent, clf)
+            payload["source_kind"] = src_kind   # hardware / sim / csv
+            payload["source"] = src_label       # 사람이 읽는 라벨
             with _lock:
                 _latest.clear()
-                _latest.update(_payload(result, recent, clf))
+                _latest.update(payload)
         time.sleep(1.0 / clf.sample_rate)
 
 
@@ -73,9 +77,11 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     clf = RealtimeClassifier(model_path=model_path, sim_source_csv=sim_csv,
                              predict_hz=refresh_hz, sim_state=sim_state)
+    source = clf.input_source()
     print(f"[web] 모델 로드: {clf.model_name}, 클래스={clf.classes}")
+    print(f"[web] 입력 소스: {source[1]}")
 
-    threading.Thread(target=_worker, args=(clf,), daemon=True).start()
+    threading.Thread(target=_worker, args=(clf, source), daemon=True).start()
 
     app = Flask(__name__)
 
@@ -113,6 +119,12 @@ PAGE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
   .rec{color:var(--trace);font-weight:700;letter-spacing:.08em;display:inline-flex;gap:7px;align-items:center}
   .rec .d{width:7px;height:7px;border-radius:50%;background:var(--trace);animation:b 1.4s steps(1) infinite}
   @keyframes b{50%{opacity:.25}}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px;font-weight:700;
+    padding:4px 11px;border-radius:999px;border:1px solid transparent}
+  .badge .bd{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .badge.hardware{color:#1f9d5f;background:rgba(31,157,95,.14);border-color:rgba(31,157,95,.35)}
+  .badge.sim{color:#c07216;background:rgba(192,114,22,.15);border-color:rgba(192,114,22,.38)}
+  .badge.csv{color:#1667c2;background:rgba(22,103,194,.14);border-color:rgba(22,103,194,.35)}
   .signal{border:1px solid var(--hair);background:var(--panel)}
   .h{display:flex;justify-content:space-between;align-items:baseline;padding:11px 15px 3px}
   .h h2{margin:0;font-size:12px;font-weight:700;color:var(--ink2)}.h .u{font-family:var(--mono);font-size:11px;color:var(--ink3)}
@@ -135,7 +147,9 @@ PAGE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
   .wait{color:var(--ink3);font-family:var(--mono);font-size:13px;padding:20px;text-align:center}
 </style></head><body>
 <div class="wrap">
-  <div class="top"><b>GML<i>//</i>식물 전위 모니터</b><span id="mdl">웹 대시보드</span><span class="sp"></span>
+  <div class="top"><b>GML<i>//</i>식물 전위 모니터</b>
+    <span class="badge sim" id="mode"><span class="bd"></span><span id="modetxt">입력 확인 중…</span></span>
+    <span class="sp"></span>
     <span class="rec"><span class="d"></span>LIVE</span><span class="mono" id="clock">--:--:--</span></div>
 
   <div class="signal">
@@ -195,9 +209,15 @@ function status(d){
     `<div class="stname" style="color:${col}">${d.state}</div>`+
     `<div class="stconf">확신도 ${conf}</div>`;
 }
+function mode(d){
+  const b=document.getElementById('mode');
+  b.className='badge '+(d.source_kind||'sim');
+  const icon={hardware:'🔌 하드웨어',sim:'🧪 시뮬레이션',csv:'▶ CSV 재생'}[d.source_kind]||'입력';
+  document.getElementById('modetxt').textContent=(d.source||icon);
+}
 async function tick(){
   try{const d=await (await fetch('/data')).json(); if(!d.ready)return;
-    drawWave(d.signal); drawSpec(d.spec); status(d);
+    mode(d); drawWave(d.signal); drawSpec(d.spec); status(d);
     document.getElementById('s_mean').textContent=d.mean+' V';
     document.getElementById('s_std').textContent=d.std+' V';
     document.getElementById('s_p2p').textContent=d.p2p+' V';
