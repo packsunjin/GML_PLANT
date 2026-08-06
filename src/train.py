@@ -56,17 +56,15 @@ from feature_extraction import FEATURE_NAMES
 IMG_SIZE = 224
 
 # 원시 상태(=preprocess.py가 만드는 폴더/라벨). 한글 폰트가 없을 때 confusion matrix용 영어 대체 라벨.
-STATE_EN = {"정상": "Normal", "수분부족": "WaterDeficit", "자극": "Stimulus", "꺾임": "Bent"}
+STATE_EN = {"정상": "Normal", "수분부족": "WaterDeficit", "자극": "Stimulus"}
 
 # 비교 과제 정의. 첫 원소가 label 0.
 TASKS = {
-    "4종": ["정상", "수분부족", "자극", "꺾임"],   # 기본(정상/수분부족=지속 상태, 자극=이벤트, 꺾임=손상)
+    "3종": ["정상", "수분부족", "자극"],   # 기본(정상/수분부족=지속 상태, 자극=순간 이벤트)
     "정상-수분부족": ["정상", "수분부족"],
     "정상-자극": ["정상", "자극"],
-    "정상-꺾임": ["정상", "꺾임"],
-    "자극-꺾임": ["자극", "꺾임"],   # 기계적 자극 둘(순간 vs 손상)이 구분되는지 테스트
 }
-DEFAULT_TASK = "4종"
+DEFAULT_TASK = "3종"
 ALL_TASKS = "전체"
 
 # preprocess.py가 사용한 필터 대역. 모델 번들에 저장해 inference가 동일 필터를 쓰게 한다.

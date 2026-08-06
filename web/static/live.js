@@ -21,11 +21,7 @@
     "자극":     { c: "var(--warning)", d: "var(--warning-foreground)", s: "var(--warning-soft)",
                   hex: "#b8860b",
                   alert: { icon: "⚡", text: "잎에 닿는 자극이 감지됐어요. 순간적인 반응이라 곧 회복됩니다.",
-                           bg: "var(--warning-soft)", border: "var(--warning-soft-border)" } },
-    "꺾임":     { c: "var(--destructive)", d: "var(--destructive)", s: "var(--destructive-soft)",
-                  hex: "#b5453a",
-                  alert: { icon: "🥀", text: "손상으로 보이는 신호예요. 줄기와 잎을 확인해 주세요.",
-                           bg: "var(--destructive-soft)", border: "color-mix(in srgb, var(--destructive) 25%, transparent)" } }
+                           bg: "var(--warning-soft)", border: "var(--warning-soft-border)" } }
   };
 
   var $ = function (s, r) { return (r || document).querySelector(s); };
@@ -330,7 +326,7 @@
 
   // ── 데모 (백엔드 없이 파일만 열었을 때) ──────────────────────────
   var demo = false, demoStart = Date.now();
-  var DEMO = ["정상", "수분부족", "자극", "꺾임"];
+  var DEMO = ["정상", "수분부족", "자극"];
 
   function demoPayload() {
     var t = (Date.now() - demoStart) / 1000;
@@ -345,7 +341,6 @@
       v = v * 0.72 + (Math.random() - 0.5) * 0.014;
       var s = Math.sin(t * 2 + i / 8) * 0.016 + v;
       if (state === "자극" && i % 37 === 3) s += 0.085;
-      if (state === "꺾임") s -= 0.026;
       signal.push(s);
     }
     var spec = [];

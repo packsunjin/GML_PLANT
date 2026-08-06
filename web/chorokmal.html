@@ -36,7 +36,7 @@
     </div>
   </header>
 
-  <!-- 경고 배너 (자극·꺾임일 때만) -->
+  <!-- 경고 배너 (정상이 아닐 때만) -->
   <section data-live="alert-banner" style="display:none"
            class="flex items-center gap-3 rounded-3xl border px-5 py-4">
     <span class="text-lg" data-live="alert-icon">⚡</span>
@@ -187,14 +187,6 @@
             </div>
             <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
               <div class="h-full rounded-full" data-bar style="width:0%;background:var(--warning);transition:width .3s"></div>
-            </div>
-          </div>
-          <div data-cls="꺾임">
-            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-              <span>꺾임</span><span class="tabular-nums text-foreground" data-val>—</span>
-            </div>
-            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--destructive);transition:width .3s"></div>
             </div>
           </div>
         </div>

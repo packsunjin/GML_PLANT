@@ -28,7 +28,7 @@ def main():
     parser.add_argument("--model", default=os.path.join(os.path.dirname(__file__), "models", "best_model.joblib"))
     parser.add_argument("--sim_csv", default=None,
                          help="하드웨어가 없을 때 시뮬레이션 입력으로 사용할 CSV (예: data/raw/정상.csv)")
-    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "꺾임", "순환"],
+    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "순환"],
                          help="CSV도 하드웨어도 없을 때 라이브로 생성할 상태 (순환=8초마다 정상→수분부족→자극 순환). --sim_csv가 있으면 무시됨")
     parser.add_argument("--no-gui", action="store_true", help="헤드리스 모드로 실행 (기본은 GUI 모드)")
     parser.add_argument("--web", action="store_true",

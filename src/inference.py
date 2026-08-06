@@ -26,8 +26,8 @@ WINDOW_SEC = 2.0
 IMG_SIZE = 224
 PREDICT_HZ = 5.0  # 실시간 루프에서 무거운 특징추출+추론을 반복할 최대 빈도
 
-# 상태 이모지 매핑 (정상/수분부족/자극/꺾임 + 구버전 스트레스)
-STATE_EMOJI = {"정상": "🌱", "수분부족": "💧", "자극": "⚡", "꺾임": "🥀", "스트레스": "😵"}
+# 상태 이모지 매핑 (정상/수분부족/자극 + 구버전 스트레스)
+STATE_EMOJI = {"정상": "🌱", "수분부족": "💧", "자극": "⚡", "스트레스": "😵"}
 
 
 @lru_cache(maxsize=8)
@@ -86,7 +86,7 @@ class RealtimeClassifier:
     """
 
     # 데모용 순환 모드(sim_state="순환")에서 순서대로 생성할 상태와 상태별 지속 시간(초)
-    SIM_CYCLE_STATES = ["정상", "수분부족", "자극", "꺾임"]
+    SIM_CYCLE_STATES = ["정상", "수분부족", "자극"]
     SIM_CYCLE_SEC = 8.0
 
     def __init__(self, model_path="../models/best_model.joblib",

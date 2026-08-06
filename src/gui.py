@@ -26,7 +26,7 @@ from inference import RealtimeClassifier, SAMPLE_RATE_HZ, WINDOW_SEC
 
 # 상태별 표시 색상. matplotlib은 컬러 이모지를 못 그려 두부글자(□)가 되므로, GUI에서는
 # 이모지 대신 이 색상 원으로 상태를 표시한다. (터미널/헤드리스는 이모지가 잘 나오므로 그대로 사용)
-STATE_COLOR = {"정상": "#2e7d32", "수분부족": "#1565c0", "자극": "#ef6c00", "꺾임": "#b02a37", "스트레스": "#c62828"}
+STATE_COLOR = {"정상": "#2e7d32", "수분부족": "#1565c0", "자극": "#ef6c00", "스트레스": "#c62828"}
 
 
 def _has_display():
@@ -201,7 +201,7 @@ def main():
     parser = argparse.ArgumentParser(description="실시간 식물 상태 모니터링 GUI / 터미널 대시보드")
     parser.add_argument("--model", default="../models/best_model.joblib")
     parser.add_argument("--sim_csv", default=None, help="하드웨어 없을 때 재생할 샘플 CSV 경로")
-    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "꺾임", "순환"],
+    parser.add_argument("--sim_state", default="정상", choices=["정상", "수분부족", "자극", "순환"],
                         help="CSV도 하드웨어도 없을 때 라이브로 생성할 상태(순환=8초마다 순환)")
     parser.add_argument("--no-gui", action="store_true", help="헤드리스(터미널) 모드로 실행")
     args = parser.parse_args()

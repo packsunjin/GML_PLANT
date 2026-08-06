@@ -45,9 +45,8 @@ except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSErr
 
 
 # 상태별 저장 파일명(한글). 수집된 원시 CSV는 이 이름으로 data/raw/ 아래에 저장된다.
-# 정상/수분부족 = 지속 상태, 자극 = 순간 이벤트, 꺾임 = 물리적 손상(순간 상처 후 지속)
-KOR_FILENAMES = {"정상": "정상.csv", "수분부족": "수분부족.csv",
-                 "자극": "자극.csv", "꺾임": "꺾임.csv"}
+# 정상/수분부족 = 지속 상태, 자극 = 순간 이벤트
+KOR_FILENAMES = {"정상": "정상.csv", "수분부족": "수분부족.csv", "자극": "자극.csv"}
 VALID_STATES = tuple(KOR_FILENAMES.keys())
 
 
@@ -65,7 +64,6 @@ def simulate_sample(t, state):
     - 정상: 완만한 기저선 변동 (0.05~0.5Hz 위주), 저잡음
     - 수분부족: 느린 드리프트(스트레스 반응) + 간헐적 저주파 스파이크
     - 자극(잎 흔들기): 짧고 진폭 큰 액션포텐셜 유사 스파이크가 불규칙하게 발생 (순간 이벤트)
-    - 꺾임(물리적 손상): 큰 상처전위 후 낮아진 기저선이 지속됨 (지속 상태)
     """
     baseline = 0.0  # V, AD8232 출력 기준선(가상)
     powerline_noise = 0.01 * np.sin(2 * np.pi * 50 * t)  # 50Hz 전원 노이즈(제거 대상)
@@ -83,11 +81,6 @@ def simulate_sample(t, state):
         spike = 0.15 * np.exp(-((t % 1.3 - 0.15) ** 2) / (2 * 0.01 ** 2))
         signal = spike + 0.02 * np.sin(2 * np.pi * 0.3 * t)
         noise = np.random.normal(0, 0.01)
-    elif state == "꺾임":
-        # 물리적 손상: 초반 큰 음의 상처전위가 서서히 감쇠 + 낮아진 기저선이 계속 유지
-        wound = -0.09 * np.exp(-t / 5.0)
-        signal = wound - 0.02 + 0.015 * np.sin(2 * np.pi * 0.08 * t)
-        noise = np.random.normal(0, 0.009)
     else:
         raise ValueError(f"알 수 없는 상태: {state}")
 
@@ -113,10 +106,6 @@ def simulate_batch(t_array, state):
         spike = 0.15 * np.exp(-((t_array % 1.3 - 0.15) ** 2) / (2 * 0.01 ** 2))
         signal = spike + 0.02 * np.sin(2 * np.pi * 0.3 * t_array)
         noise = np.random.normal(0, 0.01, size=t_array.shape)
-    elif state == "꺾임":
-        wound = -0.09 * np.exp(-t_array / 5.0)
-        signal = wound - 0.02 + 0.015 * np.sin(2 * np.pi * 0.08 * t_array)
-        noise = np.random.normal(0, 0.009, size=t_array.shape)
     else:
         raise ValueError(f"알 수 없는 상태: {state}")
 
