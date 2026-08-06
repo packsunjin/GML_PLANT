@@ -1,99 +1,109 @@
-/* 초록말 대시보드 - 화면 전환 + 라즈베리파이 실시간 데이터 연결
+/* 초록말 - 실시간 식물 상태 화면
  *
- * 백엔드(src/web_dashboard.py)의 /data 를 주기적으로 읽어 "실시간 상태" 화면을
- * 갱신합니다. 나머지 화면(홈/랭킹/기록/내 식물/마켓/설정)은 아직 정적 화면입니다.
+ * 백엔드(src/web_dashboard.py)의 /data 를 주기적으로 읽어 화면을 갱신합니다.
+ * 백엔드가 없으면(파일만 열었을 때) 데모 값으로 대체해 화면을 확인할 수 있습니다.
  */
 (function () {
   "use strict";
 
-  // ── 상태별 색/문구 ───────────────────────────────────────────────
+  var POLL_MS = 500;
+  var RING_LEN = 108.7;          // r=17.3 원의 둘레
+  var TREND_MAX = 120;           // 확신도 추이 보관 개수 (약 1분)
+  var WAVE_MAX = 1500;           // 파형 롤링 버퍼 길이
+
   var STATE = {
-    "정상":     { c: "var(--primary)",     d: "var(--primary-hover)",     s: "var(--primary-soft)",
-                  tip: "지금이 좋아요",   body: "물주기 간격을 그대로 유지해 주세요" },
-    "수분부족": { c: "var(--water)",       d: "var(--water-deep)",        s: "var(--water-soft)",
-                  tip: "수분부족 TIP",     body: "흙이 마르면 흠뻑 주세요" },
-    "자극":     { c: "var(--warning)",     d: "var(--warning-foreground)", s: "var(--warning-soft)",
-                  tip: "자극 감지 TIP",   body: "잎을 건드리지 말고 잠시 두세요" },
-    "꺾임":     { c: "var(--destructive)", d: "var(--destructive)",       s: "var(--destructive-soft)",
-                  tip: "꺾임 TIP",         body: "손상된 줄기를 정리해 주세요" }
-  };
-  var FALLBACK = STATE["정상"];
-  var RING_LEN = 108.7;   // r=17.3 원의 둘레
-
-  var $ = function (sel, root) { return (root || document).querySelector(sel); };
-  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
-  var live = function (name) { return $('[data-live="' + name + '"]'); };
-
-  // ── 화면 전환 ────────────────────────────────────────────────────
-  var LABEL = {
-    home: ["2026년 8월 4일 · 화요일", "좋은 저녁이에요, 선진님 👋"],
-    status: ["거실 몬스테라 · 센서 연결됨", "실시간 상태"],
-    ranking: ["케어 스트릭 · 이번 주", "케어 랭킹"],
-    history: ["지난 7일 · 거실 몬스테라", "상태 기록"],
-    plants: ["총 3개 식물 모니터링 중", "내 식물"],
-    market: ["화훼시장 · 원예몰 가격 수집 결과", "전국 최저가 식물 마켓"],
-    settings: ["초록말 · 무료 플랜", "설정 및 계정"]
+    "정상":     { c: "var(--primary)", d: "var(--primary-hover)", s: "var(--primary-soft)",
+                  hex: "#2f7d45", alert: null },
+    "수분부족": { c: "var(--water)", d: "var(--water-deep)", s: "var(--water-soft)",
+                  hex: "#2f6fd0",
+                  alert: { icon: "💧", text: "수분부족 신호가 이어지고 있어요. 겉흙이 말랐다면 물을 주세요.",
+                           bg: "var(--water-soft)", border: "var(--water-soft-border)" } },
+    "자극":     { c: "var(--warning)", d: "var(--warning-foreground)", s: "var(--warning-soft)",
+                  hex: "#b8860b",
+                  alert: { icon: "⚡", text: "잎에 닿는 자극이 감지됐어요. 순간적인 반응이라 곧 회복됩니다.",
+                           bg: "var(--warning-soft)", border: "var(--warning-soft-border)" } },
+    "꺾임":     { c: "var(--destructive)", d: "var(--destructive)", s: "var(--destructive-soft)",
+                  hex: "#b5453a",
+                  alert: { icon: "🥀", text: "손상으로 보이는 신호예요. 줄기와 잎을 확인해 주세요.",
+                           bg: "var(--destructive-soft)", border: "color-mix(in srgb, var(--destructive) 25%, transparent)" } }
   };
 
-  function go(name) {
-    $$(".screen").forEach(function (s) { s.classList.toggle("is-on", s.dataset.screen === name); });
-    $$("aside nav [data-go]").forEach(function (el) {
-      var on = el.dataset.go === name;
-      el.classList.toggle("bg-primary", on);
-      el.classList.toggle("text-primary-foreground", on);
-      el.classList.toggle("shadow-soft", on);
-      el.classList.toggle("font-bold", on);
-      el.classList.toggle("font-medium", !on);
-      el.classList.toggle("text-muted-foreground", !on);
-      el.classList.toggle("hover:bg-foreground/5", !on);
-    });
-    $$("nav.fixed [data-go]").forEach(function (el) {
-      var on = el.dataset.go === name;
-      el.classList.toggle("text-primary", on);
-      el.classList.toggle("text-subtle", !on);
-    });
-    var head = LABEL[name];
-    if (head) {
-      var ey = $("header .md\\:block p"), ti = $("header .md\\:block h2");
-      if (ey) ey.textContent = head[0];
-      if (ti) ti.textContent = head[1];
-    }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var live = function (n) { return $('[data-live="' + n + '"]'); };
+  var setText = function (n, v) { var el = live(n); if (el) el.textContent = v; };
+
+  // 화면 상태
+  var paused = false;
+  var waveBuf = [];              // 파형 롤링 버퍼
+  var trend = [];                // {conf, hex}
+  var lastState = null;
+  var stateSince = Date.now();
+  var changes = [];              // {ts, state, proba}
+  var lastSeen = 0;
+
+  // ── 유틸 ─────────────────────────────────────────────────────────
+  function since(ms) {
+    var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 60) return s + "초째";
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + "분째";
+    return Math.floor(m / 60) + "시간 " + (m % 60) + "분째";
   }
 
-  document.addEventListener("click", function (e) {
-    var nav = e.target.closest("[data-go]");
-    if (nav) { e.preventDefault(); go(nav.dataset.go); return; }
-    if (e.target.closest("[data-graph-open]")) { modal(true); return; }
-    if (e.target.closest("[data-graph-close]")) { modal(false); return; }
-    var m = document.getElementById("graphModal");
-    if (m && m.style.display === "flex" && e.target === m) modal(false);
-  });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") modal(false); });
-
-  function modal(open) {
-    var m = document.getElementById("graphModal");
-    if (!m) return;
-    m.style.display = open ? "flex" : "none";
-    document.body.style.overflow = open ? "hidden" : "";
+  function hhmm(ts) {
+    var d = new Date(ts);
+    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2) +
+           ":" + ("0" + d.getSeconds()).slice(-2);
   }
 
-  // ── 그리기 ───────────────────────────────────────────────────────
-  function drawWave(signal) {
-    if (!signal || !signal.length) return;
-    var lo = Math.min.apply(null, signal), hi = Math.max.apply(null, signal);
-    var span = (hi - lo) || 1e-6;
-    var step = 288 / (signal.length - 1);
-    var pts = signal.map(function (v, i) {
-      // 위아래 8% 여백을 두고 80 높이에 맞춤
-      var y = 74 - ((v - lo) / span) * 68;
-      return (i * step).toFixed(1) + "," + y.toFixed(2);
-    }).join(" ");
-    $$('[data-live="wave"], #graphModal [data-wave] polyline').forEach(function (el) {
-      el.setAttribute("points", pts);
+  function cssVal(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // ── 그리기: 파형 ─────────────────────────────────────────────────
+  function drawWave() {
+    $$('[data-live="wave"], [data-live="wave-big"]').forEach(function (cv) {
+      var ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
+      ctx.clearRect(0, 0, w, h);
+      if (waveBuf.length < 2) return;
+
+      // 기준선
+      ctx.strokeStyle = "rgba(120,200,140,.16)";
+      ctx.lineWidth = 1;
+      for (var g = 1; g < 4; g++) {
+        var y = h * g / 4;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+
+      var lo = Infinity, hi = -Infinity;
+      for (var i = 0; i < waveBuf.length; i++) {
+        if (waveBuf[i] < lo) lo = waveBuf[i];
+        if (waveBuf[i] > hi) hi = waveBuf[i];
+      }
+      var span = (hi - lo) || 1e-6;
+      var step = w / (waveBuf.length - 1);
+
+      ctx.beginPath();
+      for (var j = 0; j < waveBuf.length; j++) {
+        var yy = h - 12 - ((waveBuf[j] - lo) / span) * (h - 24);
+        if (j === 0) ctx.moveTo(0, yy); else ctx.lineTo(j * step, yy);
+      }
+      ctx.strokeStyle = cssVal("--signal") || "#5fce7a";
+      ctx.lineWidth = Math.max(1.4, w / 700);
+      ctx.lineJoin = "round";
+      ctx.stroke();
+
+      // 최신 지점 표시
+      var lastY = h - 12 - ((waveBuf[waveBuf.length - 1] - lo) / span) * (h - 24);
+      ctx.beginPath();
+      ctx.arc(w - 2, lastY, Math.max(3, w / 320), 0, Math.PI * 2);
+      ctx.fillStyle = cssVal("--signal") || "#5fce7a";
+      ctx.fill();
     });
   }
 
+  // ── 그리기: 스펙트로그램 ─────────────────────────────────────────
   var VIRIDIS = [[16, 24, 20], [24, 70, 60], [32, 130, 96], [120, 190, 110], [224, 232, 150]];
   function ramp(t) {
     t = Math.max(0, Math.min(1, t)) * 4;
@@ -115,24 +125,75 @@
       }
     }
     var span = (hi - lo) || 1e-6;
-    $$("canvas[data-spec]").forEach(function (cv) {
+    $$('[data-live="spec"], [data-live="spec-big"]').forEach(function (cv) {
       var ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
       var cw = w / cols, ch = h / rows;
       for (var r2 = 0; r2 < rows; r2++) {
         for (var c2 = 0; c2 < cols; c2++) {
           ctx.fillStyle = ramp((spec[r2][c2] - lo) / span);
-          // 주파수 축을 위로 향하게 뒤집어 그린다
           ctx.fillRect(c2 * cw, h - (r2 + 1) * ch, Math.ceil(cw), Math.ceil(ch));
         }
       }
     });
   }
 
-  // ── 실시간 갱신 ──────────────────────────────────────────────────
+  // ── 그리기: 확신도 추이 ──────────────────────────────────────────
+  function drawTrend() {
+    var cv = live("trend");
+    if (!cv) return;
+    var ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = cssVal("--border") || "#e4eae5";
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach(function (p) {
+      ctx.beginPath(); ctx.moveTo(0, h * p); ctx.lineTo(w, h * p); ctx.stroke();
+    });
+    if (trend.length < 2) return;
+
+    var step = w / (TREND_MAX - 1);
+    // 구간별 색(상태가 바뀌면 색도 바뀜)
+    for (var i = 1; i < trend.length; i++) {
+      ctx.beginPath();
+      ctx.moveTo((i - 1) * step, h - trend[i - 1].conf * h);
+      ctx.lineTo(i * step, h - trend[i].conf * h);
+      ctx.strokeStyle = trend[i].hex;
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
+  }
+
+  // ── 로그 ─────────────────────────────────────────────────────────
+  function renderLog() {
+    var box = live("log");
+    if (!box) return;
+    if (!changes.length) {
+      box.innerHTML = '<p class="py-6 text-center text-xs text-subtle">상태가 바뀌면 여기에 쌓입니다.</p>';
+      return;
+    }
+    box.innerHTML = changes.slice(0, 10).map(function (c, i) {
+      var st = STATE[c.state] || STATE["정상"];
+      var held = i === 0 ? since(c.ts) : "";
+      return '<div class="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0">' +
+               '<span style="width:9px;height:9px;border-radius:50%;background:' + st.c + ';flex:none"></span>' +
+               '<div class="min-w-0 flex-1">' +
+                 '<p class="text-sm font-bold text-foreground">' + c.state + ' 감지' +
+                   (held ? ' <span class="text-[11px] font-medium text-subtle">' + held + '</span>' : '') + '</p>' +
+                 '<p class="text-[11px] text-muted-foreground">확신도 ' +
+                   (c.proba == null ? "—" : (c.proba * 100).toFixed(1) + "%") + '</p>' +
+               '</div>' +
+               '<span class="shrink-0 text-[11px] font-medium tabular-nums text-subtle">' + hhmm(c.ts) + '</span>' +
+             '</div>';
+    }).join("");
+  }
+
+  // ── 적용 ─────────────────────────────────────────────────────────
   function apply(d) {
     if (!d || !d.ready) return;
+    lastSeen = Date.now();
 
-    var st = STATE[d.state] || FALLBACK;
+    var st = STATE[d.state] || STATE["정상"];
     var scope = $("[data-state-scope]");
     if (scope) {
       scope.style.setProperty("--state", st.c);
@@ -140,441 +201,184 @@
       scope.style.setProperty("--state-soft", st.s);
     }
 
-    var nameEl = live("state");
-    if (nameEl) nameEl.textContent = d.state;
+    if (d.state !== lastState) {
+      if (lastState !== null) {
+        changes.unshift({ ts: Date.now(), state: d.state, proba: d.proba });
+        changes = changes.slice(0, 40);
+      } else {
+        changes.unshift({ ts: Date.now(), state: d.state, proba: d.proba });
+      }
+      lastState = d.state;
+      stateSince = Date.now();
+      renderLog();
+    }
 
-    var conf = (d.proba == null) ? null : d.proba * 100;
-    var confEl = live("conf");
-    if (confEl) confEl.textContent = conf == null ? "확신도 —" : "확신도 " + conf.toFixed(1) + "%";
+    setText("state", d.state);
+    var conf = d.proba == null ? null : d.proba * 100;
+    setText("conf", conf == null ? "확신도 —" : "확신도 " + conf.toFixed(1) + "%");
+    setText("duration", since(stateSince));
 
     var ring = live("ring");
     if (ring) {
-      var filled = (conf == null ? 0 : conf) / 100 * RING_LEN;
-      ring.setAttribute("stroke-dasharray", filled.toFixed(1) + " " + RING_LEN);
+      ring.setAttribute("stroke-dasharray",
+        ((conf || 0) / 100 * RING_LEN).toFixed(1) + " " + RING_LEN);
     }
 
+    // 확률 막대
     if (d.probs) {
       $$("[data-cls]").forEach(function (row) {
         var p = d.probs[row.dataset.cls];
-        var pct = (p == null ? 0 : p * 100);
+        var pct = p == null ? 0 : p * 100;
         var bar = $("[data-bar]", row), val = $("[data-val]", row);
         if (bar) bar.style.width = pct.toFixed(1) + "%";
         if (val) val.textContent = pct.toFixed(1) + "%";
       });
     }
 
-    var tipT = live("tipTitle"), tipB = live("tipBody");
-    if (tipT) tipT.textContent = st.tip;
-    if (tipB) tipB.textContent = st.body;
+    // 경고 배너
+    var banner = live("alert-banner");
+    if (banner) {
+      if (st.alert) {
+        banner.style.display = "flex";
+        banner.style.background = st.alert.bg;
+        banner.style.borderColor = st.alert.border;
+        setText("alert-icon", st.alert.icon);
+        setText("alert-text", st.alert.text);
+      } else {
+        banner.style.display = "none";
+      }
+    }
 
-    var alert1 = live("alert1");
-    if (alert1) alert1.innerHTML = '방금 · <b class="text-foreground">' + d.state + "</b> 감지";
+    // 파형 버퍼 (뒤쪽 일부만 이어붙여 흐르게)
+    if (!paused && d.signal && d.signal.length) {
+      var take = d.signal.slice(-Math.max(4, Math.round(d.signal.length / 6)));
+      waveBuf = waveBuf.concat(take);
+      if (waveBuf.length > WAVE_MAX) waveBuf = waveBuf.slice(-WAVE_MAX);
+      drawWave();
+    }
+    if (!paused) drawSpec(d.spec);
 
-    var src = live("source");
-    if (src) src.textContent = d.source || "입력 소스 확인 중";
+    // 확신도 추이
+    if (!paused && conf != null) {
+      trend.push({ conf: conf / 100, hex: st.hex });
+      if (trend.length > TREND_MAX) trend.shift();
+      drawTrend();
+    }
 
-    drawWave(d.signal);
-    drawSpec(d.spec);
-    applyHome(d);
+    // 신호 통계
+    var f = function (v, unit) { return v == null ? "—" : v + (unit || ""); };
+    setText("mean", f(d.mean, " V"));
+    setText("std", f(d.std, " V"));
+    setText("p2p", f(d.p2p, " V"));
+    setText("wave-peak", d.p2p == null ? "PEAK —" : "PEAK " + d.p2p + " V");
+
+    // 스파이크: 표준편차의 3배를 넘는 샘플 수
+    if (d.signal && d.signal.length && d.std) {
+      var thr = d.std * 3, mean = d.mean || 0, n = 0;
+      for (var i = 0; i < d.signal.length; i++) {
+        if (Math.abs(d.signal[i] - mean) > thr) n++;
+      }
+      setText("spikes", n + "개");
+    }
+
+    // 안정도 = 최근 추이에서 현재 상태가 차지한 비율
+    var same = changes.length ? 1 : 0;
+    var recent = trend.slice(-60);
+    if (recent.length) {
+      var hit = recent.filter(function (t) { return t.hex === st.hex; }).length;
+      setText("stability", Math.round(hit / recent.length * 100) + "%");
+    }
+    setText("changes", changes.length + "회");
+    if (conf != null) setText("quality", conf >= 70 ? "좋음" : conf >= 45 ? "보통" : "낮음");
+
+    setText("source", d.source || "입력 소스 확인 중");
   }
 
-  // ── 데모 모드 ────────────────────────────────────────────────────
-  // 파이(백엔드) 없이 파일만 열었을 때도 화면을 볼 수 있도록, /data 가 없으면
-  // 브라우저에서 직접 만들어낸 값으로 돌립니다. 실제 측정값이 아닙니다.
-  var demo = false;
-  var DEMO_STATES = ["정상", "수분부족", "자극", "꺾임"];
-  var demoStart = Date.now();
-  var demoLog = loadDemoLog();
-
-  function loadDemoLog() {
-    try {
-      var raw = localStorage.getItem("chorokmal-demo-log");
-      if (raw) return JSON.parse(raw);
-    } catch (err) { /* 저장소를 못 쓰면 메모리에만 둔다 */ }
-    return [];
-  }
-
-  function saveDemoLog() {
-    try { localStorage.setItem("chorokmal-demo-log", JSON.stringify(demoLog.slice(-300))); }
-    catch (err) { /* 무시 */ }
-  }
+  // ── 데모 (백엔드 없이 파일만 열었을 때) ──────────────────────────
+  var demo = false, demoStart = Date.now();
+  var DEMO = ["정상", "수분부족", "자극", "꺾임"];
 
   function demoPayload() {
     var t = (Date.now() - demoStart) / 1000;
-    var state = DEMO_STATES[Math.floor(t / 8) % DEMO_STATES.length];
-    var probs = {}, top = 0.62 + Math.sin(t) * 0.08;
-    DEMO_STATES.forEach(function (s) { probs[s] = (1 - top) / 3; });
+    var state = DEMO[Math.floor(t / 10) % DEMO.length];
+    var top = 0.68 + Math.sin(t / 3) * 0.12;
+    var probs = {};
+    DEMO.forEach(function (s) { probs[s] = (1 - top) / 3; });
     probs[state] = top;
 
     var signal = [], v = 0;
-    for (var i = 0; i < 140; i++) {
-      v = v * 0.7 + (Math.random() - 0.5) * 0.02;
-      var wave = Math.sin((t * 2 + i / 9)) * 0.02;
-      if (state === "자극" && i % 34 === 5) wave += 0.09;
-      if (state === "꺾임") wave -= 0.03;
-      signal.push(v + wave);
+    for (var i = 0; i < 120; i++) {
+      v = v * 0.72 + (Math.random() - 0.5) * 0.014;
+      var s = Math.sin(t * 2 + i / 8) * 0.016 + v;
+      if (state === "자극" && i % 37 === 3) s += 0.085;
+      if (state === "꺾임") s -= 0.026;
+      signal.push(s);
     }
     var spec = [];
-    for (var r = 0; r < 24; r++) {
+    for (var r = 0; r < 26; r++) {
       var row = [];
-      for (var c = 0; c < 20; c++) {
-        row.push(-20 - r * 2.2 + Math.sin(c / 3 + t) * 3 + Math.random() * 4);
-      }
+      for (var c = 0; c < 22; c++) row.push(-18 - r * 2.1 + Math.sin(c / 3 + t) * 3 + Math.random() * 4);
       spec.push(row);
     }
-    // 데모에서도 상태가 바뀌면 기록에 남겨 타임라인이 채워지게 한다
-    var last = demoLog[demoLog.length - 1];
-    if (!last || last.state !== state) {
-      demoLog.push({ ts: new Date().toISOString().slice(0, 19), kind: "state",
-                     state: state, proba: top });
-      saveDemoLog();
-    }
-    return { ready: true, state: state, proba: top, probs: probs,
-             signal: signal, spec: spec, source: "데모 데이터 (백엔드 없음)" };
-  }
-
-  function demoHistory() {
-    var byDay = {}, today = new Date();
-    var daily = [];
-    for (var i = 6; i >= 0; i--) {
-      var d = new Date(today.getTime() - i * 86400000);
-      var key = d.toISOString().slice(0, 10);
-      byDay[key] = { date: key, weekday: "일월화수목금토"[d.getDay()],
-                     states: {}, water: 0, top: null };
-      daily.push(byDay[key]);
-    }
-    demoLog.forEach(function (e) {
-      var b = byDay[(e.ts || "").slice(0, 10)];
-      if (!b) return;
-      if (e.kind === "water") b.water += 1;
-      else { b.states[e.state] = (b.states[e.state] || 0) + 1; }
-    });
-    daily.forEach(function (b) {
-      var best = null;
-      Object.keys(b.states).forEach(function (k) {
-        if (!best || b.states[k] > b.states[best]) best = k;
-      });
-      b.top = best;
-    });
-    var states = demoLog.filter(function (e) { return e.kind === "state"; });
-    var water = demoLog.filter(function (e) { return e.kind === "water"; });
-    var healthy = states.filter(function (e) { return e.state === "정상"; }).length;
-    return {
-      daily: daily,
-      events: demoLog.slice().reverse(),
-      stats: {
-        records: demoLog.length,
-        water_count: water.length,
-        state_count: states.length,
-        healthy_ratio: states.length ? Math.round(healthy / states.length * 100) : null,
-        active_days: Object.keys(byDay).filter(function (k) {
-          return Object.keys(byDay[k].states).length || byDay[k].water;
-        }).length
-      }
-    };
+    var arr = signal.slice();
+    var mean = arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
+    var std = Math.sqrt(arr.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / arr.length);
+    return { ready: true, state: state, proba: top, probs: probs, signal: signal, spec: spec,
+             mean: +mean.toFixed(4), std: +std.toFixed(4),
+             p2p: +(Math.max.apply(null, arr) - Math.min.apply(null, arr)).toFixed(4),
+             source: "데모 데이터 (백엔드 없음)" };
   }
 
   function poll() {
     if (demo) { apply(demoPayload()); return; }
+    var t0 = performance.now();
     fetch("/data", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(apply)
-      .catch(function () {
-        demo = true;                 // 백엔드가 없으면 데모로 전환
-        apply(demoPayload());
-        loadHistory();
-      });
-  }
-
-  // ── 홈 화면 요약 ─────────────────────────────────────────────────
-  var MIND = {
-    "정상": ["“지금 좋아요”", "수분과 온도 모두 안정 구간이에요. 그대로 유지해 주세요."],
-    "수분부족": ["“목이 말라요”", "수분부족 신호가 감지됐어요. 흙을 촉촉하게 적셔주세요."],
-    "자극": ["“방금 놀랐어요”", "잎에 닿는 자극이 감지됐어요. 잠시 그대로 두세요."],
-    "꺾임": ["“어딘가 아파요”", "손상으로 보이는 신호예요. 줄기와 잎을 확인해 주세요."]
-  };
-
-  function applyHome(d) {
-    var m = MIND[d.state];
-    var mind = $('[data-home="mind"]'), desc = $('[data-home="desc"]');
-    if (m && mind) mind.textContent = m[0];
-    if (m && desc) desc.textContent = m[1];
-
-    var line = $('[data-home="wave"]');
-    if (line && d.signal && d.signal.length) {
-      var lo = Math.min.apply(null, d.signal), hi = Math.max.apply(null, d.signal);
-      var span = (hi - lo) || 1e-6, step = 288 / (d.signal.length - 1);
-      line.setAttribute("points", d.signal.map(function (v, i) {
-        return (i * step).toFixed(1) + "," + (72 - ((v - lo) / span) * 62).toFixed(2);
-      }).join(" "));
-    }
-  }
-
-  // ── 기록 화면 ────────────────────────────────────────────────────
-  var BAR_COLOR = {
-    "정상": "var(--primary)", "수분부족": "var(--water)",
-    "자극": "var(--warning)", "꺾임": "var(--destructive)"
-  };
-  var histDays = 7;
-
-  function renderHistory(h) {
-    var bars = $('[data-hist="bars"]');
-    if (bars) {
-      var daily = h.daily || [];
-      var peak = daily.reduce(function (mx, d) {
-        var n = Object.values(d.states || {}).reduce(function (a, b) { return a + b; }, 0);
-        return Math.max(mx, n);
-      }, 0) || 1;
-      bars.innerHTML = daily.map(function (d) {
-        var total = Object.values(d.states || {}).reduce(function (a, b) { return a + b; }, 0);
-        var pct = total ? Math.max(8, Math.round(total / peak * 100)) : 5;
-        var color = total ? (BAR_COLOR[d.top] || "var(--primary)") : "var(--border)";
-        return '<div class="flex flex-1 flex-col items-center justify-end" style="height:100%">' +
-                 '<span class="mb-1.5 text-[10px] font-bold tabular-nums text-muted-foreground">' +
-                   (total || "") + '</span>' +
-                 '<div title="' + d.date + (d.top ? " · " + d.top : "") + '" ' +
-                      'style="width:100%;max-width:56px;height:' + pct + '%;border-radius:12px 12px 5px 5px;background:' + color + '"></div>' +
-                 '<span class="mt-2 text-[11px] font-bold text-muted-foreground">' + d.weekday + '</span>' +
-                 (d.water ? '<span class="text-[10px] text-subtle">물 ' + d.water + '</span>' : '') +
-               '</div>';
-      }).join("") || '<p class="w-full text-center text-xs text-subtle">기록이 없어요.</p>';
-    }
-
-    var s = h.stats || {};
-    var set = function (k, v) { var el = $('[data-hist="' + k + '"]'); if (el) el.textContent = v; };
-    set("records", s.records != null ? s.records + "회" : "—");
-    set("water", s.water_count != null ? s.water_count + "회" : "—");
-    set("healthy", s.healthy_ratio != null ? s.healthy_ratio + "%" : "—");
-    set("days", s.active_days != null ? s.active_days + "일" : "—");
-
-    var tl = $('[data-hist="timeline"]');
-    if (tl) {
-      // 상태가 자주 바뀌면 목록이 길어지므로 최근 것만 보여준다
-      var evs = (h.events || []).slice(0, 12);
-      tl.innerHTML = evs.length ? evs.map(function (e) {
-        var when = (e.ts || "").replace("T", " ").slice(5, 16);
-        if (e.kind === "water") {
-          return row("💧", "물주기 기록", (e.ml || 280) + "ml 급수 완료", when, "var(--water)");
-        }
-        var conf = e.proba == null ? "" : " · 확신도 " + (e.proba * 100).toFixed(1) + "%";
-        return row("", e.state + " 감지", "전위신호 기반 분류" + conf, when, BAR_COLOR[e.state] || "var(--primary)");
-      }).join("") : '<p class="py-6 text-center text-xs text-subtle">아직 기록이 없어요.</p>';
-    }
-  }
-
-  function row(icon, title, sub, when, color) {
-    return '<div class="flex items-center gap-3 border-b border-border py-3 last:border-b-0">' +
-             '<span style="width:9px;height:9px;border-radius:50%;background:' + color + ';flex:none"></span>' +
-             '<div class="min-w-0 flex-1">' +
-               '<p class="text-sm font-bold text-foreground">' + (icon ? icon + " " : "") + title + '</p>' +
-               '<p class="text-[11px] text-muted-foreground">' + sub + '</p>' +
-             '</div>' +
-             '<span class="shrink-0 text-[11px] font-medium text-subtle tabular-nums">' + when + '</span>' +
-           '</div>';
-  }
-
-  function loadHistory() {
-    if (demo) { renderHistory(demoHistory()); return; }
-    fetch("/api/history?days=" + histDays, { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(renderHistory)
-      .catch(function () { demo = true; renderHistory(demoHistory()); });
-  }
-
-  function logWater() {
-    if (demo) {
-      demoLog.push({ ts: new Date().toISOString().slice(0, 19), kind: "water", ml: 280 });
-      saveDemoLog();
-      toast("물주기를 기록했어요 💧 (데모)");
-      renderHistory(demoHistory());
-      return;
-    }
-    fetch("/api/water", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plant: "monstera", ml: 280 })
-    })
-      .then(function (r) { return r.json(); })
-      .then(function () { toast("물주기를 기록했어요 💧"); loadHistory(); })
-      .catch(function () { toast("기록에 실패했어요"); });
-  }
-
-  // ── 설정 저장 ────────────────────────────────────────────────────
-  function loadSettings() {
-    if (demo) return;
-    fetch("/api/settings", { cache: "no-store" })
-      .then(function (r) { return r.json(); })
       .then(function (d) {
-        $$("#settings .settings-row, [data-screen='settings'] button[role='switch']");
-        Object.keys(d.settings || {}).forEach(function (key) {
-          var el = findToggleByLabel(key);
-          if (el) setToggle(el, d.settings[key]);
-        });
+        setText("latency", Math.round(performance.now() - t0) + " ms");
+        apply(d);
       })
-      .catch(function () {});
-  }
-
-  function findToggleByLabel(label) {
-    var hit = null;
-    $$("[data-screen='settings'] p, [data-screen='settings'] div").some(function (el) {
-      if (el.children.length === 0 && el.textContent.trim() === label) {
-        var box = el.closest("div.flex");
-        while (box && !box.querySelector("button, [role='switch'], input[type='checkbox']")) box = box.parentElement;
-        hit = box && box.querySelector("button, [role='switch'], input[type='checkbox']");
-        return !!hit;
-      }
-      return false;
-    });
-    return hit;
-  }
-
-  function setToggle(el, on) {
-    el.dataset.on = on ? "1" : "0";
-    if (el.tagName === "INPUT") el.checked = !!on;
-    else el.setAttribute("aria-checked", on ? "true" : "false");
-  }
-
-  // ── 최저가 마켓 + 식물 도감 ──────────────────────────────────────
-  var won = function (n) { return (n == null) ? "—" : n.toLocaleString("ko-KR") + "원"; };
-  var mk = function (name) { return $('[data-mk="' + name + '"]'); };
-
-  function renderMarket(d) {
-    var items = d.items || [];
-    var set = function (k, v) { var el = mk(k); if (el) el.textContent = v; };
-    set("lowest", won(d.lowest));
-    set("lowest-mall", items.length ? items[0].mall : "결과 없음");
-    set("avg", won(d.average));
-    set("count", items.length + "건");
-    set("source", d.source + (d.cached ? " · 캐시" : ""));
-    var note = mk("note");
-    if (note) {
-      note.textContent = d.source === "네이버쇼핑"
-        ? "네이버 쇼핑 검색에서 모은 가격입니다. 실제 결제 금액은 판매처 정책에 따라 다를 수 있어요."
-        : "실제 시세가 아닌 예시입니다. NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 를 설정하면 실제 가격을 불러옵니다.";
-    }
-
-    var list = mk("list");
-    if (!list) return;
-    list.innerHTML = items.length ? items.map(function (it, i) {
-      var best = i === 0;
-      var link = it.link
-        ? '<a href="' + it.link + '" target="_blank" rel="noopener" class="shrink-0 text-xs font-bold text-primary">보러가기 →</a>'
-        : "";
-      return '<div class="flex items-center gap-3 border-b border-border py-3 last:border-b-0">' +
-               '<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ' +
-                 (best ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground') + '">' + (i + 1) + '</span>' +
-               '<div class="min-w-0 flex-1">' +
-                 '<p class="truncate text-sm font-bold text-foreground">' + esc(it.title || it.mall) + '</p>' +
-                 '<p class="text-[11px] text-muted-foreground">' + esc(it.mall) + (best ? ' · 최저가' : '') + '</p>' +
-               '</div>' +
-               '<span class="shrink-0 text-sm font-black tabular-nums ' + (best ? 'text-primary' : 'text-foreground') + '">' +
-                 won(it.price) + '</span>' + link +
-             '</div>';
-    }).join("") : '<p class="py-8 text-center text-xs text-subtle">결과가 없어요.</p>';
-  }
-
-  function renderInfo(d) {
-    var set = function (k, v) { var el = mk(k); if (el) el.textContent = v; };
-    set("info-title", d.title || "—");
-    set("info-species", d.species || "");
-    set("info-summary", d.summary || "");
-    set("info-source", d.source + (d.cached ? " · 캐시" : ""));
-
-    var photo = mk("info-photo");
-    if (photo) {
-      photo.innerHTML = d.photo
-        ? '<img src="' + d.photo + '" alt="" class="h-full w-full object-cover">'
-        : '<div class="flex h-full w-full items-center justify-center text-xs text-subtle">사진 없음</div>';
-    }
-    var tips = mk("info-tips");
-    if (tips) {
-      tips.innerHTML = (d.tips || []).map(function (t) {
-        return '<span class="rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-secondary-foreground">' +
-               esc(t) + '</span>';
-      }).join("");
-    }
-  }
-
-  function esc(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-
-  function searchMarket(q) {
-    var input = mk("q");
-    if (q && input) input.value = q;
-    var query = (input && input.value.trim()) || "몬스테라";
-    var list = mk("list");
-    if (list) list.innerHTML = '<p class="py-8 text-center text-xs text-subtle">가격을 모으는 중…</p>';
-
-    fetch("/api/market?q=" + encodeURIComponent(query), { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(renderMarket)
       .catch(function () {
-        renderMarket({ items: [], source: "오프라인",
-                       lowest: null, average: null, cached: false });
-      });
-
-    fetch("/api/plant-info?name=" + encodeURIComponent(query), { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(renderInfo)
-      .catch(function () {
-        renderInfo({ title: query, summary: "백엔드가 없어 정보를 불러오지 못했어요.",
-                     tips: [], source: "오프라인" });
+        demo = true;
+        setText("latency", "— ms");
+        apply(demoPayload());
       });
   }
 
-  // ── 토스트 ───────────────────────────────────────────────────────
-  var toastTimer;
-  function toast(msg) {
-    var el = document.getElementById("toast0");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "toast0";
-      el.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);" +
-        "background:var(--ink);color:var(--primary-foreground);font-weight:700;font-size:14px;" +
-        "padding:12px 20px;border-radius:14px;z-index:70;opacity:0;transition:opacity .2s;pointer-events:none";
-      document.body.appendChild(el);
-    }
-    el.textContent = msg;
-    el.style.opacity = "1";
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.style.opacity = "0"; }, 1800);
-  }
-
-  // ── 이벤트 연결 ──────────────────────────────────────────────────
+  // ── 조작 ─────────────────────────────────────────────────────────
   document.addEventListener("click", function (e) {
-    if (e.target.closest('[data-home="water"], [data-hist="water-btn"]')) {
-      e.preventDefault();
-      logWater();
+    var pause = e.target.closest('[data-act="pause"]');
+    if (pause) {
+      paused = !paused;
+      pause.textContent = paused ? "다시 재생" : "일시정지";
+      pause.classList.toggle("bg-primary", paused);
+      pause.classList.toggle("text-primary-foreground", paused);
       return;
     }
-    if (e.target.closest('[data-mk="go"]')) { e.preventDefault(); searchMarket(); return; }
-    var chip = e.target.closest("[data-q]");
-    if (chip) { e.preventDefault(); searchMarket(chip.dataset.q); return; }
+    if (e.target.closest("[data-graph-open]")) { modal(true); return; }
+    if (e.target.closest("[data-graph-close]")) { modal(false); return; }
+    var m = document.getElementById("graphModal");
+    if (m && m.style.display === "flex" && e.target === m) modal(false);
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") modal(false); });
 
-    var range = e.target.closest("[data-range]");
-    if (range) {
-      histDays = parseInt(range.dataset.range, 10) || 7;
-      $$("[data-range]").forEach(function (b) {
-        var on = b === range;
-        b.classList.toggle("bg-primary", on);
-        b.classList.toggle("text-primary-foreground", on);
-        b.classList.toggle("text-muted-foreground", !on);
-      });
-      loadHistory();
+  function modal(open) {
+    var m = document.getElementById("graphModal");
+    if (!m) return;
+    m.style.display = open ? "flex" : "none";
+    document.body.style.overflow = open ? "hidden" : "";
+    if (open) { drawWave(); }
+  }
+
+  // 지속 시간·연결 상태는 데이터가 안 와도 계속 갱신
+  setInterval(function () {
+    if (lastState) setText("duration", since(stateSince));
+    if (!demo && lastSeen && Date.now() - lastSeen > 4000) {
+      setText("source", "신호 끊김 — 재시도 중");
     }
-  });
+    if (changes.length) renderLog();
+  }, 1000);
 
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && e.target === mk("q")) { e.preventDefault(); searchMarket(); }
-  });
-
-  go("home");
   poll();
-  setInterval(poll, 700);
-  loadHistory();
-  setInterval(loadHistory, 20000);
-  loadSettings();
-  searchMarket("몬스테라");
+  setInterval(poll, POLL_MS);
 })();

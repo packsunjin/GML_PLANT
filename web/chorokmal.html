@@ -9,50 +9,47 @@
 <link rel="stylesheet" href="/static/ui.css">
 </head>
 <body class="bg-background text-foreground">
-<div class="flex min-h-screen flex-col md:flex-row">
-<aside class="sticky top-0 z-30 hidden h-screen w-64 shrink-0 flex-col justify-between border-r border-border bg-sidebar p-6 md:flex"><div class="space-y-9"><a class="group flex items-center gap-2.5 active" data-go="home" data-status="active" aria-current="page"><span class="flex items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-soft transition-transform group-hover:scale-105 h-10 w-10"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-leaf h-5 w-5" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg></span><span><span class="block font-bold leading-none tracking-tight text-foreground">초록말</span><span class="mt-0.5 block text-[9px] font-semibold tracking-[0.18em] text-subtle">PLANT TRANSLATOR</span></span></a><nav class="space-y-1.5"><a class="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition bg-primary font-bold text-primary-foreground shadow-soft active" data-go="home" data-status="active" aria-current="page"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house h-5 w-5" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>홈</a><a data-go="status" class="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition font-medium text-muted-foreground hover:bg-foreground/5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-radio h-5 w-5" aria-hidden="true"><path d="M16.247 7.761a6 6 0 0 1 0 8.478"></path><path d="M19.075 4.933a10 10 0 0 1 0 14.134"></path><path d="M4.925 19.067a10 10 0 0 1 0-14.134"></path><path d="M7.753 16.239a6 6 0 0 1 0-8.478"></path><circle cx="12" cy="12" r="2"></circle></svg>실시간 상태</a><a data-go="ranking" class="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition font-medium text-muted-foreground hover:bg-foreground/5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trophy h-5 w-5" aria-hidden="true"><path d="M10 14.66v1.626a2 2 0 0 1-.976 1.696A5 5 0 0 0 7 21.978"></path><path d="M14 14.66v1.626a2 2 0 0 0 .976 1.696A5 5 0 0 1 17 21.978"></path><path d="M18 9h1.5a1 1 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z"></path><path d="M6 9H4.5a1 1 0 0 1 0-5H6"></path></svg>케어 랭킹</a><a data-go="history" class="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition font-medium text-muted-foreground hover:bg-foreground/5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-activity h-5 w-5" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>상태 기록</a><a data-go="plants" class="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition font-medium text-muted-foreground hover:bg-foreground/5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sprout h-5 w-5" aria-hidden="true"><path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3"></path><path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4"></path><path d="M5 21h14"></path></svg>내 식물</a><a data-go="market" class="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition font-medium text-muted-foreground hover:bg-foreground/5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-store h-5 w-5" aria-hidden="true"><path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5"></path><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"></path><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"></path></svg>최저가 마켓</a></nav></div><div class="space-y-3"><div class="rounded-3xl border border-primary/15 bg-primary-soft p-3.5"><div class="mb-1 flex items-center justify-between text-xs font-bold text-primary-soft-foreground"><span class="flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wifi h-4 w-4 animate-pulse" aria-hidden="true"><path d="M12 20h.01"></path><path d="M2 8.82a15 15 0 0 1 20 0"></path><path d="M5 12.859a10 10 0 0 1 14 0"></path><path d="M8.5 16.429a5 5 0 0 1 7 0"></path></svg>센서 연결됨</span><span class="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[9px]">ONLINE</span></div><p class="text-[11px] font-medium text-muted-foreground">AD8232 · ADS1115</p><p class="mt-0.5 text-[10px] text-subtle">방금 전 동기화됨</p></div><a data-go="settings" class="flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-xs font-semibold transition text-muted-foreground hover:bg-foreground/5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings h-4 w-4" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path><circle cx="12" cy="12" r="3"></circle></svg>설정 및 계정</a></div></aside>
-<main class="flex min-w-0 flex-1 flex-col pb-24 md:pb-8">
-<header class="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/85 p-4 backdrop-blur-md md:px-8 md:py-5"><div class="md:hidden"><a class="group flex items-center gap-2.5 active" href="/" data-status="active" aria-current="page"><span class="flex items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-soft transition-transform group-hover:scale-105 h-8 w-8"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-leaf h-4 w-4" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg></span><span><span class="block font-bold leading-none tracking-tight text-foreground">초록말</span><span class="mt-0.5 block text-[9px] font-semibold tracking-[0.18em] text-subtle">PLANT TRANSLATOR</span></span></a></div><div class="hidden md:block"><p class="text-xs font-medium text-subtle">2026년 8월 4일 · 화요일</p><h2 class="text-lg font-bold text-foreground">좋은 저녁이에요, 선진님 👋</h2></div><div class="flex items-center gap-1"><button type="button" aria-label="검색" class="rounded-full p-2.5 text-muted-foreground transition hover:bg-muted active:scale-95"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search h-5 w-5" aria-hidden="true"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg></button><button type="button" aria-label="알림" class="relative rounded-full p-2.5 text-muted-foreground transition hover:bg-muted active:scale-95"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bell h-5 w-5" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg><span class="absolute right-2 top-2 h-2 w-2 rounded-full bg-destructive ring-2 ring-background"></span></button></div></header>
-<section class="screen is-on" data-screen="home"><div class="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-8"><div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">My plant monitoring</span><h1 class="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">몬스테라의 오늘</h1></div><div class="flex items-center gap-2.5 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-secondary-foreground shadow-soft"><span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-soft text-xs">🪴</span>거실 몬스테라</div></div><div class="grid grid-cols-1 gap-5 lg:grid-cols-12"><section class="flex flex-col gap-6 rounded-4xl border border-border bg-card p-5 shadow-soft md:flex-row md:p-6 lg:col-span-7"><div class="relative aspect-square w-full shrink-0 overflow-hidden rounded-3xl bg-primary-soft md:w-1/2 md:aspect-auto"><img alt="거실 몬스테라 실시간 모니터링 사진" class="h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy" src="/static/img/photo-1614594975525.jpg"><span class="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-ink/70 px-3 py-1 text-[11px] font-semibold text-primary-foreground backdrop-blur-md"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-signal"></span>실시간 감지 중</span></div><div class="flex flex-1 flex-col justify-between gap-4"><div><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-semibold tracking-wide text-subtle">현재 식물의 마음</p><h2 class="mt-1 text-2xl font-black tracking-tight text-foreground" data-home="mind">“목이 말라요”</h2><p class="mt-1.5 text-xs leading-relaxed text-muted-foreground" data-home="desc">수분부족 신호가 감지됐어요. 흙을 촉촉하게 적셔주세요.</p></div><div class="relative flex h-16 w-16 shrink-0 items-center justify-center"><svg viewBox="0 0 36 36" class="h-full w-full -rotate-90"><path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-width="3.5" class="stroke-muted"></path><path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="24, 100" class="stroke-destructive"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-droplets absolute h-4 w-4 text-destructive" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"></path><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"></path></svg></div></div><div class="my-3 grid grid-cols-3 gap-2 border-y border-border py-4"><div class=""><p class="text-[11px] font-medium text-subtle">토양 수분</p><p class="mt-0.5 text-lg font-bold text-foreground">24<span class="text-xs font-normal text-muted-foreground">%</span></p></div><div class="border-l border-border pl-3"><p class="text-[11px] font-medium text-subtle">실내 온도</p><p class="mt-0.5 text-lg font-bold text-foreground">24.5<span class="text-xs font-normal text-muted-foreground">°C</span></p></div><div class="border-l border-border pl-3"><p class="text-[11px] font-medium text-subtle">신호 품질</p><p class="mt-0.5 text-lg font-bold text-foreground">97<span class="text-xs font-normal text-muted-foreground">%</span></p></div></div></div><div class="space-y-2"><button type="button" data-home="water" class="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-sm font-bold text-primary-foreground shadow-soft transition hover:bg-primary-hover active:scale-[0.98]"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-droplet h-4 w-4" aria-hidden="true"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path></svg>물주기 기록하기</button><p class="text-center text-[10px] font-medium text-subtle">권장 급수량 250-300ml · 화분 밑으로 물이 배수될 때까지</p></div></div></section><section class="flex flex-col justify-between gap-5 rounded-4xl border border-warning-soft-border bg-warning-soft p-6 lg:col-span-5"><div><div class="flex items-center justify-between gap-2"><span class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-warning-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles h-4 w-4" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><path d="M20 2v4"></path><path d="M22 4h-4"></path><circle cx="4" cy="20" r="2"></circle></svg>Monstera AI tip</span><span class="rounded-full bg-warning/25 px-2.5 py-0.5 text-[10px] font-extrabold text-warning-foreground">실시간 맞춤 처방</span></div><h3 class="mt-3 text-base font-bold leading-snug text-foreground">잎끝이 살짝 말랐다면,<br>공중 습도도 함께 점검해 보세요.</h3><p class="mt-2.5 text-xs leading-relaxed text-muted-foreground">몬스테라는 공기가 건조해지면 증산작용이 줄어 잎끝이 갈색으로 타들어 갑니다. 급수 후 잎 주위에 미분무해 습도를 50~60%로 맞춰주면 활력을 되찾습니다.</p></div><div><p class="mb-2 text-[11px] font-bold text-muted-foreground">지금 필요한 케어</p><div class="flex flex-wrap gap-2"><span class="rounded-full border border-warning-soft-border bg-card/80 px-3 py-1.5 text-xs font-semibold text-secondary-foreground">💧 흙 충분히 적시기</span><span class="rounded-full border border-warning-soft-border bg-card/80 px-3 py-1.5 text-xs font-semibold text-secondary-foreground">💨 습도 50~60% 유지</span></div></div></section><section class="space-y-4 rounded-4xl border border-border bg-card p-6 shadow-soft lg:col-span-7"><div class="flex items-center justify-between gap-3"><div><span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">AD8232 biopotential</span><h3 class="text-base font-bold text-foreground">식물 전기신호 실시간 시각화</h3></div><span class="flex items-center gap-1.5 rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-activity h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>전위신호 (mV)</span></div><div class="relative overflow-hidden rounded-3xl bg-signal-bg p-4"><svg viewBox="0 0 288 80" class="h-40 w-full" preserveAspectRatio="none"><polyline data-home="wave" points="0,18 4,32.46 8,27.23 12,25.49 16,26.75 20,29.31 24,31.24 28,31.55 32,30.71 36,30.37 40,32.28 44,37.2 48,44.33 52,51.54 56,56.47 60,57.65 64,55.28 68,50.98 72,46.91 76,44.53 80,43.87 84,43.65 88,42.08 92,16.09 96,32.09 100,25.86 104,21.73 108,21.35 112,24.82 116,30.63 120,36.5 124,40.57 128,42.29 132,42.64 136,43.35 140,45.81 144,50.11 148,54.84 152,57.86 156,57.39 160,53.07 164,46.19 168,39.07 172,33.89 176,31.61 180,31.61 184,10.19 188,31.68 192,29.5 196,26.56 200,24.75 204,25.9 208,30.64 212,37.97 216,45.64 220,51.29 224,53.6 228,52.87 232,50.7 236,49.03 240,48.94 244,50.04 248,50.76 252,49.27 256,44.66 260,37.6 264,30.12 268,24.64 272,22.76 276,2.49 280,28.32 284,32.14" fill="none" stroke="var(--color-signal)" stroke-width="1.5" stroke-linejoin="round"></polyline></svg><div class="mt-2 flex items-center justify-between font-mono text-[10px] text-signal/70"><span>GAIN ×1100 · 60Hz NOTCH</span><span>PEAK 0.42 mV</span></div></div><div class="grid grid-cols-3 gap-3"><div class="rounded-2xl bg-muted px-3 py-2.5"><p class="text-[10px] font-medium text-subtle">평균 전위</p><p class="text-sm font-bold text-foreground">0.18 mV</p></div><div class="rounded-2xl bg-muted px-3 py-2.5"><p class="text-[10px] font-medium text-subtle">스파이크</p><p class="text-sm font-bold text-foreground">2회 / 1h</p></div><div class="rounded-2xl bg-muted px-3 py-2.5"><p class="text-[10px] font-medium text-subtle">샘플레이트</p><p class="text-sm font-bold text-foreground">860 SPS</p></div></div></section><section class="flex flex-col justify-between gap-4 rounded-4xl border border-border bg-accent p-6 lg:col-span-5"><div><span class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-accent-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-store h-4 w-4" aria-hidden="true"><path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5"></path><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"></path><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"></path></svg>전국 최저가</span><h3 class="mt-3 text-base font-bold leading-snug text-foreground">스투키 산세베리아 최저가가<br>이번 주 21% 내려갔어요.</h3><div class="mt-3 flex items-baseline gap-2"><span class="text-2xl font-black text-primary">9,800원</span><span class="text-xs text-subtle line-through">14,200원</span></div><p class="mt-1 text-xs text-muted-foreground">청주 육거리 화원 · 충북 청주</p></div><a data-go="market" class="flex items-center justify-center rounded-2xl bg-primary py-3 text-sm font-bold text-primary-foreground transition hover:bg-primary-hover">최저가 마켓 보기</a></section></div><section class="flex items-center gap-3 rounded-3xl border border-destructive/20 bg-destructive-soft px-5 py-4"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-thermometer h-5 w-5 shrink-0 text-destructive" aria-hidden="true"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path></svg><p class="text-xs font-medium text-muted-foreground"><span class="font-bold text-foreground">베란다 올리브</span>의 야간 온도가 19.4°C까지 떨어졌어요. 창가에서 조금 안쪽으로 옮겨주세요.</p></section></div></section><section class="screen" data-screen="status"><div class="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-8">
 
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-    <div>
-      <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Live status</span>
-      <h1 class="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">거실 몬스테라 · 실시간 상태</h1>
+<div class="mx-auto w-full max-w-6xl space-y-5 p-4 md:p-8">
+
+  <!-- 헤더 -->
+  <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-3">
+      <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary shadow-soft">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#eaf5e6" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path>
+          <path d="M2 21c0-3 1.85-5.36 5.08-6"></path>
+        </svg>
+      </span>
+      <div>
+        <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-subtle">Plant translator</p>
+        <h1 class="text-xl font-extrabold tracking-tight text-foreground md:text-2xl">실시간 식물 상태</h1>
+      </div>
     </div>
-    <div class="flex items-center gap-2.5 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-secondary-foreground shadow-soft">
-      <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-signal"></span><span data-live="source">센서 연결됨 · 대기 중</span>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="flex items-center gap-2 rounded-2xl border border-border bg-card px-3.5 py-2 text-xs font-bold text-secondary-foreground shadow-soft">
+        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-signal"></span><span data-live="source">연결 확인 중</span>
+      </span>
+      <span class="rounded-2xl border border-border bg-card px-3.5 py-2 text-xs font-bold tabular-nums text-secondary-foreground shadow-soft"
+            data-live="latency">— ms</span>
     </div>
-  </div>
+  </header>
 
-  <!-- ── 현재 상태 ─────────────────────────────────────────────── -->
-  <section class="relative rounded-4xl border border-border bg-card p-6 shadow-soft md:p-10">
+  <!-- 경고 배너 (자극·꺾임일 때만) -->
+  <section data-live="alert-banner" style="display:none"
+           class="flex items-center gap-3 rounded-3xl border px-5 py-4">
+    <span class="text-lg" data-live="alert-icon">⚡</span>
+    <p class="text-sm font-medium text-muted-foreground" data-live="alert-text"></p>
+  </section>
 
-    <!-- 펼치기 (테두리 없이 오른쪽 위) -->
-    <button type="button" data-graph-open
-            class="absolute right-5 top-5 text-xs font-bold text-subtle transition hover:text-foreground">펼치기 ⤢</button>
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
 
-    <div class="flex flex-col items-center">
-
-      <!-- 온도 · 원 · 습도 -->
-      <div class="flex w-full items-center justify-center gap-4">
-
-        <div class="flex flex-1 justify-center" data-wide-only>
-          <div style="width:100%;max-width:190px">
-            <div class="flex items-baseline justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">온도</span>
-              <span class="text-lg font-black tracking-tight text-foreground tabular-nums">24.5<span class="text-xs font-bold text-muted-foreground">°C</span></span>
-            </div>
-            <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-              <span style="position:absolute;top:0;bottom:0;left:32%;width:24%;border-radius:999px;background:color-mix(in srgb, var(--warning) 34%, transparent)"></span>
-              <span style="position:absolute;top:50%;left:58%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--warning);border:3px solid var(--card)"></span>
-            </div>
-            <p class="mt-2 text-[11px] font-medium text-subtle">적정 18–24°C</p>
-          </div>
-        </div>
-
+    <!-- 상태 원 -->
+    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft md:p-8 lg:col-span-7">
+      <div class="flex flex-col items-center">
         <div class="relative flex shrink-0 items-center justify-center" data-state-scope
-             style="width:min(320px,74vw);aspect-ratio:1;--state:var(--water);--state-deep:var(--water-deep);--state-soft:var(--water-soft)">
+             style="width:min(300px,72vw);aspect-ratio:1;--state:var(--primary);--state-deep:var(--primary-hover);--state-soft:var(--primary-soft)">
           <svg viewBox="0 0 36 36" class="h-full w-full -rotate-90">
             <defs>
               <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
@@ -60,334 +57,172 @@
                 <stop offset="100%" stop-color="var(--state-deep)"></stop>
               </linearGradient>
             </defs>
-            <!-- 상태 원: 항상 꽉 찬 고정 원 -->
             <circle cx="18" cy="18" r="12.9" fill="var(--state-soft)"></circle>
             <circle cx="18" cy="18" r="14.4" fill="none" stroke="url(#ringGrad)" stroke-width="3"></circle>
-            <!-- 확신도: 360° 얇은 반투명 선 (r=17.3 → 둘레 108.7) -->
             <circle cx="18" cy="18" r="17.3" fill="none" stroke="var(--border)" stroke-width="0.8"></circle>
             <circle cx="18" cy="18" r="17.3" fill="none" stroke="var(--state-deep)" data-live="ring"
                     stroke-width="0.8" stroke-linecap="round" stroke-opacity="0.42"
-                    stroke-dasharray="102.9 108.7"></circle>
+                    stroke-dasharray="0 108.7"></circle>
           </svg>
           <div class="absolute flex flex-col items-center">
             <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">분류 결과</span>
             <span class="mt-2 font-black tracking-tight text-foreground" data-live="state"
-                  style="font-size:clamp(26px,4.4vw,44px);white-space:nowrap">수분부족</span>
-            <span class="mt-1.5 text-sm font-bold tabular-nums" data-live="conf" style="color:var(--state-deep)">확신도 94.7%</span>
-            <span class="mt-0.5 text-[11px] font-medium text-subtle">최근 5회 예측 다수결</span>
+                  style="font-size:clamp(26px,4.4vw,42px);white-space:nowrap">대기 중</span>
+            <span class="mt-1.5 text-sm font-bold tabular-nums" data-live="conf" style="color:var(--state-deep)">확신도 —</span>
+            <span class="mt-0.5 text-[11px] font-medium text-subtle" data-live="duration">—</span>
           </div>
         </div>
 
-        <div class="flex flex-1 justify-center" data-wide-only>
-          <div style="width:100%;max-width:190px">
-            <div class="flex items-baseline justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">습도</span>
-              <span class="text-lg font-black tracking-tight text-foreground tabular-nums">32<span class="text-xs font-bold text-muted-foreground">%</span></span>
+        <div class="mt-6 grid w-full grid-cols-3 gap-2 border-t border-border pt-5">
+          <div class="text-center">
+            <p class="text-[11px] font-medium text-subtle">최근 1분 안정도</p>
+            <p class="mt-0.5 text-lg font-black tabular-nums text-foreground" data-live="stability">—</p>
+          </div>
+          <div class="border-l border-border text-center">
+            <p class="text-[11px] font-medium text-subtle">상태 변화</p>
+            <p class="mt-0.5 text-lg font-black tabular-nums text-foreground" data-live="changes">—</p>
+          </div>
+          <div class="border-l border-border text-center">
+            <p class="text-[11px] font-medium text-subtle">신호 품질</p>
+            <p class="mt-0.5 text-lg font-black tabular-nums text-foreground" data-live="quality">—</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 확률 + 확신도 추이 -->
+    <section class="flex flex-col gap-5 lg:col-span-5">
+      <div class="rounded-4xl border border-border bg-card p-6 shadow-soft">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Class probability</span>
+            <h3 class="text-base font-bold text-foreground">상태별 확률</h3>
+          </div>
+        </div>
+        <div class="mt-4 space-y-3" data-live="probs">
+          <div data-cls="정상">
+            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>정상</span><span class="tabular-nums text-foreground" data-val>—</span>
             </div>
-            <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-              <span style="position:absolute;top:0;bottom:0;left:45%;width:25%;border-radius:999px;background:color-mix(in srgb, var(--water) 26%, transparent)"></span>
-              <span style="position:absolute;top:50%;left:32%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--water);border:3px solid var(--card)"></span>
+            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--primary);transition:width .3s"></div>
             </div>
-            <p class="mt-2 text-[11px] font-medium text-subtle">적정 45–70%</p>
+          </div>
+          <div data-cls="수분부족">
+            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>수분부족</span><span class="tabular-nums text-foreground" data-val>—</span>
+            </div>
+            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--water);transition:width .3s"></div>
+            </div>
+          </div>
+          <div data-cls="자극">
+            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>자극</span><span class="tabular-nums text-foreground" data-val>—</span>
+            </div>
+            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--warning);transition:width .3s"></div>
+            </div>
+          </div>
+          <div data-cls="꺾임">
+            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>꺾임</span><span class="tabular-nums text-foreground" data-val>—</span>
+            </div>
+            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--destructive);transition:width .3s"></div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- 좁은 화면: 온·습도 -->
-      <div class="mt-6 w-full space-y-4" data-narrow-only style="max-width:420px">
-        <div>
-          <div class="flex items-baseline justify-between">
-            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">온도</span>
-            <span class="text-lg font-black tracking-tight text-foreground tabular-nums">24.5<span class="text-xs font-bold text-muted-foreground">°C</span></span>
-          </div>
-          <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-            <span style="position:absolute;top:0;bottom:0;left:32%;width:24%;border-radius:999px;background:color-mix(in srgb, var(--warning) 34%, transparent)"></span>
-            <span style="position:absolute;top:50%;left:58%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--warning);border:3px solid var(--card)"></span>
-          </div>
-          <p class="mt-2 text-[11px] font-medium text-subtle">적정 18–24°C</p>
-        </div>
-        <div>
-          <div class="flex items-baseline justify-between">
-            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">습도</span>
-            <span class="text-lg font-black tracking-tight text-foreground tabular-nums">32<span class="text-xs font-bold text-muted-foreground">%</span></span>
-          </div>
-          <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-            <span style="position:absolute;top:0;bottom:0;left:45%;width:25%;border-radius:999px;background:color-mix(in srgb, var(--water) 26%, transparent)"></span>
-            <span style="position:absolute;top:50%;left:32%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--water);border:3px solid var(--card)"></span>
-          </div>
-          <p class="mt-2 text-[11px] font-medium text-subtle">적정 45–70%</p>
-        </div>
+      <div class="rounded-4xl border border-border bg-card p-6 shadow-soft">
+        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Confidence trend</span>
+        <h3 class="text-base font-bold text-foreground">확신도 추이 <span class="text-xs font-medium text-subtle">최근 1분</span></h3>
+        <canvas data-live="trend" width="560" height="120" class="mt-3 w-full" style="height:96px"></canvas>
       </div>
+    </section>
 
-      <!-- TIP · 알림 (나란히) -->
-      <div class="mt-7 flex flex-wrap items-center justify-center gap-2">
-        <button type="button" data-go="history"
-                class="inline-flex items-center gap-2 rounded-full px-4 py-2 transition"
-                style="background:color-mix(in srgb, var(--water-soft) 70%, transparent);border:1px solid var(--water-soft-border)">
-          <span class="text-xs font-bold" data-live="tipTitle" style="white-space:nowrap;color:var(--state-deep,var(--water-deep))">수분부족 TIP</span>
-          <span class="text-xs text-muted-foreground" data-live="tipBody" style="white-space:nowrap">흙이 마르면 흠뻑 주세요</span>
-          <span class="text-xs font-bold" style="white-space:nowrap;color:var(--water-deep)">→</span>
-        </button>
-
-        <button type="button" data-go="history"
-                class="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 transition hover:bg-border">
-          <span class="text-xs text-muted-foreground" data-live="alert1" style="white-space:nowrap">방금 · <b class="text-foreground">수분부족</b> 감지</span>
-          <span class="text-xs font-bold text-subtle">→</span>
-        </button>
-
-        <button type="button" data-go="history"
-                class="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 transition hover:bg-border">
-          <span class="text-xs text-muted-foreground" style="white-space:nowrap">어제 21:10 · <b class="text-foreground">정상</b> 회복</span>
-          <span class="text-xs font-bold text-subtle">→</span>
-        </button>
-      </div>
-
-      <!-- 하단 좌우: 전위신호 · 스펙트로그램 -->
-      <div class="mt-8 flex w-full flex-col gap-4 sm:flex-row">
-        <div class="flex-1">
-          <p class="mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">전위신호</p>
-          <div class="overflow-hidden rounded-2xl bg-signal-bg px-3 py-2">
-            <svg viewBox="0 0 288 80" class="w-full" preserveAspectRatio="none" data-wave style="height:54px">
-              <polyline data-live="wave" points="" fill="none" stroke="var(--color-signal)" stroke-width="1.6" stroke-linejoin="round"></polyline>
-            </svg>
-          </div>
-        </div>
-        <div class="flex-1">
-          <p class="mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">스펙트로그램</p>
-          <div class="overflow-hidden rounded-2xl bg-signal-bg px-3 py-2">
-            <canvas width="288" height="80" data-spec data-live="spec" class="w-full rounded-lg"
-                    style="height:54px;image-rendering:pixelated"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── 상태별 확률 ───────────────────────────────────────────── -->
-  <section class="flex flex-col gap-4 rounded-4xl border border-border bg-card p-6 shadow-soft">
-    <div>
-      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Class probability</span>
-      <h3 class="text-base font-bold text-foreground">상태별 확률</h3>
-    </div>
-    <div class="space-y-3">
-      <div data-cls="정상">
-        <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-          <span>정상</span><span class="tabular-nums text-foreground" data-val>0.0%</span>
-        </div>
-        <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div class="h-full rounded-full" data-bar style="width:0%;background:var(--primary)"></div>
-        </div>
-      </div>
-      <div data-cls="수분부족">
-        <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-          <span>수분부족</span><span class="tabular-nums text-foreground" data-val>0.0%</span>
-        </div>
-        <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div class="h-full rounded-full" data-bar style="width:0%;background:var(--water)"></div>
-        </div>
-      </div>
-      <div data-cls="자극">
-        <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-          <span>자극</span><span class="tabular-nums text-foreground" data-val>0.0%</span>
-        </div>
-        <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div class="h-full rounded-full" data-bar style="width:0%;background:var(--warning)"></div>
-        </div>
-      </div>
-      <div data-cls="꺾임">
-        <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-          <span>꺾임</span><span class="tabular-nums text-foreground" data-val>0.0%</span>
-        </div>
-        <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div class="h-full rounded-full" data-bar style="width:0%;background:var(--destructive)"></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── 그래프 팝업 ───────────────────────────────────────────── -->
-  <div id="graphModal" style="display:none;position:fixed;inset:0;z-index:60;align-items:center;justify-content:center;padding:16px;background:color-mix(in srgb, var(--ink) 62%, transparent);backdrop-filter:blur(4px)">
-    <div class="rounded-4xl border border-border bg-card p-6 shadow-soft" style="width:100%;max-width:920px;max-height:92vh;overflow:auto">
+    <!-- 전위신호 -->
+    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft lg:col-span-8">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Raw signal</span>
-          <h3 class="text-base font-bold text-foreground">전위신호 · 스펙트로그램</h3>
+          <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">AD8232 biopotential</span>
+          <h3 class="text-base font-bold text-foreground">전위신호 · 실시간</h3>
         </div>
+        <div class="flex items-center gap-2">
+          <button type="button" data-act="pause"
+                  class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">일시정지</button>
+          <button type="button" data-graph-open
+                  class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">크게 보기</button>
+        </div>
+      </div>
+      <div class="mt-4 overflow-hidden rounded-3xl bg-signal-bg p-4">
+        <canvas data-live="wave" width="1120" height="300" class="w-full" style="height:220px"></canvas>
+        <div class="mt-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] text-signal/70">
+          <span data-live="wave-meta">250 SPS · BAND 0.5–45 Hz</span>
+          <span data-live="wave-peak">PEAK —</span>
+        </div>
+      </div>
+      <div class="mt-4 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+        <div class="rounded-2xl bg-muted px-3 py-2.5">
+          <p class="text-[10px] font-medium text-subtle">평균 전위</p>
+          <p class="text-sm font-bold tabular-nums text-foreground" data-live="mean">—</p>
+        </div>
+        <div class="rounded-2xl bg-muted px-3 py-2.5">
+          <p class="text-[10px] font-medium text-subtle">표준편차</p>
+          <p class="text-sm font-bold tabular-nums text-foreground" data-live="std">—</p>
+        </div>
+        <div class="rounded-2xl bg-muted px-3 py-2.5">
+          <p class="text-[10px] font-medium text-subtle">피크-피크</p>
+          <p class="text-sm font-bold tabular-nums text-foreground" data-live="p2p">—</p>
+        </div>
+        <div class="rounded-2xl bg-muted px-3 py-2.5">
+          <p class="text-[10px] font-medium text-subtle">스파이크</p>
+          <p class="text-sm font-bold tabular-nums text-foreground" data-live="spikes">—</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 스펙트로그램 -->
+    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft lg:col-span-4">
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Spectrogram</span>
+      <h3 class="text-base font-bold text-foreground">스펙트로그램</h3>
+      <div class="mt-3 overflow-hidden rounded-3xl bg-signal-bg p-3">
+        <canvas data-live="spec" width="288" height="180" class="w-full rounded-2xl"
+                style="height:180px;image-rendering:pixelated"></canvas>
+        <p class="mt-2 font-mono text-[10px] text-signal/70">0–45 Hz · 밝을수록 강함</p>
+      </div>
+    </section>
+
+    <!-- 상태 변화 로그 -->
+    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft" style="grid-column:1/-1">
+      <h3 class="text-base font-bold text-foreground">상태 변화 기록</h3>
+      <div class="mt-3" data-live="log">
+        <p class="py-6 text-center text-xs text-subtle">상태가 바뀌면 여기에 쌓입니다.</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- 그래프 팝업 -->
+  <div id="graphModal" style="display:none;position:fixed;inset:0;z-index:60;align-items:center;justify-content:center;padding:16px;background:color-mix(in srgb, var(--ink) 62%, transparent);backdrop-filter:blur(4px)">
+    <div class="rounded-4xl border border-border bg-card p-6 shadow-soft" style="width:100%;max-width:1000px;max-height:92vh;overflow:auto">
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="text-base font-bold text-foreground">전위신호 · 스펙트로그램</h3>
         <button type="button" data-graph-close
                 class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">닫기 ✕</button>
       </div>
-
       <div class="mt-4 overflow-hidden rounded-3xl bg-signal-bg p-4">
-        <svg viewBox="0 0 288 80" class="w-full" preserveAspectRatio="none" data-wave style="height:230px">
-          <polyline points="" fill="none" stroke="var(--color-signal)" stroke-width="1.2" stroke-linejoin="round"></polyline>
-        </svg>
-        <p class="mt-2 font-mono text-[10px] text-signal/70">전위신호 (mV)</p>
+        <canvas data-live="wave-big" width="1600" height="440" class="w-full" style="height:320px"></canvas>
       </div>
-
       <div class="mt-4 overflow-hidden rounded-3xl bg-signal-bg p-4">
-        <canvas width="288" height="80" data-spec class="w-full rounded-2xl"
-                style="height:230px;image-rendering:pixelated"></canvas>
-        <p class="mt-2 font-mono text-[10px] text-signal/70">스펙트로그램</p>
+        <canvas data-live="spec-big" width="576" height="300" class="w-full rounded-2xl"
+                style="height:280px;image-rendering:pixelated"></canvas>
       </div>
     </div>
   </div>
 
 </div>
-</section><section class="screen" data-screen="ranking"><div class="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-8"><div><span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Care ranking</span><h1 class="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">누가 가장 꾸준히 돌봤을까?</h1></div><section class="grid gap-4 sm:grid-cols-3"><article class="relative overflow-hidden rounded-4xl border p-5 shadow-soft border-primary/30 bg-primary-soft sm:order-2 sm:-mt-2  "><div class="flex items-center justify-between"><span class="flex items-center gap-1.5 text-sm font-extrabold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-crown h-4 w-4 text-primary" aria-hidden="true"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"></path><path d="M5 21h14"></path></svg>1위</span><span class="flex items-center gap-0.5 text-[11px] font-bold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-up h-3 w-3" aria-hidden="true"><path d="M16 7h6v6"></path><path d="m22 7-8.5 8.5-5-5L2 17"></path></svg>1</span></div><p class="mt-3 text-3xl">🌿</p><p class="mt-1.5 text-base font-bold text-foreground">초록손끝</p><p class="text-[11px] text-subtle">서울 마포</p><p class="mt-3 flex items-baseline gap-1 font-mono text-2xl font-extrabold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flame h-5 w-5" aria-hidden="true"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"></path></svg>128<span class="font-sans text-[11px] font-bold text-muted-foreground">일 연속</span></p><p class="mt-1 text-[11px] text-muted-foreground">누적 512회 · 식물 9개</p><span class="mt-3 inline-block rounded-full px-2.5 py-1 text-[10px] font-bold bg-destructive-soft text-destructive">연속왕</span></article><article class="relative overflow-hidden rounded-4xl border p-5 shadow-soft border-border bg-card sm:order-1 "><div class="flex items-center justify-between"><span class="flex items-center gap-1.5 text-sm font-extrabold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-medal h-4 w-4 text-muted-foreground" aria-hidden="true"><path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"></path><path d="M11 12 5.12 2.2"></path><path d="m13 12 5.88-9.8"></path><path d="M8 7h8"></path><circle cx="12" cy="17" r="5"></circle><path d="M12 18v-2h-.5"></path></svg>2위</span><span class="flex items-center gap-0.5 text-[11px] font-bold text-destructive"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-down h-3 w-3" aria-hidden="true"><path d="M16 17h6v-6"></path><path d="m22 17-8.5-8.5-5 5L2 7"></path></svg>1</span></div><p class="mt-3 text-3xl">🪴</p><p class="mt-1.5 text-base font-bold text-foreground">몬스테라덕후</p><p class="text-[11px] text-subtle">경기 성남</p><p class="mt-3 flex items-baseline gap-1 font-mono text-2xl font-extrabold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flame h-5 w-5" aria-hidden="true"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"></path></svg>97<span class="font-sans text-[11px] font-bold text-muted-foreground">일 연속</span></p><p class="mt-1 text-[11px] text-muted-foreground">누적 486회 · 식물 12개</p><span class="mt-3 inline-block rounded-full px-2.5 py-1 text-[10px] font-bold bg-primary text-primary-foreground">물주기신</span></article><article class="relative overflow-hidden rounded-4xl border p-5 shadow-soft border-border bg-card  sm:order-3"><div class="flex items-center justify-between"><span class="flex items-center gap-1.5 text-sm font-extrabold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-medal h-4 w-4 text-muted-foreground" aria-hidden="true"><path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"></path><path d="M11 12 5.12 2.2"></path><path d="m13 12 5.88-9.8"></path><path d="M8 7h8"></path><circle cx="12" cy="17" r="5"></circle><path d="M12 18v-2h-.5"></path></svg>3위</span><span class="flex items-center gap-0.5 text-[11px] font-bold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-up h-3 w-3" aria-hidden="true"><path d="M16 7h6v6"></path><path d="m22 7-8.5 8.5-5-5L2 17"></path></svg>2</span></div><p class="mt-3 text-3xl">🌵</p><p class="mt-1.5 text-base font-bold text-foreground">베란다정원사</p><p class="text-[11px] text-subtle">부산 해운대</p><p class="mt-3 flex items-baseline gap-1 font-mono text-2xl font-extrabold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flame h-5 w-5" aria-hidden="true"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"></path></svg>84<span class="font-sans text-[11px] font-bold text-muted-foreground">일 연속</span></p><p class="mt-1 text-[11px] text-muted-foreground">누적 401회 · 식물 7개</p><span class="mt-3 inline-block rounded-full px-2.5 py-1 text-[10px] font-bold bg-primary-soft text-primary-soft-foreground">정원사</span></article></section><section class="rounded-4xl border border-border bg-card p-5 shadow-soft md:p-6"><h2 class="text-sm font-bold text-foreground">전체 랭킹</h2><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead><tr class="text-[11px] font-bold uppercase tracking-wider text-subtle"><th class="pb-3">순위</th><th class="pb-3">사용자</th><th class="pb-3">연속</th><th class="pb-3">최고</th><th class="pb-3">누적 케어</th><th class="pb-3">배지</th></tr></thead><tbody class="divide-y divide-border"><tr><td class="py-3"><span class="flex items-center gap-2 font-bold text-foreground">4<span class="flex items-center gap-0.5 text-[11px] font-bold text-destructive"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-down h-3 w-3" aria-hidden="true"><path d="M16 17h6v-6"></path><path d="m22 17-8.5-8.5-5 5L2 7"></path></svg>1</span></span></td><td class="py-3"><span class="font-semibold text-foreground">🫒 올리브사랑</span><span class="block text-[11px] text-subtle">제주 제주시</span></td><td class="py-3 font-mono font-bold text-primary">71일</td><td class="py-3 font-mono text-muted-foreground">88일</td><td class="py-3 text-muted-foreground">355회</td><td class="py-3"><span class="rounded-full px-2 py-0.5 text-[10px] font-bold bg-muted text-muted-foreground">꾸준함</span></td></tr><tr><td class="py-3"><span class="flex items-center gap-2 font-bold text-foreground">5<span class="flex items-center gap-0.5 text-[11px] font-bold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-up h-3 w-3" aria-hidden="true"><path d="M16 7h6v6"></path><path d="m22 7-8.5 8.5-5-5L2 17"></path></svg>4</span></span></td><td class="py-3"><span class="font-semibold text-foreground">💧 물조리개</span><span class="block text-[11px] text-subtle">대구 수성</span></td><td class="py-3 font-mono font-bold text-primary">63일</td><td class="py-3 font-mono text-muted-foreground">63일</td><td class="py-3 text-muted-foreground">298회</td><td class="py-3"><span class="rounded-full px-2 py-0.5 text-[10px] font-bold bg-warning-soft text-warning-foreground">새싹러너</span></td></tr><tr><td class="py-3"><span class="flex items-center gap-2 font-bold text-foreground">6<span class="flex items-center gap-0.5 text-[11px] font-bold text-destructive"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-down h-3 w-3" aria-hidden="true"><path d="M16 17h6v-6"></path><path d="m22 17-8.5-8.5-5 5L2 7"></path></svg>2</span></span></td><td class="py-3"><span class="font-semibold text-foreground">🍃 잎사귀킴</span><span class="block text-[11px] text-subtle">인천 연수</span></td><td class="py-3 font-mono font-bold text-primary">52일</td><td class="py-3 font-mono text-muted-foreground">79일</td><td class="py-3 text-muted-foreground">264회</td><td class="py-3"><span class="rounded-full px-2 py-0.5 text-[10px] font-bold bg-muted text-muted-foreground">꾸준함</span></td></tr><tr class="bg-accent/60"><td class="py-3"><span class="flex items-center gap-2 font-bold text-foreground">7<span class="flex items-center gap-0.5 text-[11px] font-bold text-subtle"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus h-3 w-3" aria-hidden="true"><path d="M5 12h14"></path></svg></span></span></td><td class="py-3"><span class="font-semibold text-foreground">🌱 선진의정원</span><span class="block text-[11px] text-subtle">서울 서초</span></td><td class="py-3 font-mono font-bold text-primary">41일</td><td class="py-3 font-mono text-muted-foreground">55일</td><td class="py-3 text-muted-foreground">218회</td><td class="py-3"><span class="rounded-full px-2 py-0.5 text-[10px] font-bold bg-warning-soft text-warning-foreground">새싹러너</span></td></tr><tr><td class="py-3"><span class="flex items-center gap-2 font-bold text-foreground">8<span class="flex items-center gap-0.5 text-[11px] font-bold text-destructive"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trending-down h-3 w-3" aria-hidden="true"><path d="M16 17h6v-6"></path><path d="m22 17-8.5-8.5-5 5L2 7"></path></svg>2</span></span></td><td class="py-3"><span class="font-semibold text-foreground">☀️ 햇살한줌</span><span class="block text-[11px] text-subtle">광주 서구</span></td><td class="py-3 font-mono font-bold text-primary">33일</td><td class="py-3 font-mono text-muted-foreground">47일</td><td class="py-3 text-muted-foreground">190회</td><td class="py-3"><span class="rounded-full px-2 py-0.5 text-[10px] font-bold bg-muted text-muted-foreground">꾸준함</span></td></tr></tbody></table></div></section><section class="rounded-4xl border border-primary/20 bg-primary-soft p-5 shadow-soft md:p-6"><div class="flex flex-wrap items-end justify-between gap-3"><div><span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">My streak</span><h2 class="mt-1 text-lg font-extrabold text-foreground">선진의정원 · 현재 7위</h2></div><p class="flex items-center gap-1.5 font-mono text-2xl font-extrabold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flame h-6 w-6" aria-hidden="true"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"></path></svg>41일 연속</p></div><div class="mt-4 grid gap-3 sm:grid-cols-3"><div class="rounded-2xl bg-card p-3.5"><p class="text-[11px] font-semibold text-subtle">최고 연속</p><p class="mt-0.5 text-base font-bold text-foreground">55일</p></div><div class="rounded-2xl bg-card p-3.5"><p class="text-[11px] font-semibold text-subtle">누적 케어</p><p class="mt-0.5 text-base font-bold text-foreground">218회</p></div><div class="rounded-2xl bg-card p-3.5"><p class="text-[11px] font-semibold text-subtle">주간 목표</p><p class="mt-0.5 text-base font-bold text-foreground">5/7회</p></div></div><div class="mt-4"><div class="mb-1.5 flex items-center justify-between text-[11px] font-semibold text-muted-foreground"><span class="flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sprout h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3"></path><path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4"></path><path d="M5 21h14"></path></svg>다음 배지까지 9일</span><span class="font-mono">82%</span></div><div class="h-2.5 w-full overflow-hidden rounded-full bg-card"><div class="h-full rounded-full bg-primary" style="width: 82%;"></div></div></div></section></div></section><section class="screen" data-screen="history"><div class="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-8">
 
-  <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-    <div>
-      <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Weekly report</span>
-      <h1 class="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">이번 주 식물의 컨디션</h1>
-    </div>
-    <div class="flex items-center gap-1.5 rounded-2xl border border-border bg-card p-1 text-xs font-bold shadow-soft">
-      <button type="button" data-range="7" class="rounded-xl bg-primary px-3 py-1.5 text-primary-foreground">7일</button>
-      <button type="button" data-range="14" class="rounded-xl px-3 py-1.5 text-muted-foreground transition hover:bg-muted">14일</button>
-      <button type="button" data-range="30" class="rounded-xl px-3 py-1.5 text-muted-foreground transition hover:bg-muted">30일</button>
-    </div>
-  </div>
-
-  <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
-
-    <!-- 일별 상태 -->
-    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft lg:col-span-8">
-      <div class="flex items-center justify-between gap-3">
-        <h3 class="text-base font-bold text-foreground">일별 감지 상태</h3>
-        <span class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground">기록 기반</span>
-      </div>
-      <div class="mt-6 flex items-end gap-2" style="height:210px" data-hist="bars">
-        <p class="w-full text-center text-xs text-subtle">기록을 불러오는 중…</p>
-      </div>
-      <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] font-medium text-muted-foreground">
-        <span class="flex items-center gap-1.5"><span style="width:10px;height:10px;border-radius:3px;background:var(--primary)"></span>정상</span>
-        <span class="flex items-center gap-1.5"><span style="width:10px;height:10px;border-radius:3px;background:var(--water)"></span>수분부족</span>
-        <span class="flex items-center gap-1.5"><span style="width:10px;height:10px;border-radius:3px;background:var(--warning)"></span>자극</span>
-        <span class="flex items-center gap-1.5"><span style="width:10px;height:10px;border-radius:3px;background:var(--destructive)"></span>꺾임</span>
-        <span class="flex items-center gap-1.5"><span style="width:10px;height:10px;border-radius:3px;background:var(--border)"></span>기록 없음</span>
-      </div>
-    </section>
-
-    <!-- 요약 -->
-    <section class="flex flex-col gap-3 rounded-4xl border border-border bg-accent p-6 lg:col-span-4">
-      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-accent-foreground">Summary</span>
-      <h3 class="text-base font-bold text-foreground">기간 요약</h3>
-      <div class="mt-1 space-y-2.5">
-        <div class="flex items-center justify-between rounded-2xl bg-card px-4 py-3">
-          <span class="text-xs font-semibold text-muted-foreground">전체 기록</span>
-          <span class="text-lg font-black tabular-nums text-foreground" data-hist="records">—</span>
-        </div>
-        <div class="flex items-center justify-between rounded-2xl bg-card px-4 py-3">
-          <span class="text-xs font-semibold text-muted-foreground">물 준 횟수</span>
-          <span class="text-lg font-black tabular-nums text-foreground" data-hist="water">—</span>
-        </div>
-        <div class="flex items-center justify-between rounded-2xl bg-card px-4 py-3">
-          <span class="text-xs font-semibold text-muted-foreground">정상 비율</span>
-          <span class="text-lg font-black tabular-nums text-foreground" data-hist="healthy">—</span>
-        </div>
-        <div class="flex items-center justify-between rounded-2xl bg-card px-4 py-3">
-          <span class="text-xs font-semibold text-muted-foreground">기록한 날</span>
-          <span class="text-lg font-black tabular-nums text-foreground" data-hist="days">—</span>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <!-- 타임라인 -->
-  <section class="rounded-4xl border border-border bg-card p-6 shadow-soft">
-    <div class="flex items-center justify-between gap-3">
-      <h3 class="text-base font-bold text-foreground">이벤트 타임라인</h3>
-      <button type="button" data-hist="water-btn"
-              class="rounded-2xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow-soft transition hover:bg-primary-hover active:scale-[0.98]">
-        물주기 기록하기
-      </button>
-    </div>
-    <div class="mt-4 space-y-1" data-hist="timeline">
-      <p class="py-6 text-center text-xs text-subtle">아직 기록이 없어요. 대시보드를 켜두면 상태가 쌓입니다.</p>
-    </div>
-  </section>
-
-</div>
-</section><section class="screen" data-screen="plants"><div class="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-8"><div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">My plants</span><h1 class="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">함께 살고 있는 초록이들</h1></div><button type="button" class="flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:bg-primary-hover active:scale-[0.98]"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus h-4 w-4" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>식물 추가하기</button></div><div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3"><article class="group overflow-hidden rounded-4xl border border-border bg-card shadow-soft transition hover:shadow-lift"><div class="relative h-44 overflow-hidden bg-primary-soft"><img alt="거실 몬스테라 사진" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" src="/static/img/photo-1614594975525.jpg"><span class="absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-bold bg-destructive-soft text-destructive">“목이 말라요”</span></div><div class="space-y-3 p-5"><div><h2 class="text-base font-bold text-foreground">🪴 거실 몬스테라</h2><p class="mt-0.5 text-[11px] italic text-subtle">Monstera deliciosa</p></div><p class="text-xs leading-relaxed text-muted-foreground">수분부족 신호가 감지됐어요. 흙을 촉촉하게 적셔주세요.</p><div class="flex gap-2"><span class="flex flex-1 items-center gap-1.5 rounded-2xl bg-muted px-3 py-2 text-xs font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-droplets h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"></path><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"></path></svg>24%</span><span class="flex flex-1 items-center gap-1.5 rounded-2xl bg-muted px-3 py-2 text-xs font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-thermometer h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path></svg>24.5°C</span></div></div></article><article class="group overflow-hidden rounded-4xl border border-border bg-card shadow-soft transition hover:shadow-lift"><div class="relative h-44 overflow-hidden bg-primary-soft"><img alt="침실 뱅갈고무나무 사진" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" src="/static/img/photo-1485955900006.jpg"><span class="absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-bold bg-primary-soft text-primary-soft-foreground">“지금 아주 좋아요”</span></div><div class="space-y-3 p-5"><div><h2 class="text-base font-bold text-foreground">🌿 침실 뱅갈고무나무</h2><p class="mt-0.5 text-[11px] italic text-subtle">Ficus benghalensis</p></div><p class="text-xs leading-relaxed text-muted-foreground">수분과 온도 모두 안정 구간이에요. 그대로 유지해 주세요.</p><div class="flex gap-2"><span class="flex flex-1 items-center gap-1.5 rounded-2xl bg-muted px-3 py-2 text-xs font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-droplets h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"></path><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"></path></svg>61%</span><span class="flex flex-1 items-center gap-1.5 rounded-2xl bg-muted px-3 py-2 text-xs font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-thermometer h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path></svg>23.1°C</span></div></div></article><article class="group overflow-hidden rounded-4xl border border-border bg-card shadow-soft transition hover:shadow-lift"><div class="relative h-44 overflow-hidden bg-primary-soft"><img alt="베란다 올리브 사진" class="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" src="/static/img/photo-1602923668104.jpg"><span class="absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-bold bg-warning-soft text-warning-foreground">“밤에 좀 추워요”</span></div><div class="space-y-3 p-5"><div><h2 class="text-base font-bold text-foreground">🌱 베란다 올리브</h2><p class="mt-0.5 text-[11px] italic text-subtle">Olea europaea</p></div><p class="text-xs leading-relaxed text-muted-foreground">야간 온도가 낮아요. 창가에서 30cm 안쪽으로 옮겨주세요.</p><div class="flex gap-2"><span class="flex flex-1 items-center gap-1.5 rounded-2xl bg-muted px-3 py-2 text-xs font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-droplets h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"></path><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"></path></svg>44%</span><span class="flex flex-1 items-center gap-1.5 rounded-2xl bg-muted px-3 py-2 text-xs font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-thermometer h-3.5 w-3.5 text-primary" aria-hidden="true"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"></path></svg>19.4°C</span></div></div></article><a data-go="market" class="flex min-h-56 flex-col items-center justify-center gap-2 rounded-4xl border border-dashed border-primary/30 bg-accent/60 p-6 text-center transition hover:bg-accent"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus h-6 w-6 text-primary" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg><p class="text-sm font-bold text-foreground">새 식물 들이기</p><p class="text-xs text-muted-foreground">전국 최저가 마켓에서 먼저 가격을 비교해요</p></a></div></div></section><section class="screen" data-screen="market"><div class="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-8">
-
-  <div>
-    <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Lowest price finder</span>
-    <h1 class="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">같은 식물, 어디가 제일 싼가요?</h1>
-    <p class="mt-2 max-w-2xl text-sm text-muted-foreground">식물 이름을 검색하면 판매처별 가격을 모아 최저가순으로 보여드려요.</p>
-  </div>
-
-  <section class="rounded-4xl border border-border bg-card p-6 shadow-soft">
-    <div class="flex flex-col gap-3 sm:flex-row">
-      <input type="text" data-mk="q" value="몬스테라" placeholder="예: 몬스테라, 올리브, 스투키"
-             class="flex-1 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none">
-      <button type="button" data-mk="go"
-              class="rounded-2xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground shadow-soft transition hover:bg-primary-hover active:scale-[0.98]">
-        가격 찾기
-      </button>
-    </div>
-    <div class="mt-3 flex flex-wrap gap-2" data-mk="chips">
-      <button type="button" data-q="몬스테라" class="rounded-full bg-muted px-4 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">몬스테라</button>
-      <button type="button" data-q="뱅갈고무나무" class="rounded-full bg-muted px-4 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">뱅갈고무나무</button>
-      <button type="button" data-q="올리브" class="rounded-full bg-muted px-4 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">올리브</button>
-      <button type="button" data-q="스투키" class="rounded-full bg-muted px-4 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">스투키</button>
-    </div>
-  </section>
-
-  <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
-    <section class="rounded-4xl border border-border bg-accent p-6 lg:col-span-4">
-      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-accent-foreground">Lowest</span>
-      <h3 class="text-base font-bold text-foreground">최저가</h3>
-      <p class="mt-3 text-3xl font-black tracking-tight text-primary tabular-nums" data-mk="lowest">—</p>
-      <p class="mt-1 text-xs text-muted-foreground" data-mk="lowest-mall">검색을 눌러주세요</p>
-      <div class="mt-4 space-y-2">
-        <div class="flex items-center justify-between rounded-2xl bg-card px-4 py-2.5">
-          <span class="text-xs font-semibold text-muted-foreground">평균가</span>
-          <span class="text-sm font-black tabular-nums text-foreground" data-mk="avg">—</span>
-        </div>
-        <div class="flex items-center justify-between rounded-2xl bg-card px-4 py-2.5">
-          <span class="text-xs font-semibold text-muted-foreground">모은 상품</span>
-          <span class="text-sm font-black tabular-nums text-foreground" data-mk="count">—</span>
-        </div>
-        <div class="flex items-center justify-between rounded-2xl bg-card px-4 py-2.5">
-          <span class="text-xs font-semibold text-muted-foreground">출처</span>
-          <span class="text-sm font-black text-foreground" data-mk="source">—</span>
-        </div>
-      </div>
-      <p class="mt-4 text-[11px] leading-relaxed text-subtle" data-mk="note"></p>
-    </section>
-
-    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft lg:col-span-8">
-      <h3 class="text-base font-bold text-foreground">판매처별 가격</h3>
-      <div class="mt-3" data-mk="list">
-        <p class="py-8 text-center text-xs text-subtle">검색하면 결과가 여기에 표시됩니다.</p>
-      </div>
-    </section>
-  </div>
-
-  <!-- 식물 도감 -->
-  <section class="rounded-4xl border border-border bg-card p-6 shadow-soft">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Plant guide</span>
-        <h3 class="text-base font-bold text-foreground">이 식물에 대해 알아보기</h3>
-      </div>
-      <span class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground" data-mk="info-source">—</span>
-    </div>
-    <div class="mt-4 flex flex-col gap-5 md:flex-row">
-      <div class="shrink-0 overflow-hidden rounded-3xl bg-primary-soft" style="width:180px;height:180px" data-mk="info-photo"></div>
-      <div class="min-w-0 flex-1">
-        <p class="text-lg font-black tracking-tight text-foreground" data-mk="info-title">—</p>
-        <p class="text-xs italic text-subtle" data-mk="info-species"></p>
-        <p class="mt-3 text-sm leading-relaxed text-muted-foreground" data-mk="info-summary">검색하면 식물 정보가 표시됩니다.</p>
-        <div class="mt-4 flex flex-wrap gap-2" data-mk="info-tips"></div>
-      </div>
-    </div>
-  </section>
-
-</div>
-</section><section class="screen" data-screen="settings"><div class="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-8"><div><span class="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Settings</span><h1 class="mt-1 text-2xl font-extrabold tracking-tight text-foreground md:text-3xl">설정 및 계정</h1></div><div class="grid gap-5 lg:grid-cols-2"><section class="rounded-4xl border border-border bg-card p-6 shadow-soft"><div class="flex items-center gap-4"><span class="flex h-14 w-14 items-center justify-center rounded-3xl bg-primary-soft text-xl">🌿</span><div><p class="text-base font-bold text-foreground">선진</p><p class="text-xs text-muted-foreground">sunjin@chorokmal.app</p></div></div><div class="mt-5 grid grid-cols-3 gap-2 border-t border-border pt-4"><div><p class="text-[11px] text-subtle">식물</p><p class="text-sm font-extrabold text-foreground">3</p></div><div><p class="text-[11px] text-subtle">기록</p><p class="text-sm font-extrabold text-foreground">128</p></div><div><p class="text-[11px] text-subtle">연속 케어</p><p class="text-sm font-extrabold text-foreground">21일</p></div></div><button type="button" class="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-border py-3 text-sm font-bold text-muted-foreground transition hover:bg-muted"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user h-4 w-4" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>프로필 수정</button></section><section class="rounded-4xl border border-border bg-card p-6 shadow-soft"><h2 class="flex items-center gap-2 text-base font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bell h-4 w-4 text-primary" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>알림</h2><div class="mt-4 space-y-1"><div class="flex items-center justify-between gap-3 py-2.5"><div><p class="text-sm font-semibold text-foreground">수분부족 경고</p><p class="text-[11px] text-subtle">토양 수분 30% 이하</p></div><span class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition bg-primary"><span class="h-5 w-5 rounded-full bg-card shadow-soft transition translate-x-5"></span></span></div><div class="flex items-center justify-between gap-3 py-2.5"><div><p class="text-sm font-semibold text-foreground">타격 이벤트</p><p class="text-[11px] text-subtle">잎 접촉 스파이크 감지</p></div><span class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition bg-primary"><span class="h-5 w-5 rounded-full bg-card shadow-soft transition translate-x-5"></span></span></div><div class="flex items-center justify-between gap-3 py-2.5"><div><p class="text-sm font-semibold text-foreground">최저가 알림</p><p class="text-[11px] text-subtle">관심 식물 가격 하락 시</p></div><span class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition bg-primary"><span class="h-5 w-5 rounded-full bg-card shadow-soft transition translate-x-5"></span></span></div><div class="flex items-center justify-between gap-3 py-2.5"><div><p class="text-sm font-semibold text-foreground">주간 리포트</p><p class="text-[11px] text-subtle">매주 일요일 저녁 발송</p></div><span class="flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition bg-border"><span class="h-5 w-5 rounded-full bg-card shadow-soft transition "></span></span></div></div></section><section class="rounded-4xl border border-border bg-accent p-6"><h2 class="flex items-center gap-2 text-base font-bold text-foreground"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cpu h-4 w-4 text-primary" aria-hidden="true"><path d="M12 20v2"></path><path d="M12 2v2"></path><path d="M17 20v2"></path><path d="M17 2v2"></path><path d="M2 12h2"></path><path d="M2 17h2"></path><path d="M2 7h2"></path><path d="M20 12h2"></path><path d="M20 17h2"></path><path d="M20 7h2"></path><path d="M7 20v2"></path><path d="M7 2v2"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="8" y="8" width="8" height="8" rx="1"></rect></svg>연결된 센서</h2><div class="mt-4 space-y-2"><div class="flex items-center justify-between rounded-2xl bg-card/70 px-4 py-3"><div><p class="text-sm font-semibold text-foreground">AD8232 생체전위 모듈</p><p class="text-[11px] text-muted-foreground">정상 · 배터리 82%</p></div><span class="h-2 w-2 rounded-full bg-primary"></span></div><div class="flex items-center justify-between rounded-2xl bg-card/70 px-4 py-3"><div><p class="text-sm font-semibold text-foreground">ADS1115 ADC</p><p class="text-[11px] text-muted-foreground">정상 · 860 SPS</p></div><span class="h-2 w-2 rounded-full bg-primary"></span></div></div></section><section class="rounded-4xl border border-border bg-card p-6 shadow-soft"><h2 class="text-base font-bold text-foreground">데이터 및 계정</h2><div class="mt-4 space-y-2"><button type="button" class="flex w-full items-center gap-2.5 rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-secondary"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download h-4 w-4 text-primary" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>센서 기록 CSV 내보내기</button><button type="button" class="flex w-full items-center gap-2.5 rounded-2xl px-4 py-3 text-sm font-semibold text-destructive transition hover:bg-destructive-soft"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-log-out h-4 w-4" aria-hidden="true"><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path></svg>로그아웃</button></div></section></div></div></section>
-</main>
-<nav class="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-background/95 backdrop-blur-md md:hidden"><a class="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition text-primary active" data-go="home" data-status="active" aria-current="page"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house h-5 w-5" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>홈</a><a data-go="status" class="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition text-subtle"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-radio h-5 w-5" aria-hidden="true"><path d="M16.247 7.761a6 6 0 0 1 0 8.478"></path><path d="M19.075 4.933a10 10 0 0 1 0 14.134"></path><path d="M4.925 19.067a10 10 0 0 1 0-14.134"></path><path d="M7.753 16.239a6 6 0 0 1 0-8.478"></path><circle cx="12" cy="12" r="2"></circle></svg>상태</a><a data-go="ranking" class="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition text-subtle"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trophy h-5 w-5" aria-hidden="true"><path d="M10 14.66v1.626a2 2 0 0 1-.976 1.696A5 5 0 0 0 7 21.978"></path><path d="M14 14.66v1.626a2 2 0 0 0 .976 1.696A5 5 0 0 1 17 21.978"></path><path d="M18 9h1.5a1 1 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z"></path><path d="M6 9H4.5a1 1 0 0 1 0-5H6"></path></svg>랭킹</a><a data-go="market" class="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition text-subtle"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-store h-5 w-5" aria-hidden="true"><path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5"></path><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"></path><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"></path></svg>마켓</a><a data-go="settings" class="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition text-subtle"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings h-5 w-5" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path><circle cx="12" cy="12" r="3"></circle></svg>설정</a></nav>
-</div>
 <script src="/static/live.js"></script>
 </body>
 </html>

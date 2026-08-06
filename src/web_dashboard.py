@@ -23,7 +23,6 @@ import time
 
 import numpy as np
 
-import store
 from inference import RealtimeClassifier, SAMPLE_RATE_HZ
 
 # 최신 결과를 담는 공유 상태 (백그라운드 스레드가 갱신, 웹 요청이 읽음)
@@ -66,8 +65,6 @@ def _worker(clf, source):
             with _lock:
                 _latest.clear()
                 _latest.update(payload)
-            # 상태가 바뀔 때만 기록에 남긴다(같은 상태 반복은 store가 걸러냄)
-            store.log_state(result["state"], result["proba"])
         time.sleep(1.0 / clf.sample_rate)
 
 
@@ -80,7 +77,7 @@ def _web_dir():
 def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5000,
             refresh_hz=5.0, ui="초록말"):
     try:
-        from flask import Flask, jsonify, request, send_from_directory
+        from flask import Flask, jsonify, send_from_directory
     except ImportError:
         print("[web] Flask가 필요합니다:  pip install flask")
         raise
@@ -113,50 +110,6 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         with _lock:
             return jsonify(dict(_latest))
 
-    # ---- 기록 API (하드웨어 없이도 동작) --------------------------------
-    @app.route("/api/history")
-    def api_history():
-        days = request.args.get("days", default=7, type=int)
-        return jsonify({
-            "daily": store.daily_summary(max(1, min(days, 31))),
-            "events": store.read_events(30),
-            "stats": store.stats(),
-            "streak": store.care_streak(),
-        })
-
-    @app.route("/api/plant-info")
-    def api_plant_info():
-        import plantinfo
-        return jsonify(plantinfo.lookup(request.args.get("name", "몬스테라")))
-
-    @app.route("/api/market")
-    def api_market():
-        import market
-        return jsonify(market.search(request.args.get("q", "몬스테라")))
-
-    @app.route("/api/water", methods=["POST"])
-    def api_water():
-        body = request.get_json(silent=True) or {}
-        ev = store.log_water(plant=body.get("plant", "monstera"),
-                             ml=int(body.get("ml", 280)))
-        return jsonify({"ok": True, "event": ev, "stats": store.stats()})
-
-    @app.route("/api/plants", methods=["GET", "POST"])
-    def api_plants():
-        if request.method == "POST":
-            body = request.get_json(silent=True) or {}
-            items = body.get("plants")
-            if not isinstance(items, list):
-                return jsonify({"ok": False, "error": "plants 배열이 필요합니다"}), 400
-            return jsonify({"ok": True, "plants": store.save_plants(items)})
-        return jsonify({"plants": store.plants()})
-
-    @app.route("/api/settings", methods=["GET", "POST"])
-    def api_settings():
-        if request.method == "POST":
-            body = request.get_json(silent=True) or {}
-            return jsonify({"ok": True, "settings": store.save_settings(body)})
-        return jsonify({"settings": store.settings()})
 
     ip_hint = os.environ.get("GML_IP", "<파이 IP>")
     print(f"[web] 브라우저에서 접속:  http://{ip_hint}:{port}   (같은 기기면 http://localhost:{port})")
