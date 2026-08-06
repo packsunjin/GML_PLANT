@@ -398,6 +398,33 @@ data/app/settings.json  알림 설정
 | `POST /api/water` | 물주기 기록 (`{"plant":"monstera","ml":280}`) |
 | `GET/POST /api/plants` | 식물 목록 조회·저장 |
 | `GET/POST /api/settings` | 알림 설정 조회·저장 |
+| `GET /api/market?q=몬스테라` | 판매처별 가격·최저가 |
+| `GET /api/plant-info?name=몬스테라` | 식물 개요·학명·사진·케어 팁 |
+
+#### 최저가 마켓 · 식물 도감 (외부 조회)
+
+`src/market.py`와 `src/plantinfo.py`가 실제 데이터를 가져옵니다. **키는 환경변수로만**
+받고 코드에 넣지 않습니다. 키가 없거나 인터넷이 막혀 있으면 내장된 자료로 대체하고,
+화면과 응답에 **출처**를 표시해 실제 조회인지 아닌지 구분할 수 있게 했습니다.
+
+| 기능 | 사용하는 곳 | 없을 때 |
+|---|---|---|
+| 가격 | 네이버 쇼핑 검색 오픈 API | `예시` 시세 표시 |
+| 식물 개요·사진 | 위키백과 요약 API (ko → en) | `내장` 정보 표시 |
+| 케어 팁 | Claude API (`ANTHROPIC_API_KEY`) | 내장 팁 사용 |
+
+```bash
+# 가격을 실제로 불러오려면 (https://developers.naver.com 에서 발급)
+export NAVER_CLIENT_ID=...
+export NAVER_CLIENT_SECRET=...
+
+# 케어 팁을 AI로 정리하려면 (선택)
+export ANTHROPIC_API_KEY=...
+```
+
+- 쇼핑몰 HTML을 직접 긁지 않고 **공개 API**만 사용합니다(구조 변경에 안 깨지고 약관에도 맞음).
+- 조회 결과는 `data/app/cache/` 에 캐시됩니다(가격 30분, 식물 정보 7일).
+- 가격은 참고용이며 실제 결제 금액은 판매처 정책에 따라 다를 수 있습니다.
 
 > 한글 폰트(Pretendard)는 CDN에서 받아옵니다. 파이가 오프라인이면 시스템 한글 폰트로
 > 대체 표시되며, 레이아웃은 그대로입니다.

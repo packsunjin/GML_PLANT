@@ -434,6 +434,96 @@
     else el.setAttribute("aria-checked", on ? "true" : "false");
   }
 
+  // ── 최저가 마켓 + 식물 도감 ──────────────────────────────────────
+  var won = function (n) { return (n == null) ? "—" : n.toLocaleString("ko-KR") + "원"; };
+  var mk = function (name) { return $('[data-mk="' + name + '"]'); };
+
+  function renderMarket(d) {
+    var items = d.items || [];
+    var set = function (k, v) { var el = mk(k); if (el) el.textContent = v; };
+    set("lowest", won(d.lowest));
+    set("lowest-mall", items.length ? items[0].mall : "결과 없음");
+    set("avg", won(d.average));
+    set("count", items.length + "건");
+    set("source", d.source + (d.cached ? " · 캐시" : ""));
+    var note = mk("note");
+    if (note) {
+      note.textContent = d.source === "네이버쇼핑"
+        ? "네이버 쇼핑 검색에서 모은 가격입니다. 실제 결제 금액은 판매처 정책에 따라 다를 수 있어요."
+        : "실제 시세가 아닌 예시입니다. NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 를 설정하면 실제 가격을 불러옵니다.";
+    }
+
+    var list = mk("list");
+    if (!list) return;
+    list.innerHTML = items.length ? items.map(function (it, i) {
+      var best = i === 0;
+      var link = it.link
+        ? '<a href="' + it.link + '" target="_blank" rel="noopener" class="shrink-0 text-xs font-bold text-primary">보러가기 →</a>'
+        : "";
+      return '<div class="flex items-center gap-3 border-b border-border py-3 last:border-b-0">' +
+               '<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ' +
+                 (best ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground') + '">' + (i + 1) + '</span>' +
+               '<div class="min-w-0 flex-1">' +
+                 '<p class="truncate text-sm font-bold text-foreground">' + esc(it.title || it.mall) + '</p>' +
+                 '<p class="text-[11px] text-muted-foreground">' + esc(it.mall) + (best ? ' · 최저가' : '') + '</p>' +
+               '</div>' +
+               '<span class="shrink-0 text-sm font-black tabular-nums ' + (best ? 'text-primary' : 'text-foreground') + '">' +
+                 won(it.price) + '</span>' + link +
+             '</div>';
+    }).join("") : '<p class="py-8 text-center text-xs text-subtle">결과가 없어요.</p>';
+  }
+
+  function renderInfo(d) {
+    var set = function (k, v) { var el = mk(k); if (el) el.textContent = v; };
+    set("info-title", d.title || "—");
+    set("info-species", d.species || "");
+    set("info-summary", d.summary || "");
+    set("info-source", d.source + (d.cached ? " · 캐시" : ""));
+
+    var photo = mk("info-photo");
+    if (photo) {
+      photo.innerHTML = d.photo
+        ? '<img src="' + d.photo + '" alt="" class="h-full w-full object-cover">'
+        : '<div class="flex h-full w-full items-center justify-center text-xs text-subtle">사진 없음</div>';
+    }
+    var tips = mk("info-tips");
+    if (tips) {
+      tips.innerHTML = (d.tips || []).map(function (t) {
+        return '<span class="rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-secondary-foreground">' +
+               esc(t) + '</span>';
+      }).join("");
+    }
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function searchMarket(q) {
+    var input = mk("q");
+    if (q && input) input.value = q;
+    var query = (input && input.value.trim()) || "몬스테라";
+    var list = mk("list");
+    if (list) list.innerHTML = '<p class="py-8 text-center text-xs text-subtle">가격을 모으는 중…</p>';
+
+    fetch("/api/market?q=" + encodeURIComponent(query), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(renderMarket)
+      .catch(function () {
+        renderMarket({ items: [], source: "오프라인",
+                       lowest: null, average: null, cached: false });
+      });
+
+    fetch("/api/plant-info?name=" + encodeURIComponent(query), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(renderInfo)
+      .catch(function () {
+        renderInfo({ title: query, summary: "백엔드가 없어 정보를 불러오지 못했어요.",
+                     tips: [], source: "오프라인" });
+      });
+  }
+
   // ── 토스트 ───────────────────────────────────────────────────────
   var toastTimer;
   function toast(msg) {
@@ -459,6 +549,10 @@
       logWater();
       return;
     }
+    if (e.target.closest('[data-mk="go"]')) { e.preventDefault(); searchMarket(); return; }
+    var chip = e.target.closest("[data-q]");
+    if (chip) { e.preventDefault(); searchMarket(chip.dataset.q); return; }
+
     var range = e.target.closest("[data-range]");
     if (range) {
       histDays = parseInt(range.dataset.range, 10) || 7;
@@ -472,10 +566,15 @@
     }
   });
 
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target === mk("q")) { e.preventDefault(); searchMarket(); }
+  });
+
   go("home");
   poll();
   setInterval(poll, 700);
   loadHistory();
   setInterval(loadHistory, 20000);
   loadSettings();
+  searchMarket("몬스테라");
 })();

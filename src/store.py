@@ -183,6 +183,39 @@ def stats():
     }
 
 
+def care_streak():
+    """물주기 기록이 하루도 빠지지 않고 이어진 날 수(연속 케어일)를 센다.
+
+    오늘 아직 기록이 없으면 어제까지를 기준으로 세므로, 하루 안에 기록하면
+    연속이 끊기지 않는다.
+    """
+    days = sorted({e["ts"][:10] for e in read_events(4000)
+                   if e.get("kind") == "water" and "ts" in e}, reverse=True)
+    if not days:
+        return {"current": 0, "best": 0, "last": None}
+
+    today = datetime.now().date()
+    cursor = datetime.fromisoformat(days[0]).date()
+    current = 0
+    if (today - cursor).days <= 1:              # 오늘 또는 어제까지 기록이 있으면 진행 중
+        current = 1
+        for d in days[1:]:
+            d = datetime.fromisoformat(d).date()
+            if (cursor - d).days == 1:
+                current += 1
+                cursor = d
+            elif (cursor - d).days > 1:
+                break
+
+    best, run, prev = 1, 1, datetime.fromisoformat(days[0]).date()
+    for d in days[1:]:
+        d = datetime.fromisoformat(d).date()
+        run = run + 1 if (prev - d).days == 1 else 1
+        best = max(best, run)
+        prev = d
+    return {"current": current, "best": max(best, current), "last": days[0]}
+
+
 # ---------------------------------------------------------------- 식물·설정
 
 def plants():

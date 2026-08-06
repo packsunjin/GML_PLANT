@@ -121,7 +121,18 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             "daily": store.daily_summary(max(1, min(days, 31))),
             "events": store.read_events(30),
             "stats": store.stats(),
+            "streak": store.care_streak(),
         })
+
+    @app.route("/api/plant-info")
+    def api_plant_info():
+        import plantinfo
+        return jsonify(plantinfo.lookup(request.args.get("name", "몬스테라")))
+
+    @app.route("/api/market")
+    def api_market():
+        import market
+        return jsonify(market.search(request.args.get("q", "몬스테라")))
 
     @app.route("/api/water", methods=["POST"])
     def api_water():
