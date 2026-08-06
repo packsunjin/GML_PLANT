@@ -178,13 +178,111 @@
     applyHome(d);
   }
 
+  // ── 데모 모드 ────────────────────────────────────────────────────
+  // 파이(백엔드) 없이 파일만 열었을 때도 화면을 볼 수 있도록, /data 가 없으면
+  // 브라우저에서 직접 만들어낸 값으로 돌립니다. 실제 측정값이 아닙니다.
+  var demo = false;
+  var DEMO_STATES = ["정상", "수분부족", "자극", "꺾임"];
+  var demoStart = Date.now();
+  var demoLog = loadDemoLog();
+
+  function loadDemoLog() {
+    try {
+      var raw = localStorage.getItem("chorokmal-demo-log");
+      if (raw) return JSON.parse(raw);
+    } catch (err) { /* 저장소를 못 쓰면 메모리에만 둔다 */ }
+    return [];
+  }
+
+  function saveDemoLog() {
+    try { localStorage.setItem("chorokmal-demo-log", JSON.stringify(demoLog.slice(-300))); }
+    catch (err) { /* 무시 */ }
+  }
+
+  function demoPayload() {
+    var t = (Date.now() - demoStart) / 1000;
+    var state = DEMO_STATES[Math.floor(t / 8) % DEMO_STATES.length];
+    var probs = {}, top = 0.62 + Math.sin(t) * 0.08;
+    DEMO_STATES.forEach(function (s) { probs[s] = (1 - top) / 3; });
+    probs[state] = top;
+
+    var signal = [], v = 0;
+    for (var i = 0; i < 140; i++) {
+      v = v * 0.7 + (Math.random() - 0.5) * 0.02;
+      var wave = Math.sin((t * 2 + i / 9)) * 0.02;
+      if (state === "자극" && i % 34 === 5) wave += 0.09;
+      if (state === "꺾임") wave -= 0.03;
+      signal.push(v + wave);
+    }
+    var spec = [];
+    for (var r = 0; r < 24; r++) {
+      var row = [];
+      for (var c = 0; c < 20; c++) {
+        row.push(-20 - r * 2.2 + Math.sin(c / 3 + t) * 3 + Math.random() * 4);
+      }
+      spec.push(row);
+    }
+    // 데모에서도 상태가 바뀌면 기록에 남겨 타임라인이 채워지게 한다
+    var last = demoLog[demoLog.length - 1];
+    if (!last || last.state !== state) {
+      demoLog.push({ ts: new Date().toISOString().slice(0, 19), kind: "state",
+                     state: state, proba: top });
+      saveDemoLog();
+    }
+    return { ready: true, state: state, proba: top, probs: probs,
+             signal: signal, spec: spec, source: "데모 데이터 (백엔드 없음)" };
+  }
+
+  function demoHistory() {
+    var byDay = {}, today = new Date();
+    var daily = [];
+    for (var i = 6; i >= 0; i--) {
+      var d = new Date(today.getTime() - i * 86400000);
+      var key = d.toISOString().slice(0, 10);
+      byDay[key] = { date: key, weekday: "일월화수목금토"[d.getDay()],
+                     states: {}, water: 0, top: null };
+      daily.push(byDay[key]);
+    }
+    demoLog.forEach(function (e) {
+      var b = byDay[(e.ts || "").slice(0, 10)];
+      if (!b) return;
+      if (e.kind === "water") b.water += 1;
+      else { b.states[e.state] = (b.states[e.state] || 0) + 1; }
+    });
+    daily.forEach(function (b) {
+      var best = null;
+      Object.keys(b.states).forEach(function (k) {
+        if (!best || b.states[k] > b.states[best]) best = k;
+      });
+      b.top = best;
+    });
+    var states = demoLog.filter(function (e) { return e.kind === "state"; });
+    var water = demoLog.filter(function (e) { return e.kind === "water"; });
+    var healthy = states.filter(function (e) { return e.state === "정상"; }).length;
+    return {
+      daily: daily,
+      events: demoLog.slice().reverse(),
+      stats: {
+        records: demoLog.length,
+        water_count: water.length,
+        state_count: states.length,
+        healthy_ratio: states.length ? Math.round(healthy / states.length * 100) : null,
+        active_days: Object.keys(byDay).filter(function (k) {
+          return Object.keys(byDay[k].states).length || byDay[k].water;
+        }).length
+      }
+    };
+  }
+
   function poll() {
+    if (demo) { apply(demoPayload()); return; }
     fetch("/data", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(apply)
       .catch(function () {
-        var src = live("source");
-        if (src) src.textContent = "서버 연결 끊김 — 재시도 중";
+        demo = true;                 // 백엔드가 없으면 데모로 전환
+        apply(demoPayload());
+        loadHistory();
       });
   }
 
@@ -276,13 +374,21 @@
   }
 
   function loadHistory() {
+    if (demo) { renderHistory(demoHistory()); return; }
     fetch("/api/history?days=" + histDays, { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(renderHistory)
-      .catch(function () {});
+      .catch(function () { demo = true; renderHistory(demoHistory()); });
   }
 
   function logWater() {
+    if (demo) {
+      demoLog.push({ ts: new Date().toISOString().slice(0, 19), kind: "water", ml: 280 });
+      saveDemoLog();
+      toast("물주기를 기록했어요 💧 (데모)");
+      renderHistory(demoHistory());
+      return;
+    }
     fetch("/api/water", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -295,6 +401,7 @@
 
   // ── 설정 저장 ────────────────────────────────────────────────────
   function loadSettings() {
+    if (demo) return;
     fetch("/api/settings", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
