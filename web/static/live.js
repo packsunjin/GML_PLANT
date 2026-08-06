@@ -526,7 +526,7 @@
       }
     }
     // 실행 중에는 시작 버튼을 잠그고 중지 버튼을 띄운다.
-    $$("[data-job-collect]").concat([jobEl("train")]).forEach(function (b) {
+    $$("[data-job-collect]").concat([jobEl("train"), jobEl("pipeline")]).forEach(function (b) {
       if (b) { b.disabled = j.running; b.style.opacity = j.running ? "0.5" : ""; }
     });
     $$('[data-job="stop"]').forEach(function (b) {
@@ -539,6 +539,39 @@
       clearInterval(jobTimer); jobTimer = null;
       loadJobOptions();   // 수집 후 ✓ 표시, 학습 후 모델명 갱신
     }
+  }
+
+  // 센서 진단: 무엇이 잡혔고 왜 안 잡혔는지 사람이 읽을 수 있게 풀어준다.
+  function loadSensors() {
+    var box = jobEl("sensor-log"), hint = jobEl("sensor-hint");
+    if (demo) { hint.textContent = "데모 화면이라 센서 진단은 백엔드에서만 됩니다"; return; }
+    hint.textContent = "확인 중…";
+    fetch("/api/sensors", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        var L = [];
+        L.push("I2C 버스        : " + (s.i2c ? "OK" : "없음 — " + (s.i2c_error || "확인 불가")));
+        L.push("ADC(ADS1115)    : " + (s.adc || "없음"));
+        L.push("온·습도 센서    : " + (s.env_sensor || "없음 — " + (s.env_error || "확인 불가")));
+        L.push("온도            : " + (s.temp == null ? "— (온·습도 센서 필요)" : s.temp + " °C"));
+        L.push("습도            : " + (s.humidity == null ? "—" : s.humidity + " %") +
+                                      (s.humidity_source ? "  (" + s.humidity_source + ")" : ""));
+        L.push("토양수분 전압   : " + (s.moisture_volts == null ? "—" : s.moisture_volts + " V") +
+                                      (s.moisture_error ? "  ← " + s.moisture_error : ""));
+        L.push("보정값          : 젖음 " + s.calibration.wet_v + "V / 마름 " + s.calibration.dry_v + "V");
+        if (!s.env_sensor) {
+          L.push("");
+          L.push("※ 온도를 재려면 AHT20(I2C 0x38) 또는 DHT22가 있어야 합니다.");
+          L.push("   AHT20: pip install adafruit-circuitpython-ahtx0  → 3V3/GND/SDA/SCL 에 연결");
+          L.push("   DHT22: pip install adafruit-circuitpython-dht    → GML_DHT_PIN 환경변수로 핀 지정 (지금 " + s.dht_pin + ")");
+          L.push("   3핀(+/-/OUT) 아날로그 센서는 흙 수분만 재고 온도는 못 잽니다.");
+        }
+        box.style.display = "block";
+        box.textContent = L.join("\n");
+        hint.textContent = s.env_sensor ? "✅ " + s.env_sensor + " 인식됨"
+                                        : (s.i2c ? "⚠️ 온·습도 센서가 안 잡혔습니다" : "⚠️ I2C가 꺼져 있습니다");
+      })
+      .catch(function () { hint.textContent = "❌ 진단 요청 실패"; });
   }
 
   function watchJob() {
@@ -845,6 +878,15 @@
               jobEl("task").value + " 재학습");
       return;
     }
+    if (e.target.closest('[data-job="pipeline"]') && !jobEl("pipeline").disabled) {
+      var pd = parseFloat((jobEl("duration") || {}).value) || 30;
+      if (!window.confirm("정상·수분부족·자극을 각각 " + pd + "초씩 새로 모으고 학습합니다.\n" +
+                          "기존 원시 데이터는 덮어써집니다. 계속할까요?")) return;
+      postJob("/api/pipeline", { duration: pd, task: jobEl("task").value, mode: jobEl("mode").value },
+              "전체 자동 (3종 × " + pd + "초 → 학습)");
+      return;
+    }
+    if (e.target.closest('[data-job="sensors"]')) { loadSensors(); return; }
 
     // ── 학습 자료 패널 ──
     var ftog = e.target.closest('[data-files="toggle"]');

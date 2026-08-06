@@ -11,3 +11,9 @@ flask
 # === 라즈베리파이 하드웨어(AD8232+ADS1115) 전용, PC 개발/검증 환경에서는 없어도 자동 시뮬레이션 모드로 동작 ===
 adafruit-circuitpython-ads1x15
 adafruit-blinka
+
+# === 온·습도 센서(선택) — 붙어 있는 것만 설치하면 자동으로 인식됩니다 ===
+# AHT20/AHT21 (I2C 0x38, 권장)
+adafruit-circuitpython-ahtx0
+# DHT22/DHT11 (GPIO 1선). 쓰지 않으면 설치하지 않아도 됩니다.
+# adafruit-circuitpython-dht

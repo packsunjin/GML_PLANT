@@ -50,32 +50,126 @@ except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSErr
     _HW_ERR = str(e)
 
 
+# ----------------------------------------------------------------------
+# 온·습도 센서
+# ----------------------------------------------------------------------
+# 세 가지를 모두 지원하고, 붙어 있는 것을 자동으로 골라 쓴다.
+#   1) AHT20 / AHT21 (I2C 0x38)  -> 온도 + 공기습도. 권장.
+#   2) DHT22 / DHT11 (GPIO 1선)  -> 온도 + 공기습도.
+#   3) 아날로그 토양수분 (+/-/OUT 3핀, ADS1115 A1) -> 흙 수분만. 온도는 못 잼.
+# 세 개 다 없으면 값이 None이고, 화면에는 "센서 대기 중"으로 나온다.
+ENV_SENSOR = None       # "AHT20" / "DHT22" / None
+ENV_ERROR = None        # 왜 못 잡았는지 (진단용)
+_env_dev = None
+DHT_PIN_NAME = os.environ.get("GML_DHT_PIN", "D4")   # DHT를 쓴다면 꽂은 GPIO 번호
+
+try:
+    import adafruit_ahtx0                                    # noqa: E402
+    if HARDWARE_AVAILABLE:
+        _env_dev = adafruit_ahtx0.AHTx0(i2c)
+        ENV_SENSOR = "AHT20"
+    else:
+        ENV_ERROR = "I2C 버스를 열지 못해 AHT20을 확인할 수 없음"
+except Exception as _e:
+    ENV_ERROR = f"AHT20 없음({_e})"
+
+if ENV_SENSOR is None:
+    try:
+        import adafruit_dht                                  # noqa: E402
+        import board as _board                               # noqa: E402
+        _env_dev = adafruit_dht.DHT22(getattr(_board, DHT_PIN_NAME))
+        ENV_SENSOR = "DHT22"
+        ENV_ERROR = None
+    except Exception as _e2:
+        ENV_ERROR = f"{ENV_ERROR}; DHT22 없음({_e2})" if ENV_ERROR else f"DHT22 없음({_e2})"
+
+
 # 아날로그 습도(토양 수분) 센서 보정값 -- 실제 센서로 한 번 재보고 맞추세요.
 # 물에 담갔을 때(가장 젖음)와 공기 중(가장 마름)의 전압을 넣으면 됩니다.
 MOISTURE_WET_V = 1.20   # 젖음 = 100%
 MOISTURE_DRY_V = 2.60   # 마름 = 0%
 
+# 온·습도는 매 요청마다 읽으면(특히 DHT22는 2초 간격 제한) 실패하므로 잠깐 캐시한다.
+_env_cache = {"t": 0.0, "temp": None, "humidity": None}
+ENV_CACHE_SEC = 2.0
 
-def read_moisture():
-    """A1에 연결된 아날로그 습도 센서를 0~100%로 환산해 돌려준다.
 
-    센서가 없거나 하드웨어가 없으면 None. 전압이 보정 범위를 크게 벗어나면
-    (선이 빠졌거나 다른 것이 꽂힌 상태로 보고) 역시 None을 돌려준다.
+def read_moisture(raw=False):
+    """A1에 연결된 아날로그 토양수분 센서를 0~100%로 환산해 돌려준다.
+
+    raw=True면 (퍼센트, 전압, 사유) 튜플을 돌려준다(보정/진단용).
+    센서가 없거나 전압이 보정 범위를 크게 벗어나면 퍼센트는 None이다.
     """
-    if not HARDWARE_AVAILABLE or moisture_chan is None:
-        return None
+    def out(pct, volts=None, why=None):
+        return (pct, volts, why) if raw else pct
+
+    if not HARDWARE_AVAILABLE:
+        return out(None, None, "I2C 하드웨어 없음 (시뮬레이션 모드)")
+    if moisture_chan is None:
+        return out(None, None, "ADS1115 A1 채널을 열지 못함")
     try:
         volts = moisture_chan.voltage
-    except Exception:
-        return None
+    except Exception as e:
+        return out(None, None, f"읽기 실패: {e}")
     if not (0.05 < volts < 3.30):
-        return None
+        return out(None, volts, "전압이 0.05~3.30V 밖 — 선이 빠졌거나 전원 미연결")
+
     lo, hi = sorted((MOISTURE_WET_V, MOISTURE_DRY_V))
     if not (lo - 0.4 <= volts <= hi + 0.4):
-        return None
+        return out(None, volts,
+                   f"보정 범위({lo:.2f}~{hi:.2f}V) 밖 — MOISTURE_WET_V/DRY_V를 맞춰주세요")
     # 젖을수록 전압이 낮은 센서 기준(대부분의 정전용량식). 반대면 두 상수를 바꿔 넣으세요.
     pct = (MOISTURE_DRY_V - volts) / (MOISTURE_DRY_V - MOISTURE_WET_V) * 100.0
-    return round(max(0.0, min(100.0, pct)), 1)
+    return out(round(max(0.0, min(100.0, pct)), 1), volts, None)
+
+
+def read_environment():
+    """온도(°C)와 습도(%)를 돌려준다. -> {"temp": .., "humidity": .., "source": ..}
+
+    AHT20/DHT22가 있으면 그걸로 온도+공기습도를 읽고, 없으면 온도는 None이고
+    습도 자리에 아날로그 토양수분을 넣는다(무엇을 쟀는지는 source로 구분).
+    """
+    now = time.time()
+    if now - _env_cache["t"] < ENV_CACHE_SEC:
+        return {"temp": _env_cache["temp"], "humidity": _env_cache["humidity"],
+                "source": ENV_SENSOR or ("토양수분(A1)" if HARDWARE_AVAILABLE else None)}
+
+    temp = humidity = None
+    if _env_dev is not None:
+        try:
+            temp = round(float(_env_dev.temperature), 1)
+            humidity = round(float(_env_dev.relative_humidity), 1)
+        except Exception:
+            # DHT22는 종종 읽기에 실패한다. 이번 판만 건너뛰고 이전 값을 유지한다.
+            temp, humidity = _env_cache["temp"], _env_cache["humidity"]
+
+    if humidity is None:
+        humidity = read_moisture()   # 온·습도 센서가 없으면 토양수분으로 대체
+
+    _env_cache.update({"t": now, "temp": temp, "humidity": humidity})
+    return {"temp": temp, "humidity": humidity,
+            "source": ENV_SENSOR or ("토양수분(A1)" if HARDWARE_AVAILABLE else None)}
+
+
+def sensor_status():
+    """센서가 왜 안 잡히는지 화면에서 바로 볼 수 있게 진단 정보를 모은다."""
+    pct, volts, why = read_moisture(raw=True)
+    env = read_environment()
+    return {
+        "i2c": HARDWARE_AVAILABLE,
+        "i2c_error": None if HARDWARE_AVAILABLE else globals().get("_HW_ERR"),
+        "adc": "ADS1115" if HARDWARE_AVAILABLE else None,
+        "env_sensor": ENV_SENSOR,
+        "env_error": ENV_ERROR if ENV_SENSOR is None else None,
+        "temp": env["temp"],
+        "humidity": env["humidity"],
+        "humidity_source": env["source"],
+        "moisture_percent": pct,
+        "moisture_volts": round(volts, 3) if volts is not None else None,
+        "moisture_error": why,
+        "calibration": {"wet_v": MOISTURE_WET_V, "dry_v": MOISTURE_DRY_V},
+        "dht_pin": DHT_PIN_NAME,
+    }
 
 
 # 상태별 저장 파일명(한글). 수집된 원시 CSV는 이 이름으로 data/raw/ 아래에 저장된다.

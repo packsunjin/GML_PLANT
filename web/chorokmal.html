@@ -88,11 +88,27 @@
       <select data-job="task" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
       <select data-job="mode" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
       <button type="button" data-job="train"
-              class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">전처리 + 학습 시작</button>
-      <span class="text-[11px] font-medium text-subtle" data-job="hint"></span>
+              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">전처리 + 학습만</button>
     </div>
+    <div class="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">전체 자동</span>
+      <button type="button" data-job="pipeline"
+              class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">3종 수집 → 전처리 → 학습</button>
+      <span class="text-[11px] font-medium text-subtle">정상·수분부족·자극을 차례로 모으고 바로 학습까지 합니다</span>
+    </div>
+    <p class="text-[11px] font-medium text-subtle" data-job="hint"></p>
     <pre data-job="log"
          style="display:none;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all"
+         class="rounded-2xl bg-muted px-4 py-3 text-[11px] leading-relaxed text-secondary-foreground"></pre>
+
+    <!-- 센서 진단: 온·습도가 안 잡힐 때 원인을 바로 보여준다 -->
+    <div class="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">센서</span>
+      <button type="button" data-job="sensors"
+              class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border">진단하기</button>
+      <span class="text-[11px] font-medium text-subtle" data-job="sensor-hint">온·습도가 안 잡히면 눌러보세요</span>
+    </div>
+    <pre data-job="sensor-log" style="display:none;white-space:pre-wrap;word-break:break-all"
          class="rounded-2xl bg-muted px-4 py-3 text-[11px] leading-relaxed text-secondary-foreground"></pre>
   </section>
 

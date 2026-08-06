@@ -132,6 +132,7 @@ def _payload(result, recent, clf):
     sig = np.asarray(recent)[::3]  # 5초 버퍼를 1/3로 다운샘플(네트워크 절약)
     spec = np.asarray(result["spectrogram_db"], dtype=float)
     filt = result["filtered_signal"]
+    env = sensor_control.read_environment()   # 내부 캐시가 있어 매번 불러도 부담 없음
     return {
         "ready": True,
         "state": result["state"],
@@ -143,8 +144,11 @@ def _payload(result, recent, clf):
         "mean": round(float(np.mean(filt)), 4),
         "std": round(float(np.std(filt)), 4),
         "p2p": round(float(np.max(filt) - np.min(filt)), 4),
-        # 아날로그 습도 센서(ADS1115 A1). 안 꽂혀 있으면 None -> 화면은 "센서 대기 중"
-        "humidity": sensor_control.read_moisture(),
+        # 온·습도. AHT20/DHT22가 있으면 그 값, 없으면 습도 자리에 토양수분(A1).
+        # 아무것도 없으면 None -> 화면은 "센서 대기 중"
+        "temp": env["temp"],
+        "humidity": env["humidity"],
+        "env_source": env["source"],
         # 실제로 초당 몇 샘플을 읽고 있는지. 명목(250Hz)보다 많이 낮으면 필터/스펙트로그램이
         # 가정하는 주파수축이 어긋나 정확도가 떨어진다는 신호다.
         "sample_rate": SAMPLE_RATE_HZ,
@@ -282,6 +286,11 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     def api_job():
         return jsonify(_job_snapshot())
 
+    @app.route("/api/sensors")
+    def api_sensors():
+        """센서 진단. 왜 온·습도가 안 잡히는지 브라우저에서 바로 확인한다."""
+        return jsonify(sensor_control.sensor_status())
+
     @app.route("/api/job/stop", methods=["POST"])
     def api_job_stop():
         """돌고 있는 작업을 멈춘다. 수집이면 SIGINT를 보내 지금까지 모은 데이터를
@@ -328,6 +337,49 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         label = f"{state} 수집 (무제한)" if duration == 0 else f"{state} {duration:g}초 수집"
         started = _run_steps("collect", label,
                              [(f"'{state}' 수집", cmd)], src_dir, pause_live=True)
+        if not started:
+            return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
+        return jsonify({"ok": True, "job": _job_snapshot()})
+
+    @app.route("/api/pipeline", methods=["POST"])
+    def api_pipeline():
+        """수집(상태별) → 전처리 → 학습 → 모델 적용을 한 번에 돌린다.
+
+        states를 주면 그 상태만 수집하고, 비우면 수집은 건너뛰고 이미 있는
+        data/raw로 전처리+학습만 한다. 중간에 '중지'를 누르면 거기서 멈춘다."""
+        body = request.get_json(silent=True) or {}
+        states = body.get("states")
+        if states is None:
+            states = list(sensor_control.VALID_STATES)
+        bad = [s for s in states if s not in sensor_control.VALID_STATES]
+        if bad:
+            return jsonify({"ok": False, "error": f"알 수 없는 상태: {bad[0]}"}), 400
+        try:
+            duration = float(body.get("duration", 30))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "수집 시간이 숫자가 아닙니다"}), 400
+        # 전체 자동에서는 무제한을 못 쓴다(언제 다음 단계로 넘어갈지 알 수 없으므로).
+        if states and not (5 <= duration <= 600):
+            return jsonify({"ok": False, "error": "전체 자동은 수집 시간을 5~600초로 정해야 합니다"}), 400
+        task = body.get("task", "3종")
+        mode = body.get("mode", "둘다")
+        if task not in TASKS or mode not in MODES:
+            return jsonify({"ok": False, "error": "알 수 없는 학습 옵션입니다"}), 400
+
+        steps = []
+        for s in states:
+            steps.append((f"1-{len(steps) + 1} '{s}' 수집 ({duration:g}초)",
+                          [sys.executable, "sensor_control.py", "--state", s,
+                           "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ)]))
+        steps.append(("2 전처리 (필터 → 스펙트로그램 → 특징)", [sys.executable, "preprocess.py"]))
+        steps.append((f"3 학습 ({task} / {mode})",
+                      [sys.executable, "train.py", "--task", task, "--mode", mode]))
+
+        label = (f"전체 자동 ({len(states)}종 × {duration:g}초 → 학습)" if states
+                 else f"전처리 + 학습 ({task} / {mode})")
+        # 수집 단계가 있으면 그 동안 실시간 루프를 재운다(센서 양보).
+        started = _run_steps("pipeline", label, steps, src_dir,
+                             pause_live=bool(states), on_done=_reload)
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
         return jsonify({"ok": True, "job": _job_snapshot()})
