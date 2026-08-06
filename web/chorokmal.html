@@ -36,6 +36,22 @@
     </div>
   </header>
 
+  <!-- 모드 전환 (시뮬레이션일 때만 활성) -->
+  <section class="flex flex-wrap items-center gap-2 rounded-3xl border border-border bg-card px-4 py-3 shadow-soft">
+    <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">모드</span>
+    <div class="flex flex-wrap gap-1.5" data-mode="buttons">
+      <button type="button" data-mode-set="정상"
+              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">정상</button>
+      <button type="button" data-mode-set="수분부족"
+              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">수분부족</button>
+      <button type="button" data-mode-set="자극"
+              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">자극</button>
+      <button type="button" data-mode-set="순환"
+              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">순환</button>
+    </div>
+    <span class="text-[11px] font-medium text-subtle" data-mode="hint">확인 중…</span>
+  </section>
+
   <!-- 경고 배너 (정상이 아닐 때만) -->
   <section data-live="alert-banner" style="display:none"
            class="flex items-center gap-3 rounded-3xl border px-5 py-4">

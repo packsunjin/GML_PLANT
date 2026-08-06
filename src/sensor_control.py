@@ -38,10 +38,43 @@ try:
     # 채널 0(A0) 지정. 라이브러리 버전에 따라 ADS.P0가 없을 수 있어(P0는 곧 정수 0) 안전하게 폴백한다.
     _CH0 = getattr(ADS, "P0", 0)
     chan = AnalogIn(ads, _CH0)  # AD8232 출력 -> A0
+    # 아날로그 습도(토양 수분) 센서 -> A1. 안 꽂혀 있어도 읽기는 되므로(값이 뜸)
+    # 실제 사용 여부는 read_moisture()의 범위 검사로 판단한다.
+    _CH1 = getattr(ADS, "P1", 1)
+    moisture_chan = AnalogIn(ads, _CH1)
     HARDWARE_AVAILABLE = True
 except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSError(I2C 없음) 등
     HARDWARE_AVAILABLE = False
+    moisture_chan = None
     _HW_ERR = str(e)
+
+
+# 아날로그 습도(토양 수분) 센서 보정값 -- 실제 센서로 한 번 재보고 맞추세요.
+# 물에 담갔을 때(가장 젖음)와 공기 중(가장 마름)의 전압을 넣으면 됩니다.
+MOISTURE_WET_V = 1.20   # 젖음 = 100%
+MOISTURE_DRY_V = 2.60   # 마름 = 0%
+
+
+def read_moisture():
+    """A1에 연결된 아날로그 습도 센서를 0~100%로 환산해 돌려준다.
+
+    센서가 없거나 하드웨어가 없으면 None. 전압이 보정 범위를 크게 벗어나면
+    (선이 빠졌거나 다른 것이 꽂힌 상태로 보고) 역시 None을 돌려준다.
+    """
+    if not HARDWARE_AVAILABLE or moisture_chan is None:
+        return None
+    try:
+        volts = moisture_chan.voltage
+    except Exception:
+        return None
+    if not (0.05 < volts < 3.30):
+        return None
+    lo, hi = sorted((MOISTURE_WET_V, MOISTURE_DRY_V))
+    if not (lo - 0.4 <= volts <= hi + 0.4):
+        return None
+    # 젖을수록 전압이 낮은 센서 기준(대부분의 정전용량식). 반대면 두 상수를 바꿔 넣으세요.
+    pct = (MOISTURE_DRY_V - volts) / (MOISTURE_DRY_V - MOISTURE_WET_V) * 100.0
+    return round(max(0.0, min(100.0, pct)), 1)
 
 
 # 상태별 저장 파일명(한글). 수집된 원시 CSV는 이 이름으로 data/raw/ 아래에 저장된다.

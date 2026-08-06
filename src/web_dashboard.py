@@ -23,6 +23,7 @@ import time
 
 import numpy as np
 
+import sensor_control
 from inference import RealtimeClassifier, SAMPLE_RATE_HZ
 
 # 최신 결과를 담는 공유 상태 (백그라운드 스레드가 갱신, 웹 요청이 읽음)
@@ -46,12 +47,13 @@ def _payload(result, recent, clf):
         "mean": round(float(np.mean(filt)), 4),
         "std": round(float(np.std(filt)), 4),
         "p2p": round(float(np.max(filt) - np.min(filt)), 4),
+        # 아날로그 습도 센서(ADS1115 A1). 안 꽂혀 있으면 None -> 화면은 "센서 대기 중"
+        "humidity": sensor_control.read_moisture(),
     }
 
 
 def _worker(clf, source):
     """백그라운드: 실시간으로 step()을 돌리며 최근 5초 버퍼와 최신 결과를 갱신한다."""
-    src_kind, src_label = source
     recent = np.zeros(int(5 * clf.sample_rate))
     while True:
         result = clf.step()
@@ -60,6 +62,9 @@ def _worker(clf, source):
             recent = np.roll(recent, -n_new)
             recent[-n_new:] = result["filtered_signal"][-n_new:]
             payload = _payload(result, recent, clf)
+            # 라벨을 매번 다시 읽는다. /api/mode 로 시뮬레이션 상태를 바꾸면
+            # 배지 문구도 바로 따라가야 하기 때문이다.
+            src_kind, src_label = clf.input_source()
             payload["source_kind"] = src_kind   # hardware / sim / csv
             payload["source"] = src_label       # 사람이 읽는 라벨
             with _lock:
@@ -77,7 +82,7 @@ def _web_dir():
 def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5000,
             refresh_hz=5.0, ui="초록말"):
     try:
-        from flask import Flask, jsonify, send_from_directory
+        from flask import Flask, jsonify, request, send_from_directory
     except ImportError:
         print("[web] Flask가 필요합니다:  pip install flask")
         raise
@@ -109,6 +114,33 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     def data():
         with _lock:
             return jsonify(dict(_latest))
+
+    # ---- 모드 전환 (SSH 없이 브라우저에서) -----------------------------
+    # RealtimeClassifier 는 매 스텝마다 self.sim_state 를 읽으므로, 값만 바꿔도
+    # 다음 샘플부터 바로 반영된다. 하드웨어로 도는 중에는 의미가 없어 막는다.
+    SIM_STATES = ("정상", "수분부족", "자극", "순환")
+
+    def _mode_info():
+        kind, label = clf.input_source()
+        return {"source_kind": kind, "source": label,
+                "sim_state": clf.sim_state, "options": list(SIM_STATES),
+                "editable": kind == "sim"}
+
+    @app.route("/api/mode", methods=["GET", "POST"])
+    def api_mode():
+        if request.method == "POST":
+            body = request.get_json(silent=True) or {}
+            want = body.get("sim_state")
+            if want not in SIM_STATES:
+                return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
+            kind, _ = clf.input_source()
+            if kind != "sim":
+                return jsonify({"ok": False, "error": "하드웨어/CSV 입력에서는 바꿀 수 없습니다",
+                                **_mode_info()}), 409
+            clf.sim_state = want
+            print(f"[web] 시뮬레이션 상태 변경 -> {want}")
+            return jsonify({"ok": True, **_mode_info()})
+        return jsonify(_mode_info())
 
 
     ip_hint = os.environ.get("GML_IP", "<파이 IP>")

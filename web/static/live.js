@@ -376,8 +376,62 @@
       });
   }
 
+  // ── 모드 전환 (SSH 없이 브라우저에서) ────────────────────────────
+  var modeState = null;
+
+  function renderMode(m) {
+    modeState = m;
+    $$("[data-mode-set]").forEach(function (b) {
+      var on = b.dataset.modeSet === m.sim_state;
+      b.classList.toggle("bg-primary", on && m.editable);
+      b.classList.toggle("text-primary-foreground", on && m.editable);
+      b.classList.toggle("bg-muted", !(on && m.editable));
+      b.classList.toggle("text-secondary-foreground", !(on && m.editable));
+      b.disabled = !m.editable;
+      b.style.opacity = m.editable ? "1" : ".45";
+      b.style.cursor = m.editable ? "pointer" : "not-allowed";
+    });
+    var hint = $('[data-mode="hint"]');
+    if (hint) {
+      hint.textContent = m.editable
+        ? "시뮬레이션 입력이라 여기서 상태를 바꿀 수 있어요"
+        : (m.source_kind === "hardware"
+            ? "실제 센서로 측정 중이라 모드를 바꿀 수 없어요"
+            : "CSV 재생 중이라 모드를 바꿀 수 없어요");
+    }
+  }
+
+  function loadMode() {
+    if (demo) {
+      renderMode({ source_kind: "sim", sim_state: "순환", editable: false });
+      var hint = $('[data-mode="hint"]');
+      if (hint) hint.textContent = "데모 화면이라 모드 전환은 백엔드에서만 됩니다";
+      return;
+    }
+    fetch("/api/mode", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(renderMode)
+      .catch(function () {});
+  }
+
+  function setMode(state) {
+    if (!modeState || !modeState.editable) return;
+    fetch("/api/mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sim_state: state })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (m) {
+        if (m.ok) { renderMode(m); trend = []; waveBuf = []; }
+      })
+      .catch(function () {});
+  }
+
   // ── 조작 ─────────────────────────────────────────────────────────
   document.addEventListener("click", function (e) {
+    var mode = e.target.closest("[data-mode-set]");
+    if (mode) { setMode(mode.dataset.modeSet); return; }
     var pause = e.target.closest('[data-act="pause"]');
     if (pause) {
       paused = !paused;
@@ -412,4 +466,6 @@
 
   poll();
   setInterval(poll, POLL_MS);
+  loadMode();
+  setInterval(loadMode, 5000);
 })();

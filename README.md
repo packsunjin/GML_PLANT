@@ -225,6 +225,93 @@ python3 sensor_control.py --state 정상 --duration 5 --rate 250
 실행 로그 첫 줄이 `모드: HARDWARE (AD8232+ADS1115)` 로 나오면 하드웨어 모드로 정상 동작하는 것입니다.
 (`SIMULATION (no I2C hardware detected)` 으로 나오면 위 1~2단계를 다시 점검하세요.)
 
+### 4. 습도(토양 수분) 센서 — 핀이 `+ / − / OUT` 3개뿐인 경우
+
+핀이 3개(`+`, `−`, `OUT`)면 **아날로그 센서**입니다. I2C(SDA/SCL)가 아니므로 `i2cdetect`에는 절대 안 뜨고,
+라즈베리파이는 아날로그 입력 핀이 없기 때문에 **이미 달려 있는 ADS1115의 남는 채널(A1)에 꽂으면** 됩니다.
+
+| 센서 핀 | 연결 위치 | 비고 |
+|---|---|---|
+| `+` (VCC) | 3V3 (물리 1번) — ADS1115 VDD와 같은 줄 | 5V 금지(ADS1115 입력 초과) |
+| `−` (GND) | GND (물리 6번) — AD8232/ADS1115와 공통 GND | |
+| `OUT` | **ADS1115 A1** | A0는 AD8232가 이미 사용 중 |
+
+읽기 코드는 `src/sensor_control.py`의 `read_moisture()`가 담당하며, 웹 대시보드 `/data` 응답의
+`humidity` 필드로 그대로 나갑니다(센서 미연결 시 `null` → 화면에 "센서 대기 중").
+
+**보정(캘리브레이션) 절차 — 한 번만 하면 됩니다**
+
+```bash
+cd src
+python3 -c "
+import time, sensor_control as s
+print('HARDWARE:', s.HARDWARE_AVAILABLE)
+for _ in range(20):
+    print(round(s.moisture_chan.voltage, 3), 'V')
+    time.sleep(0.5)
+"
+```
+1. 센서를 **물(또는 흠뻑 젖은 흙)** 에 담근 상태의 전압을 적어둡니다 → `MOISTURE_WET_V`
+2. 센서를 **공기 중(완전히 마른 상태)** 으로 두고 전압을 적어둡니다 → `MOISTURE_DRY_V`
+3. 두 값을 `src/sensor_control.py` 상단 상수에 넣습니다.
+
+```python
+MOISTURE_WET_V = 1.20   # 젖음 = 100%
+MOISTURE_DRY_V = 2.60   # 마름 = 0%
+```
+
+> 정전용량식(capacitive) 센서는 **젖을수록 전압이 낮아집니다.** 만약 반대로 젖을 때 전압이 더 높게 나오면
+> 두 상수 값을 서로 바꿔 넣으면 됩니다. `read_moisture()`는 전압이 보정 범위를 크게 벗어나면
+> (선이 빠졌다고 보고) `None`을 돌려주므로, 잘못된 값이 그래프에 찍히지 않습니다.
+>
+> **주의:** 이 센서는 *흙의 수분*을 재는 토양 수분 센서입니다. *공기 습도*(%RH)를 재려면 AHT20/DHT22 같은
+> 별도 센서가 필요합니다. 우리 시스템에서는 물 부족 판단이 목적이므로 토양 수분이 오히려 더 적합합니다.
+
+### 5. 원격 접속 — 블루투스로 웹을 열 수 있나?
+
+**결론: 블루투스로도 되긴 하지만 권장하지 않습니다.** 블루투스는 PAN(Personal Area Network) 프로파일로
+IP를 태울 수 있어서 `http://<블루투스 IP>:5000` 접속이 이론상 가능하지만, 페어링이 자주 끊기고
+속도가 느려 실시간 그래프에 부적합합니다. 아래 순서로 고르세요.
+
+**① 같은 Wi-Fi (가장 간단, 추천)**
+```bash
+hostname -I          # 예: 192.168.0.23
+python3 main.py --ui web --port 5000
+```
+같은 공유기에 붙은 노트북/폰에서 `http://192.168.0.23:5000` 접속.
+
+**② 파이를 Wi-Fi 핫스팟으로 (공유기가 없는 발표장/교실에서 추천)**
+```bash
+sudo nmcli device wifi hotspot ifname wlan0 ssid GML-PLANT password "gml12345"
+```
+폰/노트북을 `GML-PLANT`에 연결한 뒤 `http://10.42.0.1:5000` 접속. (되돌리기: `sudo nmcli connection down Hotspot`)
+
+**③ USB 테더링** — 파이와 노트북을 USB로 연결하면 가상 이더넷이 생겨 `http://<파이 USB IP>:5000`으로 접속됩니다.
+
+**④ 블루투스 PAN (정말 필요할 때만)**
+```bash
+sudo apt install -y bluez bluez-tools
+sudo bt-network -s nap wlan0        # 파이를 NAP(네트워크 공유) 서버로
+```
+폰에서 파이와 페어링 → "인터넷 액세스/테더링" 허용 → 파이의 `bnep0` IP로 접속.
+
+### 6. 웹에서 모드 바꾸기 (`/api/mode`)
+
+파이에 코드가 올라가 있으면 시뮬레이션 상태를 **웹 화면 버튼으로 바로 전환**할 수 있습니다.
+대시보드 상단의 `정상 / 수분부족 / 자극 / 순환` 버튼이 아래 API를 호출합니다.
+
+```bash
+curl http://<파이IP>:5000/api/mode
+# {"source_kind":"sim","source":"시뮬레이션 · 정상","sim_state":"정상",
+#  "options":["정상","수분부족","자극","순환"],"editable":true}
+
+curl -X POST http://<파이IP>:5000/api/mode \
+     -H "Content-Type: application/json" -d '{"sim_state":"자극"}'
+```
+
+> 실제 센서(하드웨어)나 CSV 재생으로 실행 중일 때는 바꿀 대상이 없으므로 `409`를 돌려주고
+> 화면의 버튼도 비활성화됩니다(`editable: false`). 목록에 없는 값은 `400`입니다.
+
 ## 단계별 실행 방법 및 검증 결과
 
 ### [1] 데이터 수집 (`src/sensor_control.py`)
