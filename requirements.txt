@@ -13,7 +13,7 @@ adafruit-circuitpython-ads1x15
 adafruit-blinka
 
 # === 온·습도 센서(선택) — 붙어 있는 것만 설치하면 자동으로 인식됩니다 ===
-# AHT20/AHT21 (I2C 0x38, 권장)
-adafruit-circuitpython-ahtx0
-# DHT22/DHT11 (GPIO 1선). 쓰지 않으면 설치하지 않아도 됩니다.
-# adafruit-circuitpython-dht
+# DHT22/DHT11 (GPIO 1선, DATA는 ADS1115가 아니라 파이 GPIO 7번에 직접 연결)
+adafruit-circuitpython-dht
+# AHT20/AHT21 (I2C 0x38). 쓰지 않으면 설치하지 않아도 됩니다.
+# adafruit-circuitpython-ahtx0

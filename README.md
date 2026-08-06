@@ -268,8 +268,27 @@ python3 sensor_control.py --state 정상 --duration 5 --rate 250
 
 | 센서 | 연결 | 설치 |
 |---|---|---|
-| **AHT20 / AHT21** (권장) | I2C — 3V3 / GND / SDA(3번) / SCL(5번) | `pip install adafruit-circuitpython-ahtx0` |
-| DHT22 / DHT11 | GPIO 1선 (기본 D4) | `pip install adafruit-circuitpython-dht` |
+| **DHT22 / DHT11** | GPIO 1선 (기본 D4 = **물리 7번**) | `pip install adafruit-circuitpython-dht` |
+| AHT20 / AHT21 | I2C — 3V3 / GND / SDA(3번) / SCL(5번) | `pip install adafruit-circuitpython-ahtx0` |
+
+#### DHT22 배선 (핀이 `+ / OUT / −` 3개인 모듈)
+
+> ⚠️ **DHT22는 디지털 센서라 ADS1115에 꽂으면 절대 안 읽힙니다.**
+> `OUT`(DATA)은 **파이 GPIO에 직접** 연결해야 합니다. ADC는 아날로그 전압만 읽습니다.
+
+| DHT22 핀 | 라즈베리파이 핀 |
+|---|---|
+| `+` (VCC) | 3V3 — 물리 **1번** |
+| `OUT` (DATA) | GPIO4 — 물리 **7번** |
+| `−` (GND) | GND — 물리 **6번** (AD8232/ADS1115와 공통) |
+
+- 다른 GPIO에 꽂았으면 알려주세요: `GML_DHT_PIN=D17 python3 main.py --web`
+- 3핀 **모듈**(작은 기판에 얹힌 형태)은 풀업 저항이 이미 붙어 있습니다.
+  기판 없는 맨 센서(4핀)라면 `DATA`–`VCC` 사이에 **10kΩ 풀업 저항**이 필요합니다.
+- DHT22는 **읽기 실패가 잦은 센서**입니다(정상 동작 중에도 30% 안팎). 코드가 2.1초 간격으로
+  최대 3번까지 다시 읽고, 실패한 판은 직전 값을 유지해 화면이 깜빡이지 않게 합니다.
+- 라즈베리파이 5에서는 `pulseio` 방식이 동작하지 않아 **비트뱅잉(`use_pulseio=False`)** 으로
+  먼저 시도합니다(코드가 자동 처리).
 
 AHT20은 ADS1115와 **같은 I2C 버스에 그냥 같이 물리면** 됩니다(주소가 `0x38`로 달라 충돌 없음).
 
@@ -297,6 +316,20 @@ ADC(ADS1115)    : ADS1115
 
 센서가 없으면 이유가 그대로 나옵니다 — 예: `AHT20 없음(No module named 'adafruit_ahtx0')`
 이면 위 `pip install`을 안 한 것이고, `I2C 버스: 없음`이면 `raspi-config`에서 I2C가 꺼진 것입니다.
+
+센서는 잡혔는데 값이 안 오면 **마지막 읽기 실패 사유**까지 보여줍니다.
+
+```
+온·습도 센서    : DHT22  (GPIO D4)
+  └ 읽기 실패    : Checksum did not validate. Try again.
+온도            : —
+```
+→ 이 경우는 배선 문제일 가능성이 큽니다. DATA가 **GPIO 7번**에 꽂혀 있는지(ADS1115가 아니라),
+GND가 공통인지 확인하세요.
+
+> 온·습도 읽기는 **백그라운드 스레드**에서 돕니다. DHT22는 재시도까지 몇 초가 걸릴 수 있는데,
+> 이걸 실시간 분류 루프 안에서 하면 샘플레이트가 무너지기 때문입니다
+> (실측: 읽기가 50% 실패하는 상황에서도 249.8 Hz 유지).
 
 > 온·습도 센서가 없으면 **습도 자리에 토양수분(A1) 값**이 들어가고 온도는 `—`로 남습니다.
 > 화면의 습도 옆에 무엇을 잰 값인지(`AHT20` / `토양수분(A1)`) 표시됩니다.

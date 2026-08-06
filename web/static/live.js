@@ -588,7 +588,9 @@
         var L = [];
         L.push("I2C 버스        : " + (s.i2c ? "OK" : "없음 — " + (s.i2c_error || "확인 불가")));
         L.push("ADC(ADS1115)    : " + (s.adc || "없음"));
-        L.push("온·습도 센서    : " + (s.env_sensor || "없음 — " + (s.env_error || "확인 불가")));
+        L.push("온·습도 센서    : " + (s.env_sensor || "없음 — " + (s.env_error || "확인 불가")) +
+                                      (s.env_sensor === "DHT22" ? "  (GPIO " + s.dht_pin + ")" : ""));
+        if (s.env_read_error) L.push("  └ 읽기 실패    : " + s.env_read_error);
         L.push("온도            : " + (s.temp == null ? "— (온·습도 센서 필요)" : s.temp + " °C"));
         L.push("습도            : " + (s.humidity == null ? "—" : s.humidity + " %") +
                                       (s.humidity_source ? "  (" + s.humidity_source + ")" : ""));
@@ -599,8 +601,18 @@
           L.push("");
           L.push("※ 온도를 재려면 AHT20(I2C 0x38) 또는 DHT22가 있어야 합니다.");
           L.push("   AHT20: pip install adafruit-circuitpython-ahtx0  → 3V3/GND/SDA/SCL 에 연결");
-          L.push("   DHT22: pip install adafruit-circuitpython-dht    → GML_DHT_PIN 환경변수로 핀 지정 (지금 " + s.dht_pin + ")");
-          L.push("   3핀(+/-/OUT) 아날로그 센서는 흙 수분만 재고 온도는 못 잽니다.");
+          L.push("   DHT22: pip install adafruit-circuitpython-dht");
+          L.push("          DATA 는 **파이 GPIO** 에 직접 (기본 " + s.dht_pin + " = 물리 7번).");
+          L.push("          ADS1115 에 꽂으면 안 됩니다 — 디지털 센서라 ADC 로는 못 읽습니다.");
+          L.push("          다른 핀에 꽂았으면:  GML_DHT_PIN=D17 python3 main.py --web");
+        } else if (s.env_sensor === "DHT22" && s.temp == null) {
+          L.push("");
+          L.push("※ DHT22 는 잡혔는데 값이 안 옵니다. 아래를 확인하세요.");
+          L.push("   1) DATA 선이 GPIO " + s.dht_pin + " (기본 D4 = 물리 7번) 에 꽂혀 있나요?");
+          L.push("      ADS1115 A1 에 꽂혀 있으면 절대 안 읽힙니다.");
+          L.push("   2) 전원은 3V3(물리 1번), GND 는 공통(물리 6번) 인가요?");
+          L.push("   3) 모듈이 아닌 맨 센서라면 DATA–VCC 사이에 10kΩ 풀업 저항이 필요합니다.");
+          L.push("   4) 핀을 바꿨으면:  GML_DHT_PIN=D17 python3 main.py --web");
         }
         box.style.display = "block";
         box.textContent = L.join("\n");

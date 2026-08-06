@@ -19,6 +19,7 @@ import argparse
 import csv
 import os
 import signal
+import threading
 import time
 import sys
 
@@ -60,28 +61,44 @@ except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSErr
 # 세 개 다 없으면 값이 None이고, 화면에는 "센서 대기 중"으로 나온다.
 ENV_SENSOR = None       # "AHT20" / "DHT22" / None
 ENV_ERROR = None        # 왜 못 잡았는지 (진단용)
+ENV_LAST_ERROR = None   # 마지막 읽기 실패 사유 (센서는 잡혔는데 값이 안 올 때)
 _env_dev = None
-DHT_PIN_NAME = os.environ.get("GML_DHT_PIN", "D4")   # DHT를 쓴다면 꽂은 GPIO 번호
+_env_kind = None        # "i2c" / "dht"
+
+# DHT22의 DATA 핀을 꽂은 GPIO. **ADS1115가 아니라 파이 GPIO에 직접 꽂아야 한다.**
+# 기본 D4 = 물리 7번 핀. 다른 곳에 꽂았으면 GML_DHT_PIN=D17 처럼 지정한다.
+DHT_PIN_NAME = os.environ.get("GML_DHT_PIN", "D4")
+# DHT22는 읽기 실패가 잦은 센서다(체크섬 오류). 한 번 읽을 때 이만큼 재시도한다.
+DHT_RETRIES = 3
 
 try:
     import adafruit_ahtx0                                    # noqa: E402
     if HARDWARE_AVAILABLE:
         _env_dev = adafruit_ahtx0.AHTx0(i2c)
-        ENV_SENSOR = "AHT20"
+        _env_dev.temperature      # 실제로 읽혀야 인정한다(주소만 열리는 경우 배제)
+        ENV_SENSOR, _env_kind = "AHT20", "i2c"
     else:
         ENV_ERROR = "I2C 버스를 열지 못해 AHT20을 확인할 수 없음"
 except Exception as _e:
+    _env_dev = None
     ENV_ERROR = f"AHT20 없음({_e})"
 
 if ENV_SENSOR is None:
     try:
         import adafruit_dht                                  # noqa: E402
         import board as _board                               # noqa: E402
-        _env_dev = adafruit_dht.DHT22(getattr(_board, DHT_PIN_NAME))
-        ENV_SENSOR = "DHT22"
+        pin = getattr(_board, DHT_PIN_NAME)
+        # 라즈베리파이 5(및 최신 커널)에서는 pulseio 방식이 동작하지 않는다.
+        # use_pulseio=False(비트뱅잉)로 먼저 시도하고, 안 되면 기본 방식으로 넘어간다.
+        try:
+            _env_dev = adafruit_dht.DHT22(pin, use_pulseio=False)
+        except TypeError:
+            _env_dev = adafruit_dht.DHT22(pin)   # 옛 버전은 이 인자가 없다
+        ENV_SENSOR, _env_kind = "DHT22", "dht"
         ENV_ERROR = None
     except Exception as _e2:
-        ENV_ERROR = f"{ENV_ERROR}; DHT22 없음({_e2})" if ENV_ERROR else f"DHT22 없음({_e2})"
+        _env_dev = None
+        ENV_ERROR = (f"{ENV_ERROR}; DHT22 없음({_e2})" if ENV_ERROR else f"DHT22 없음({_e2})")
 
 
 # 아날로그 습도(토양 수분) 센서 보정값 -- 실제 센서로 한 번 재보고 맞추세요.
@@ -104,6 +121,7 @@ except Exception:
 # 온·습도는 매 요청마다 읽으면(특히 DHT22는 2초 간격 제한) 실패하므로 잠깐 캐시한다.
 _env_cache = {"t": 0.0, "temp": None, "humidity": None}
 ENV_CACHE_SEC = 2.0
+_env_thread = None
 
 
 def read_moisture(raw=False):
@@ -147,31 +165,69 @@ def read_moisture(raw=False):
     return out(round(max(0.0, min(100.0, pct)), 1), volts, why)
 
 
-def read_environment():
-    """온도(°C)와 습도(%)를 돌려준다. -> {"temp": .., "humidity": .., "source": ..}
-
-    AHT20/DHT22가 있으면 그걸로 온도+공기습도를 읽고, 없으면 온도는 None이고
-    습도 자리에 아날로그 토양수분을 넣는다(무엇을 쟀는지는 source로 구분).
-    """
-    now = time.time()
-    if now - _env_cache["t"] < ENV_CACHE_SEC:
-        return {"temp": _env_cache["temp"], "humidity": _env_cache["humidity"],
-                "source": ENV_SENSOR or ("토양수분(A1)" if HARDWARE_AVAILABLE else None)}
-
+def _env_refresh_once():
+    """센서를 실제로 한 번 읽어 캐시를 갱신한다. **오래 걸릴 수 있다**(DHT22 재시도).
+    그래서 실시간 루프에서 직접 부르지 않고 백그라운드 스레드에서만 부른다."""
+    global ENV_LAST_ERROR
     temp = humidity = None
     if _env_dev is not None:
-        try:
-            temp = round(float(_env_dev.temperature), 1)
-            humidity = round(float(_env_dev.relative_humidity), 1)
-        except Exception:
-            # DHT22는 종종 읽기에 실패한다. 이번 판만 건너뛰고 이전 값을 유지한다.
+        # DHT22는 체크섬 오류로 자주 실패한다(정상 동작 중에도 30% 안팎). 몇 번 다시 읽는다.
+        tries = DHT_RETRIES if _env_kind == "dht" else 1
+        for i in range(tries):
+            try:
+                t = float(_env_dev.temperature)
+                h = float(_env_dev.relative_humidity)
+                temp, humidity = round(t, 1), round(h, 1)
+                ENV_LAST_ERROR = None
+                break
+            except Exception as e:
+                ENV_LAST_ERROR = str(e) or e.__class__.__name__
+                if i + 1 < tries:
+                    time.sleep(2.1)   # DHT22는 최소 2초 간격을 지켜야 한다
+        if temp is None:
+            # 이번 판만 실패한 것일 수 있으므로 이전 값을 유지한다(화면이 깜빡이지 않게).
             temp, humidity = _env_cache["temp"], _env_cache["humidity"]
 
     if humidity is None:
         humidity = read_moisture()   # 온·습도 센서가 없으면 토양수분으로 대체
 
-    _env_cache.update({"t": now, "temp": temp, "humidity": humidity})
-    return {"temp": temp, "humidity": humidity,
+    _env_cache.update({"t": time.time(), "temp": temp, "humidity": humidity})
+
+
+def _env_loop():
+    while True:
+        try:
+            _env_refresh_once()
+        except Exception:
+            pass
+        time.sleep(ENV_CACHE_SEC)
+
+
+def start_env_thread():
+    """온·습도 갱신을 백그라운드로 돌린다. 여러 번 불러도 한 번만 시작한다."""
+    global _env_thread
+    if _env_thread is not None and _env_thread.is_alive():
+        return _env_thread
+    _env_thread = threading.Thread(target=_env_loop, daemon=True)
+    _env_thread.start()
+    return _env_thread
+
+
+def read_environment():
+    """온도(°C)와 습도(%)를 돌려준다. -> {"temp": .., "humidity": .., "source": ..}
+
+    **바로 돌아온다.** 실제 읽기는 백그라운드 스레드가 하고 여기서는 캐시만 본다.
+    DHT22는 한 번 읽는 데 재시도까지 몇 초가 걸릴 수 있는데, 이걸 실시간 분류 루프
+    안에서 하면 샘플레이트가 무너지기 때문이다.
+
+    AHT20/DHT22가 있으면 그걸로 온도+공기습도를 읽고, 없으면 온도는 None이고
+    습도 자리에 아날로그 토양수분을 넣는다(무엇을 쟀는지는 source로 구분).
+    """
+    start_env_thread()
+    if _env_cache["t"] == 0.0 and _env_dev is None:
+        # 온·습도 센서가 아예 없으면 토양수분만 즉시 읽어도 부담이 없다.
+        _env_cache["humidity"] = read_moisture()
+    return {"temp": _env_cache["temp"], "humidity": _env_cache["humidity"],
             "source": ENV_SENSOR or ("토양수분(A1)" if HARDWARE_AVAILABLE else None)}
 
 
@@ -203,6 +259,8 @@ def sensor_status():
         "adc": "ADS1115" if HARDWARE_AVAILABLE else None,
         "env_sensor": ENV_SENSOR,
         "env_error": ENV_ERROR if ENV_SENSOR is None else None,
+        # 센서는 잡혔는데 값이 안 올 때의 마지막 실패 사유 (DHT22 배선/핀 진단용)
+        "env_read_error": ENV_LAST_ERROR,
         "temp": env["temp"],
         "humidity": env["humidity"],
         "humidity_source": env["source"],
