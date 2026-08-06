@@ -519,14 +519,21 @@
         var sec = j.started ? Math.round(Date.now() / 1000 - j.started) : 0;
         hint.textContent = "▶ " + (j.label || "") + " · " + (j.step || "") + " (" + sec + "초)";
       } else if (j.ok === true) {
-        hint.textContent = "✅ " + (j.label || "") + " 완료";
+        hint.textContent = j.stopped ? "⏹ " + (j.label || "") + " 중지됨 (모은 데이터는 저장됨)"
+                                     : "✅ " + (j.label || "") + " 완료";
       } else if (j.ok === false) {
         hint.textContent = "❌ " + (j.label || "") + " 실패 — 아래 로그 확인";
       }
     }
-    // 실행 중에는 버튼을 잠근다(동시에 두 작업이 돌지 않도록).
+    // 실행 중에는 시작 버튼을 잠그고 중지 버튼을 띄운다.
     $$("[data-job-collect]").concat([jobEl("train")]).forEach(function (b) {
       if (b) { b.disabled = j.running; b.style.opacity = j.running ? "0.5" : ""; }
+    });
+    $$('[data-job="stop"]').forEach(function (b) {
+      b.style.display = j.running ? "inline-block" : "none";
+      b.disabled = !!j.stopping;
+      b.textContent = j.stopping ? "중지하는 중…" : "■ 중지";
+      b.style.opacity = j.stopping ? "0.6" : "";
     });
     if (!j.running && jobTimer) {
       clearInterval(jobTimer); jobTimer = null;
@@ -814,11 +821,23 @@
       if (open && !jobOpts) { loadJobOptions(); watchJob(); }
       return;
     }
+    var stopBtn = e.target.closest('[data-job="stop"]');
+    if (stopBtn && !stopBtn.disabled) {
+      stopBtn.disabled = true;
+      stopBtn.textContent = "중지하는 중…";
+      fetch("/api/job/stop", { method: "POST" })
+        .then(function (r) { return r.json(); })
+        .then(function () { watchJob(); })
+        .catch(function () {});
+      return;
+    }
     var col = e.target.closest("[data-job-collect]");
     if (col && !col.disabled) {
-      var dur = parseFloat((jobEl("duration") || {}).value) || 30;
+      // '중지할 때까지'를 켜면 duration=0 -> 서버가 무제한 수집으로 받는다.
+      var unlimited = (jobEl("unlimited") || {}).checked;
+      var dur = unlimited ? 0 : (parseFloat((jobEl("duration") || {}).value) || 30);
       postJob("/api/collect", { state: col.dataset.jobCollect, duration: dur },
-              col.dataset.jobCollect + " " + dur + "초 수집");
+              col.dataset.jobCollect + (unlimited ? " 수집 (중지할 때까지)" : " " + dur + "초 수집"));
       return;
     }
     if (e.target.closest('[data-job="train"]') && !jobEl("train").disabled) {
@@ -872,6 +891,11 @@
       return;
     }
     if (e.target.matches("[data-files-pick]")) syncPicks();
+    // '중지할 때까지'를 켜면 길이 입력은 의미가 없으므로 잠근다.
+    if (e.target.matches('[data-job="unlimited"]')) {
+      var dur = jobEl("duration");
+      if (dur) { dur.disabled = e.target.checked; dur.style.opacity = e.target.checked ? "0.4" : ""; }
+    }
   });
 
   function modal(open) {

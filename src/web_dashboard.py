@@ -18,6 +18,7 @@ web_dashboard.py
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -37,9 +38,12 @@ _lock = threading.Lock()
 # 한 번에 하나만 돌린다. 실시간 루프와 같은 프로세스에서 무거운 학습을 돌리면 GIL 때문에
 # 대시보드가 멈추므로, 별도 프로세스(subprocess)로 띄우고 출력만 받아온다.
 _job = {"running": False, "kind": None, "label": None, "ok": None,
-        "started": None, "finished": None, "step": None}
+        "started": None, "finished": None, "step": None, "stopping": False,
+        "stopped": False}
 _job_log = deque(maxlen=400)
 _job_lock = threading.Lock()
+# 지금 돌고 있는 자식 프로세스. '중지' 버튼이 여기에 SIGINT를 보낸다.
+_job_proc = {"proc": None}
 # 수집 중에는 실시간 루프를 재운다. 같은 ADS1115를 두 프로세스가 번갈아 읽으면
 # 수집 쪽 샘플레이트가 떨어지는데, 그러면 학습 데이터의 시간축이 어긋난다.
 _pause = threading.Event()
@@ -64,7 +68,8 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
         if _job["running"]:
             return False
         _job.update({"running": True, "kind": kind, "label": label, "ok": None,
-                     "started": time.time(), "finished": None, "step": steps[0][0]})
+                     "started": time.time(), "finished": None, "step": steps[0][0],
+                     "stopping": False, "stopped": False})
         _job_log.clear()
 
     def work():
@@ -83,26 +88,40 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
                 proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True,
                                         encoding="utf-8", errors="replace", bufsize=1)
+                _job_proc["proc"] = proc
                 for line in proc.stdout:
                     _job_say(line)
-                if proc.wait() != 0:
-                    _job_say(f"❌ '{name}' 단계가 실패했습니다 (종료코드 {proc.returncode})")
+                rc = proc.wait()
+                _job_proc["proc"] = None
+                # 중지 요청으로 끝났으면 실패가 아니다. sensor_control은 SIGINT를 받아도
+                # 지금까지 모은 데이터를 저장하고 0으로 끝나지만, 단계에 따라 130/-2가
+                # 될 수 있어 함께 성공으로 본다.
+                if _job.get("stopping") and rc in (0, 130, -2, -15):
+                    _job_say(f"⏹ '{name}' 중지됨")
+                    break
+                if rc != 0:
+                    _job_say(f"❌ '{name}' 단계가 실패했습니다 (종료코드 {rc})")
                     ok = False
                     break
         except Exception as e:
             _job_say(f"❌ 오류: {e}")
             ok = False
         finally:
+            _job_proc["proc"] = None
             if pause_live:
                 _pause.clear()
-            if ok and on_done is not None:
+            stopped = bool(_job.get("stopping"))
+            # 중지된 학습은 모델이 반쯤 저장됐을 수 있으므로 새 모델을 적용하지 않는다.
+            if ok and not stopped and on_done is not None:
                 try:
                     on_done()
                 except Exception as e:
                     _job_say(f"⚠️ 후처리 실패: {e}")
             with _job_lock:
-                _job.update({"running": False, "ok": ok, "finished": time.time(), "step": None})
-            _job_say("✅ 완료" if ok else "중단됨")
+                # stopped: 마지막 작업이 '중지'로 끝났는지. 화면이 완료와 구분해 표시한다.
+                _job.update({"running": False, "ok": ok, "finished": time.time(),
+                             "step": None, "stopping": False, "stopped": stopped})
+            _job_say(("⏹ 중지됨 (모은 데이터는 저장됨)" if stopped else "✅ 완료") if ok else "중단됨")
 
     threading.Thread(target=work, daemon=True).start()
     return True
@@ -263,6 +282,33 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     def api_job():
         return jsonify(_job_snapshot())
 
+    @app.route("/api/job/stop", methods=["POST"])
+    def api_job_stop():
+        """돌고 있는 작업을 멈춘다. 수집이면 SIGINT를 보내 지금까지 모은 데이터를
+        저장하고 끝나게 하고, 응답이 없으면 강제 종료한다."""
+        with _job_lock:
+            if not _job["running"]:
+                return jsonify({"ok": False, "error": "실행 중인 작업이 없습니다"}), 409
+            _job["stopping"] = True
+            label = _job["label"]
+        proc = _job_proc.get("proc")
+        if proc is None or proc.poll() is not None:
+            return jsonify({"ok": True, "note": "이미 끝나가는 중입니다", **_job_snapshot()})
+        _job_say("⏹ 중지 요청을 보냈습니다…")
+
+        def finisher():
+            try:
+                proc.send_signal(signal.SIGINT)   # 정상 종료 경로 -> 모은 데이터 저장
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                _job_say("⚠️ 응답이 없어 강제 종료합니다")
+                proc.kill()
+            except Exception as e:
+                _job_say(f"⚠️ 중지 실패: {e}")
+
+        threading.Thread(target=finisher, daemon=True).start()
+        return jsonify({"ok": True, "label": label})
+
     @app.route("/api/collect", methods=["POST"])
     def api_collect():
         body = request.get_json(silent=True) or {}
@@ -273,12 +319,14 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             duration = float(body.get("duration", 30))
         except (TypeError, ValueError):
             return jsonify({"ok": False, "error": "수집 시간이 숫자가 아닙니다"}), 400
-        if not (5 <= duration <= 600):
-            return jsonify({"ok": False, "error": "수집 시간은 5~600초로 넣어주세요"}), 400
+        # 0이면 '중지 누를 때까지' 무제한. 그 외에는 5~600초.
+        if duration != 0 and not (5 <= duration <= 600):
+            return jsonify({"ok": False, "error": "수집 시간은 5~600초, 또는 0(무제한)으로 넣어주세요"}), 400
 
         cmd = [sys.executable, "sensor_control.py", "--state", state,
                "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ)]
-        started = _run_steps("collect", f"{state} {duration:g}초 수집",
+        label = f"{state} 수집 (무제한)" if duration == 0 else f"{state} {duration:g}초 수집"
+        started = _run_steps("collect", label,
                              [(f"'{state}' 수집", cmd)], src_dir, pause_live=True)
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409

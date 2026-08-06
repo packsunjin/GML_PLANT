@@ -18,6 +18,7 @@ AD8232(생체 전위 증폭기) + ADS1115(16비트 ADC)를 이용하여
 import argparse
 import csv
 import os
+import signal
 import time
 import sys
 
@@ -145,10 +146,26 @@ def simulate_batch(t_array, state):
     return baseline + signal + powerline_noise + noise
 
 
-def collect(state, duration_sec, sample_rate_hz, out_dir):
+def _install_stop_handler():
+    """SIGTERM/SIGINT를 KeyboardInterrupt로 바꿔, 웹의 '중지' 버튼으로 끊어도
+    수집 루프가 정상 경로로 빠져나와 지금까지 모은 데이터를 저장하게 한다."""
+    def _raise(signum, frame):
+        raise KeyboardInterrupt()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _raise)
+        except (ValueError, OSError):
+            pass   # 메인 스레드가 아니면 등록할 수 없다
+
+
+def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     """
     지정한 상태(state)에 대해 duration_sec 동안 sample_rate_hz로 샘플링하여
     out_dir/<상태>.csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
+
+    duration_sec가 0 이하이면 **중지할 때까지 무제한**으로 모은다.
+    중간에 Ctrl+C(또는 SIGTERM)로 끊으면 그때까지 모은 만큼만 저장한다.
+    progress_sec마다 진행 상황을 출력해 웹 로그에서 살아 있는지 보이게 한다.
     """
     if state not in VALID_STATES:
         raise ValueError(f"state는 {list(VALID_STATES)} 중 하나여야 합니다.")
@@ -156,39 +173,73 @@ def collect(state, duration_sec, sample_rate_hz, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, KOR_FILENAMES[state])
 
-    n_samples = int(duration_sec * sample_rate_hz)
+    unlimited = duration_sec is None or duration_sec <= 0
+    n_samples = 0 if unlimited else int(duration_sec * sample_rate_hz)
     interval = 1.0 / sample_rate_hz
 
     mode_str = "HARDWARE (AD8232+ADS1115)" if HARDWARE_AVAILABLE else "SIMULATION (no I2C hardware detected)"
+    length_str = "무제한 (중지할 때까지)" if unlimited else f"{duration_sec}s (총 {n_samples} 샘플)"
     print(f"[sensor_control] 모드: {mode_str}")
-    print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={duration_sec}s (총 {n_samples} 샘플) -> {out_path}")
+    print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={length_str} -> {out_path}")
 
-    if HARDWARE_AVAILABLE:
-        rows = []
-        start = time.time()
-        for i in range(n_samples):
-            t = i * interval
-            v = read_sample_hardware()
-            rows.append((round(t, 6), v))
+    rows = []
+    stopped = False
+    start = time.time()
+    next_report = progress_sec
 
-            # 실제 하드웨어 샘플링 주기에 맞춰 페이싱
-            elapsed = time.time() - start
-            target = (i + 1) * interval
-            if target > elapsed:
-                time.sleep(min(target - elapsed, interval))
-    else:
-        # 시뮬레이션 모드는 실시간 페이싱이 필요 없으므로, 샘플별 파이썬 반복문 대신
-        # numpy 배열 연산으로 전체 구간을 한 번에 생성한다 (동일한 신호 수식 사용).
-        t_array = np.arange(n_samples) * interval
-        v_array = simulate_batch(t_array, state)
-        rows = list(zip(np.round(t_array, 6), v_array))
+    def report(i):
+        done = i * interval
+        if unlimited:
+            print(f"[sensor_control] 수집 중… {done:.0f}초 ({i} 샘플)")
+        else:
+            print(f"[sensor_control] 수집 중… {done:.0f}/{duration_sec:.0f}초 "
+                  f"({i}/{n_samples} 샘플, {100.0 * i / max(1, n_samples):.0f}%)")
+
+    try:
+        if HARDWARE_AVAILABLE:
+            i = 0
+            while unlimited or i < n_samples:
+                rows.append((round(i * interval, 6), read_sample_hardware()))
+                i += 1
+                # 실제 하드웨어 샘플링 주기에 맞춰 페이싱
+                elapsed = time.time() - start
+                target = i * interval
+                if target > elapsed:
+                    time.sleep(min(target - elapsed, interval))
+                if i * interval >= next_report:
+                    report(i)
+                    next_report += progress_sec
+        else:
+            # 시뮬레이션은 실시간 페이싱이 필요 없어 numpy로 한 번에 만들지만, 중간에
+            # 멈출 수 있어야 하므로 progress_sec 길이의 덩어리로 나눠 생성한다.
+            chunk = max(1, int(progress_sec * sample_rate_hz))
+            i = 0
+            while unlimited or i < n_samples:
+                take = chunk if unlimited else min(chunk, n_samples - i)
+                t_array = (np.arange(i, i + take)) * interval
+                v_array = simulate_batch(t_array, state)
+                rows.extend(zip(np.round(t_array, 6), v_array))
+                i += take
+                report(i)
+                if unlimited:
+                    # 무제한 시뮬레이션은 실제 시간에 맞춰 흘러가게 한다
+                    # (안 그러면 순식간에 메모리를 다 쓴다).
+                    time.sleep(progress_sec)
+    except KeyboardInterrupt:
+        stopped = True
+        print(f"[sensor_control] ⏹ 중지 요청 — 지금까지 모은 {len(rows)} 샘플을 저장합니다.")
+
+    if not rows:
+        print("[sensor_control] 모은 데이터가 없어 저장하지 않습니다.")
+        return None
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp_sec", "voltage"])
         writer.writerows(rows)
 
-    print(f"[sensor_control] 저장 완료: {out_path} ({len(rows)} rows)")
+    print(f"[sensor_control] 저장 완료{' (중지됨)' if stopped else ''}: "
+          f"{out_path} ({len(rows)} rows, {len(rows) * interval:.1f}초)")
     return out_path
 
 
@@ -207,11 +258,13 @@ def read_single_realtime(state_for_sim="정상", t=None):
 def main():
     parser = argparse.ArgumentParser(description="AD8232+ADS1115 식물 전위 신호 수집")
     parser.add_argument("--state", required=True, choices=list(VALID_STATES))
-    parser.add_argument("--duration", type=float, default=30.0, help="수집 시간(초), 기본 30초")
+    parser.add_argument("--duration", type=float, default=30.0,
+                        help="수집 시간(초), 기본 30초. 0이면 중지할 때까지 무제한")
     parser.add_argument("--rate", type=float, default=250.0, help="샘플링 주기(Hz), 100~1000 권장")
     parser.add_argument("--out", default="../data/raw", help="저장 폴더")
     args = parser.parse_args()
 
+    _install_stop_handler()
     collect(args.state, args.duration, args.rate, args.out)
 
 

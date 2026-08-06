@@ -55,6 +55,9 @@
     <span style="flex:1"></span>
     <span data-job="badge" style="display:none"
           class="rounded-xl bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground">작업 중…</span>
+    <button type="button" data-job="stop"
+            class="rounded-xl px-3 py-1.5 text-[11px] font-bold transition"
+            style="display:none;background:var(--destructive);color:#fff">■ 중지</button>
     <button type="button" data-job="toggle"
             class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">수집 · 학습</button>
     <button type="button" data-files="toggle"
@@ -69,10 +72,16 @@
       <div class="flex flex-wrap gap-1.5" data-job="collect-buttons"></div>
       <label class="flex items-center gap-1.5 text-[11px] font-medium text-subtle">
         길이
-        <input type="number" data-job="duration" value="30" min="5" max="600" step="5"
+        <input type="number" data-job="duration" value="30" min="0" max="600" step="5"
                class="w-16 rounded-lg border border-border bg-muted px-2 py-1 text-right text-xs font-bold text-secondary-foreground">
         초
       </label>
+      <label class="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-subtle">
+        <input type="checkbox" data-job="unlimited"> 중지할 때까지
+      </label>
+      <button type="button" data-job="stop"
+              class="rounded-xl px-3.5 py-1.5 text-xs font-bold transition"
+              style="display:none;background:var(--destructive);color:#fff">■ 중지</button>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">2 · 재학습</span>
