@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 venv/
+
+# 대시보드가 실행 중 남기는 기록 (store.py)
+data/app/

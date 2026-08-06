@@ -175,6 +175,7 @@
 
     drawWave(d.signal);
     drawSpec(d.spec);
+    applyHome(d);
   }
 
   function poll() {
@@ -187,7 +188,187 @@
       });
   }
 
+  // ── 홈 화면 요약 ─────────────────────────────────────────────────
+  var MIND = {
+    "정상": ["“지금 좋아요”", "수분과 온도 모두 안정 구간이에요. 그대로 유지해 주세요."],
+    "수분부족": ["“목이 말라요”", "수분부족 신호가 감지됐어요. 흙을 촉촉하게 적셔주세요."],
+    "자극": ["“방금 놀랐어요”", "잎에 닿는 자극이 감지됐어요. 잠시 그대로 두세요."],
+    "꺾임": ["“어딘가 아파요”", "손상으로 보이는 신호예요. 줄기와 잎을 확인해 주세요."]
+  };
+
+  function applyHome(d) {
+    var m = MIND[d.state];
+    var mind = $('[data-home="mind"]'), desc = $('[data-home="desc"]');
+    if (m && mind) mind.textContent = m[0];
+    if (m && desc) desc.textContent = m[1];
+
+    var line = $('[data-home="wave"]');
+    if (line && d.signal && d.signal.length) {
+      var lo = Math.min.apply(null, d.signal), hi = Math.max.apply(null, d.signal);
+      var span = (hi - lo) || 1e-6, step = 288 / (d.signal.length - 1);
+      line.setAttribute("points", d.signal.map(function (v, i) {
+        return (i * step).toFixed(1) + "," + (72 - ((v - lo) / span) * 62).toFixed(2);
+      }).join(" "));
+    }
+  }
+
+  // ── 기록 화면 ────────────────────────────────────────────────────
+  var BAR_COLOR = {
+    "정상": "var(--primary)", "수분부족": "var(--water)",
+    "자극": "var(--warning)", "꺾임": "var(--destructive)"
+  };
+  var histDays = 7;
+
+  function renderHistory(h) {
+    var bars = $('[data-hist="bars"]');
+    if (bars) {
+      var daily = h.daily || [];
+      var peak = daily.reduce(function (mx, d) {
+        var n = Object.values(d.states || {}).reduce(function (a, b) { return a + b; }, 0);
+        return Math.max(mx, n);
+      }, 0) || 1;
+      bars.innerHTML = daily.map(function (d) {
+        var total = Object.values(d.states || {}).reduce(function (a, b) { return a + b; }, 0);
+        var pct = total ? Math.max(8, Math.round(total / peak * 100)) : 5;
+        var color = total ? (BAR_COLOR[d.top] || "var(--primary)") : "var(--border)";
+        return '<div class="flex flex-1 flex-col items-center justify-end" style="height:100%">' +
+                 '<span class="mb-1.5 text-[10px] font-bold tabular-nums text-muted-foreground">' +
+                   (total || "") + '</span>' +
+                 '<div title="' + d.date + (d.top ? " · " + d.top : "") + '" ' +
+                      'style="width:100%;max-width:56px;height:' + pct + '%;border-radius:12px 12px 5px 5px;background:' + color + '"></div>' +
+                 '<span class="mt-2 text-[11px] font-bold text-muted-foreground">' + d.weekday + '</span>' +
+                 (d.water ? '<span class="text-[10px] text-subtle">물 ' + d.water + '</span>' : '') +
+               '</div>';
+      }).join("") || '<p class="w-full text-center text-xs text-subtle">기록이 없어요.</p>';
+    }
+
+    var s = h.stats || {};
+    var set = function (k, v) { var el = $('[data-hist="' + k + '"]'); if (el) el.textContent = v; };
+    set("records", s.records != null ? s.records + "회" : "—");
+    set("water", s.water_count != null ? s.water_count + "회" : "—");
+    set("healthy", s.healthy_ratio != null ? s.healthy_ratio + "%" : "—");
+    set("days", s.active_days != null ? s.active_days + "일" : "—");
+
+    var tl = $('[data-hist="timeline"]');
+    if (tl) {
+      // 상태가 자주 바뀌면 목록이 길어지므로 최근 것만 보여준다
+      var evs = (h.events || []).slice(0, 12);
+      tl.innerHTML = evs.length ? evs.map(function (e) {
+        var when = (e.ts || "").replace("T", " ").slice(5, 16);
+        if (e.kind === "water") {
+          return row("💧", "물주기 기록", (e.ml || 280) + "ml 급수 완료", when, "var(--water)");
+        }
+        var conf = e.proba == null ? "" : " · 확신도 " + (e.proba * 100).toFixed(1) + "%";
+        return row("", e.state + " 감지", "전위신호 기반 분류" + conf, when, BAR_COLOR[e.state] || "var(--primary)");
+      }).join("") : '<p class="py-6 text-center text-xs text-subtle">아직 기록이 없어요.</p>';
+    }
+  }
+
+  function row(icon, title, sub, when, color) {
+    return '<div class="flex items-center gap-3 border-b border-border py-3 last:border-b-0">' +
+             '<span style="width:9px;height:9px;border-radius:50%;background:' + color + ';flex:none"></span>' +
+             '<div class="min-w-0 flex-1">' +
+               '<p class="text-sm font-bold text-foreground">' + (icon ? icon + " " : "") + title + '</p>' +
+               '<p class="text-[11px] text-muted-foreground">' + sub + '</p>' +
+             '</div>' +
+             '<span class="shrink-0 text-[11px] font-medium text-subtle tabular-nums">' + when + '</span>' +
+           '</div>';
+  }
+
+  function loadHistory() {
+    fetch("/api/history?days=" + histDays, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(renderHistory)
+      .catch(function () {});
+  }
+
+  function logWater() {
+    fetch("/api/water", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plant: "monstera", ml: 280 })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function () { toast("물주기를 기록했어요 💧"); loadHistory(); })
+      .catch(function () { toast("기록에 실패했어요"); });
+  }
+
+  // ── 설정 저장 ────────────────────────────────────────────────────
+  function loadSettings() {
+    fetch("/api/settings", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        $$("#settings .settings-row, [data-screen='settings'] button[role='switch']");
+        Object.keys(d.settings || {}).forEach(function (key) {
+          var el = findToggleByLabel(key);
+          if (el) setToggle(el, d.settings[key]);
+        });
+      })
+      .catch(function () {});
+  }
+
+  function findToggleByLabel(label) {
+    var hit = null;
+    $$("[data-screen='settings'] p, [data-screen='settings'] div").some(function (el) {
+      if (el.children.length === 0 && el.textContent.trim() === label) {
+        var box = el.closest("div.flex");
+        while (box && !box.querySelector("button, [role='switch'], input[type='checkbox']")) box = box.parentElement;
+        hit = box && box.querySelector("button, [role='switch'], input[type='checkbox']");
+        return !!hit;
+      }
+      return false;
+    });
+    return hit;
+  }
+
+  function setToggle(el, on) {
+    el.dataset.on = on ? "1" : "0";
+    if (el.tagName === "INPUT") el.checked = !!on;
+    else el.setAttribute("aria-checked", on ? "true" : "false");
+  }
+
+  // ── 토스트 ───────────────────────────────────────────────────────
+  var toastTimer;
+  function toast(msg) {
+    var el = document.getElementById("toast0");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "toast0";
+      el.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);" +
+        "background:var(--ink);color:var(--primary-foreground);font-weight:700;font-size:14px;" +
+        "padding:12px 20px;border-radius:14px;z-index:70;opacity:0;transition:opacity .2s;pointer-events:none";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = "1";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.style.opacity = "0"; }, 1800);
+  }
+
+  // ── 이벤트 연결 ──────────────────────────────────────────────────
+  document.addEventListener("click", function (e) {
+    if (e.target.closest('[data-home="water"], [data-hist="water-btn"]')) {
+      e.preventDefault();
+      logWater();
+      return;
+    }
+    var range = e.target.closest("[data-range]");
+    if (range) {
+      histDays = parseInt(range.dataset.range, 10) || 7;
+      $$("[data-range]").forEach(function (b) {
+        var on = b === range;
+        b.classList.toggle("bg-primary", on);
+        b.classList.toggle("text-primary-foreground", on);
+        b.classList.toggle("text-muted-foreground", !on);
+      });
+      loadHistory();
+    }
+  });
+
   go("home");
   poll();
   setInterval(poll, 700);
+  loadHistory();
+  setInterval(loadHistory, 20000);
+  loadSettings();
 })();
