@@ -84,17 +84,17 @@
               style="display:none;background:var(--destructive);color:#fff">■ 중지</button>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">2 · 재학습</span>
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">2 · 스펙트로그램 변환</span>
+      <div class="flex flex-wrap gap-1.5" data-job="prep-buttons"></div>
+      <span class="text-[11px] font-medium text-subtle">상태별로 따로 변환할 수 있어요</span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">3 · 학습</span>
       <select data-job="task" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
       <select data-job="mode" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
       <button type="button" data-job="train"
-              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">전처리 + 학습만</button>
-    </div>
-    <div class="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">전체 자동</span>
-      <button type="button" data-job="pipeline"
-              class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">3종 수집 → 전처리 → 학습</button>
-      <span class="text-[11px] font-medium text-subtle">정상·수분부족·자극을 차례로 모으고 바로 학습까지 합니다</span>
+              class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">학습 시작</button>
+      <span class="text-[11px] font-medium text-subtle">변환된 전체 데이터로 한 번에 학습합니다</span>
     </div>
     <p class="text-[11px] font-medium text-subtle" data-job="hint"></p>
     <pre data-job="log"
@@ -106,6 +106,12 @@
       <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">센서</span>
       <button type="button" data-job="sensors"
               class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border">진단하기</button>
+      <button type="button" data-cal="wet"
+              class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border"
+              title="센서를 물(또는 젖은 흙)에 담근 상태에서 누르세요">지금이 젖음(100%)</button>
+      <button type="button" data-cal="dry"
+              class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border"
+              title="센서를 공기 중(마른 상태)에 둔 채 누르세요">지금이 마름(0%)</button>
       <span class="text-[11px] font-medium text-subtle" data-job="sensor-hint">온·습도가 안 잡히면 눌러보세요</span>
     </div>
     <pre data-job="sensor-log" style="display:none;white-space:pre-wrap;word-break:break-all"

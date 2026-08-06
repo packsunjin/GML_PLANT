@@ -89,6 +89,18 @@ if ENV_SENSOR is None:
 MOISTURE_WET_V = 1.20   # 젖음 = 100%
 MOISTURE_DRY_V = 2.60   # 마름 = 0%
 
+# 웹에서 보정하면 이 파일에 저장해 두고, 다음 실행에서 다시 읽어 쓴다.
+_CALIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "data", "moisture_calibration.json")
+try:
+    import json as _json
+    with open(_CALIB_PATH, encoding="utf-8") as _cf:
+        _c = _json.load(_cf)
+        MOISTURE_WET_V = float(_c.get("wet_v", MOISTURE_WET_V))
+        MOISTURE_DRY_V = float(_c.get("dry_v", MOISTURE_DRY_V))
+except Exception:
+    pass
+
 # 온·습도는 매 요청마다 읽으면(특히 DHT22는 2초 간격 제한) 실패하므로 잠깐 캐시한다.
 _env_cache = {"t": 0.0, "temp": None, "humidity": None}
 ENV_CACHE_SEC = 2.0
@@ -98,7 +110,10 @@ def read_moisture(raw=False):
     """A1에 연결된 아날로그 토양수분 센서를 0~100%로 환산해 돌려준다.
 
     raw=True면 (퍼센트, 전압, 사유) 튜플을 돌려준다(보정/진단용).
-    센서가 없거나 전압이 보정 범위를 크게 벗어나면 퍼센트는 None이다.
+
+    **읽히기만 하면 값을 돌려준다.** 예전에는 보정 범위를 벗어나면 None을 돌려줘서
+    화면에 "센서 대기 중"만 뜨고 센서가 아예 안 잡히는 것처럼 보였다. 이제는
+    0~100%로 자르고, 보정이 안 맞는다는 사실만 사유로 함께 알려준다.
     """
     def out(pct, volts=None, why=None):
         return (pct, volts, why) if raw else pct
@@ -111,16 +126,25 @@ def read_moisture(raw=False):
         volts = moisture_chan.voltage
     except Exception as e:
         return out(None, None, f"읽기 실패: {e}")
-    if not (0.05 < volts < 3.30):
-        return out(None, volts, "전압이 0.05~3.30V 밖 — 선이 빠졌거나 전원 미연결")
 
-    lo, hi = sorted((MOISTURE_WET_V, MOISTURE_DRY_V))
-    if not (lo - 0.4 <= volts <= hi + 0.4):
-        return out(None, volts,
-                   f"보정 범위({lo:.2f}~{hi:.2f}V) 밖 — MOISTURE_WET_V/DRY_V를 맞춰주세요")
+    # 정말로 못 믿을 값(선이 빠져 0V 근처거나 기준전압을 넘김)만 버린다.
+    if volts <= 0.03:
+        return out(None, volts, "전압이 0V 근처 — OUT 선이 빠졌거나 센서 전원 미연결")
+    if volts >= 3.31:
+        return out(None, volts, "전압이 3.3V 초과 — 5V에 꽂혔는지 확인하세요(3V3에 연결)")
+
+    span = MOISTURE_DRY_V - MOISTURE_WET_V
+    if abs(span) < 0.05:
+        return out(None, volts, "보정값 두 개가 거의 같습니다 — MOISTURE_WET_V/DRY_V를 다시 넣으세요")
+
     # 젖을수록 전압이 낮은 센서 기준(대부분의 정전용량식). 반대면 두 상수를 바꿔 넣으세요.
-    pct = (MOISTURE_DRY_V - volts) / (MOISTURE_DRY_V - MOISTURE_WET_V) * 100.0
-    return out(round(max(0.0, min(100.0, pct)), 1), volts, None)
+    pct = (MOISTURE_DRY_V - volts) / span * 100.0
+    why = None
+    if pct < -5 or pct > 105:
+        lo, hi = sorted((MOISTURE_WET_V, MOISTURE_DRY_V))
+        why = (f"보정 범위({lo:.2f}~{hi:.2f}V) 밖이라 0/100%로 붙습니다 — "
+               f"지금 전압 {volts:.2f}V 로 보정값을 맞춰주세요")
+    return out(round(max(0.0, min(100.0, pct)), 1), volts, why)
 
 
 def read_environment():
@@ -149,6 +173,24 @@ def read_environment():
     _env_cache.update({"t": now, "temp": temp, "humidity": humidity})
     return {"temp": temp, "humidity": humidity,
             "source": ENV_SENSOR or ("토양수분(A1)" if HARDWARE_AVAILABLE else None)}
+
+
+def set_moisture_calibration(wet_v=None, dry_v=None):
+    """토양수분 보정값을 실행 중에 바꾸고 파일로 남긴다(다음 실행에도 적용).
+    코드를 고치지 않고 웹에서 보정할 수 있게 하기 위한 것."""
+    global MOISTURE_WET_V, MOISTURE_DRY_V
+    if wet_v is not None:
+        MOISTURE_WET_V = float(wet_v)
+    if dry_v is not None:
+        MOISTURE_DRY_V = float(dry_v)
+    try:
+        import json
+        with open(_CALIB_PATH, "w", encoding="utf-8") as f:
+            json.dump({"wet_v": MOISTURE_WET_V, "dry_v": MOISTURE_DRY_V}, f)
+    except Exception as e:
+        print(f"[sensor_control] 보정값 저장 실패: {e}")
+    _env_cache["t"] = 0.0   # 다음 읽기에서 새 보정값이 바로 반영되도록 캐시 무효화
+    return {"wet_v": MOISTURE_WET_V, "dry_v": MOISTURE_DRY_V}
 
 
 def sensor_status():

@@ -473,6 +473,29 @@
             box.appendChild(b);
           });
         }
+        // 전처리 버튼: 상태별 + 전체. 변환이 끝난 상태에는 이미지 장수를 붙여준다.
+        var pbox = jobEl("prep-buttons");
+        if (pbox) {
+          pbox.innerHTML = "";
+          o.states.forEach(function (s) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.dataset.jobPrep = s;
+            b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
+            var n = (o.converted || {})[s] || 0;
+            b.textContent = n ? s + " (" + n + "장)" : s;
+            b.disabled = o.collected.indexOf(s) < 0;
+            b.style.opacity = b.disabled ? "0.4" : "";
+            b.title = b.disabled ? "먼저 수집하세요" : "";
+            pbox.appendChild(b);
+          });
+          var all = document.createElement("button");
+          all.type = "button";
+          all.dataset.jobPrep = "";
+          all.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
+          all.textContent = "전체";
+          pbox.appendChild(all);
+        }
         fillSelect(jobEl("task"), o.tasks, "3종");
         fillSelect(jobEl("mode"), o.modes, "둘다");
         // 방금 끝난 작업의 결과 문구는 덮어쓰지 않는다(완료/실패 표시가 사라지지 않도록).
@@ -526,7 +549,7 @@
       }
     }
     // 실행 중에는 시작 버튼을 잠그고 중지 버튼을 띄운다.
-    $$("[data-job-collect]").concat([jobEl("train"), jobEl("pipeline")]).forEach(function (b) {
+    $$("[data-job-collect]").concat($$("[data-job-prep]")).concat([jobEl("train")]).forEach(function (b) {
       if (b) { b.disabled = j.running; b.style.opacity = j.running ? "0.5" : ""; }
     });
     $$('[data-job="stop"]').forEach(function (b) {
@@ -873,20 +896,37 @@
               col.dataset.jobCollect + (unlimited ? " 수집 (중지할 때까지)" : " " + dur + "초 수집"));
       return;
     }
-    if (e.target.closest('[data-job="train"]') && !jobEl("train").disabled) {
-      postJob("/api/train", { task: jobEl("task").value, mode: jobEl("mode").value },
-              jobEl("task").value + " 재학습");
+    var prep = e.target.closest("[data-job-prep]");
+    if (prep && !prep.disabled) {
+      // data-job-prep 이 비어 있으면 전체 변환.
+      var pstate = prep.dataset.jobPrep || null;
+      postJob("/api/preprocess", pstate ? { state: pstate } : {},
+              (pstate || "전체") + " 스펙트로그램 변환");
       return;
     }
-    if (e.target.closest('[data-job="pipeline"]') && !jobEl("pipeline").disabled) {
-      var pd = parseFloat((jobEl("duration") || {}).value) || 30;
-      if (!window.confirm("정상·수분부족·자극을 각각 " + pd + "초씩 새로 모으고 학습합니다.\n" +
-                          "기존 원시 데이터는 덮어써집니다. 계속할까요?")) return;
-      postJob("/api/pipeline", { duration: pd, task: jobEl("task").value, mode: jobEl("mode").value },
-              "전체 자동 (3종 × " + pd + "초 → 학습)");
+    if (e.target.closest('[data-job="train"]') && !jobEl("train").disabled) {
+      postJob("/api/train", { task: jobEl("task").value, mode: jobEl("mode").value },
+              jobEl("task").value + " 학습");
       return;
     }
     if (e.target.closest('[data-job="sensors"]')) { loadSensors(); return; }
+    var cal = e.target.closest("[data-cal]");
+    if (cal) {
+      var hint = jobEl("sensor-hint");
+      hint.textContent = "보정 중…";
+      fetch("/api/sensors/calibrate", { method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mark: cal.dataset.cal }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.ok) { hint.textContent = "❌ " + (d.error || "보정 실패"); return; }
+          hint.textContent = "✅ " + (d.marked === "wet" ? "젖음" : "마름") +
+                             " = " + d.volts + "V 로 저장했어요";
+          loadSensors();
+        })
+        .catch(function () { hint.textContent = "❌ 보정 요청 실패"; });
+      return;
+    }
 
     // ── 학습 자료 패널 ──
     var ftog = e.target.closest('[data-files="toggle"]');

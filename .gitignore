@@ -7,3 +7,4 @@ data/app/
 
 # 웹에서 지운 파일이 들어가는 휴지통 (복원 전까지 보관)
 .trash/
+data/moisture_calibration.json

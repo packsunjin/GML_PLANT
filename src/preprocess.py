@@ -85,6 +85,14 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     out_dir = os.path.join(out_root, cls)
     os.makedirs(out_dir, exist_ok=True)
 
+    # 이전에 만든 이미지를 먼저 지운다. 새로 수집한 CSV가 더 짧으면 예전 이미지가
+    # 남아 학습 데이터에 섞이기 때문이다(파일명이 시작 인덱스라 덮어쓰기가 안 됨).
+    stale = [n for n in os.listdir(out_dir) if n.lower().endswith(".png")]
+    for n in stale:
+        os.remove(os.path.join(out_dir, n))
+    if stale:
+        print(f"  이전 이미지 {len(stale)}장 정리")
+
     df = pd.read_csv(csv_path)
     raw_signal = df["voltage"].to_numpy(dtype=float)
 
@@ -129,23 +137,35 @@ def main():
                         help="대역통과 하한(Hz). 느린 식물 신호(수분부족 등)를 살리려면 0.05~0.1 처럼 낮추세요")
     parser.add_argument("--highcut", type=float, default=45.0, help="대역통과 상한(Hz)")
     parser.add_argument("--notch", type=float, default=50.0, help="노치 주파수(Hz). 0이면 노치 끔")
+    parser.add_argument("--only", default=None, choices=sorted(set(FILE_TO_STATE.values())),
+                        help="이 상태 하나만 변환한다. 나머지 상태의 결과는 그대로 둔다.")
     args = parser.parse_args()
 
     print(f"[preprocess] 원시 데이터: {args.raw_dir}")
     print(f"[preprocess] 출력(스펙트로그램): {args.out_dir}")
     print(f"[preprocess] 필터: 대역통과 {args.lowcut}~{args.highcut}Hz"
           + (f" + 노치 {args.notch}Hz" if args.notch else " (노치 없음)"))
+    if args.only:
+        print(f"[preprocess] 대상: '{args.only}' 하나만 변환")
 
     existing = set(os.listdir(args.raw_dir)) if os.path.isdir(args.raw_dir) else set()
-    missing_states = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname not in existing]
-    if missing_states:
-        print(f"⚠️  다음 상태가 수집되지 않았습니다: {', '.join(missing_states)}")
-        collected = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname in existing]
-        print(f"   ({' + '.join(collected) if collected else '수집된 상태 없음'} 데이터만으로 진행합니다)")
+    if args.only:
+        # 한 상태만 돌릴 때는 그 파일만 본다.
+        targets = {f for f in existing if FILE_TO_STATE.get(f) == args.only}
+        if not targets:
+            print(f"❌ '{args.only}' 의 원시 CSV가 없습니다. 먼저 수집하세요.")
+            return
+    else:
+        targets = existing
+        missing_states = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname not in existing]
+        if missing_states:
+            print(f"⚠️  다음 상태가 수집되지 않았습니다: {', '.join(missing_states)}")
+            collected = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname in existing]
+            print(f"   ({' + '.join(collected) if collected else '수집된 상태 없음'} 데이터만으로 진행합니다)")
 
     total = 0
     all_feature_rows = []
-    for fname in sorted(existing):
+    for fname in sorted(targets):
         if fname.endswith(".csv"):
             csv_path = os.path.join(args.raw_dir, fname)
             count, feature_rows = process_file(csv_path, args.out_dir,
@@ -166,8 +186,22 @@ def main():
     if all_feature_rows:
         columns = ["img_name", "source_file", "label"] + FEATURE_NAMES
         feat_df = pd.DataFrame(all_feature_rows, columns=columns)
+
+        # --only 로 한 상태만 돌렸으면 features.csv를 통째로 덮어쓰면 안 된다.
+        # 그 상태의 예전 행만 걷어내고 나머지는 그대로 둔 채 합친다.
+        if args.only and os.path.isfile(args.features_csv):
+            try:
+                old = pd.read_csv(args.features_csv)
+                kept = old[old["label"] != args.only]
+                feat_df = pd.concat([kept, feat_df], ignore_index=True)
+                print(f"[preprocess] 기존 특징 {len(kept)}행 유지 + '{args.only}' 새로 {len(all_feature_rows)}행")
+            except Exception as e:
+                print(f"⚠️  기존 features.csv를 합치지 못해 새로 만듭니다: {e}")
+
         feat_df.to_csv(args.features_csv, index=False, encoding="utf-8")
+        counts = feat_df["label"].value_counts().to_dict()
         print(f"[preprocess] 명시적 특징 {len(feat_df)}개 행 -> {args.features_csv}")
+        print(f"[preprocess] 클래스별 개수: {counts}")
 
 
 if __name__ == "__main__":

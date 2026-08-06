@@ -274,6 +274,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     # ---- 데이터 수집 / 재학습 (SSH 없이 브라우저에서) ---------------------
     src_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.abspath(os.path.join(src_dir, ".."))
     TASKS = ("3종", "정상-수분부족", "정상-자극", "전체")
     MODES = ("픽셀", "특징", "둘다")
 
@@ -290,6 +291,34 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     def api_sensors():
         """센서 진단. 왜 온·습도가 안 잡히는지 브라우저에서 바로 확인한다."""
         return jsonify(sensor_control.sensor_status())
+
+    @app.route("/api/sensors/calibrate", methods=["POST"])
+    def api_sensors_calibrate():
+        """토양수분 보정. {"mark":"wet"} 또는 {"mark":"dry"} 를 보내면 지금 전압을
+        그 기준으로 잡는다. wet_v/dry_v를 직접 넣어도 된다."""
+        body = request.get_json(silent=True) or {}
+        mark = body.get("mark")
+        if mark in ("wet", "dry"):
+            _, volts, _why = sensor_control.read_moisture(raw=True)
+            if volts is None:
+                return jsonify({"ok": False, "error": "지금 전압을 읽지 못했습니다"}), 409
+            cal = sensor_control.set_moisture_calibration(
+                wet_v=volts if mark == "wet" else None,
+                dry_v=volts if mark == "dry" else None)
+            print(f"[web] 토양수분 보정: {mark} = {volts:.3f}V")
+            return jsonify({"ok": True, "marked": mark, "volts": round(volts, 3), **cal})
+
+        try:
+            wet = body.get("wet_v")
+            dry = body.get("dry_v")
+            if wet is None and dry is None:
+                return jsonify({"ok": False, "error": "mark 또는 wet_v/dry_v가 필요합니다"}), 400
+            cal = sensor_control.set_moisture_calibration(
+                wet_v=None if wet is None else float(wet),
+                dry_v=None if dry is None else float(dry))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "보정값이 숫자가 아닙니다"}), 400
+        return jsonify({"ok": True, **cal})
 
     @app.route("/api/job/stop", methods=["POST"])
     def api_job_stop():
@@ -341,62 +370,42 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
         return jsonify({"ok": True, "job": _job_snapshot()})
 
-    @app.route("/api/pipeline", methods=["POST"])
-    def api_pipeline():
-        """수집(상태별) → 전처리 → 학습 → 모델 적용을 한 번에 돌린다.
-
-        states를 주면 그 상태만 수집하고, 비우면 수집은 건너뛰고 이미 있는
-        data/raw로 전처리+학습만 한다. 중간에 '중지'를 누르면 거기서 멈춘다."""
+    @app.route("/api/preprocess", methods=["POST"])
+    def api_preprocess():
+        """스펙트로그램 변환(전처리)만 실행한다. state를 주면 그 상태 하나만
+        다시 변환하고 나머지 상태의 결과는 건드리지 않는다."""
         body = request.get_json(silent=True) or {}
-        states = body.get("states")
-        if states is None:
-            states = list(sensor_control.VALID_STATES)
-        bad = [s for s in states if s not in sensor_control.VALID_STATES]
-        if bad:
-            return jsonify({"ok": False, "error": f"알 수 없는 상태: {bad[0]}"}), 400
-        try:
-            duration = float(body.get("duration", 30))
-        except (TypeError, ValueError):
-            return jsonify({"ok": False, "error": "수집 시간이 숫자가 아닙니다"}), 400
-        # 전체 자동에서는 무제한을 못 쓴다(언제 다음 단계로 넘어갈지 알 수 없으므로).
-        if states and not (5 <= duration <= 600):
-            return jsonify({"ok": False, "error": "전체 자동은 수집 시간을 5~600초로 정해야 합니다"}), 400
-        task = body.get("task", "3종")
-        mode = body.get("mode", "둘다")
-        if task not in TASKS or mode not in MODES:
-            return jsonify({"ok": False, "error": "알 수 없는 학습 옵션입니다"}), 400
+        state = body.get("state")
+        if state is not None and state not in sensor_control.VALID_STATES:
+            return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
 
-        steps = []
-        for s in states:
-            steps.append((f"1-{len(steps) + 1} '{s}' 수집 ({duration:g}초)",
-                          [sys.executable, "sensor_control.py", "--state", s,
-                           "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ)]))
-        steps.append(("2 전처리 (필터 → 스펙트로그램 → 특징)", [sys.executable, "preprocess.py"]))
-        steps.append((f"3 학습 ({task} / {mode})",
-                      [sys.executable, "train.py", "--task", task, "--mode", mode]))
-
-        label = (f"전체 자동 ({len(states)}종 × {duration:g}초 → 학습)" if states
-                 else f"전처리 + 학습 ({task} / {mode})")
-        # 수집 단계가 있으면 그 동안 실시간 루프를 재운다(센서 양보).
-        started = _run_steps("pipeline", label, steps, src_dir,
-                             pause_live=bool(states), on_done=_reload)
+        cmd = [sys.executable, "preprocess.py"]
+        if state:
+            cmd += ["--only", state]
+        label = f"'{state}' 스펙트로그램 변환" if state else "전체 스펙트로그램 변환"
+        started = _run_steps("preprocess", label, [(label, cmd)], src_dir)
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
         return jsonify({"ok": True, "job": _job_snapshot()})
 
     @app.route("/api/train", methods=["POST"])
     def api_train():
+        """학습만 실행한다(전처리는 /api/preprocess 로 따로).
+        학습이 끝나면 돌고 있는 분류기에 새 모델을 바로 반영한다."""
         body = request.get_json(silent=True) or {}
         task = body.get("task", "3종")
         mode = body.get("mode", "둘다")
         if task not in TASKS or mode not in MODES:
             return jsonify({"ok": False, "error": "알 수 없는 학습 옵션입니다"}), 400
 
-        steps = [("전처리 (필터 → 스펙트로그램 → 특징)", [sys.executable, "preprocess.py"]),
-                 (f"학습 ({task} / {mode})",
-                  [sys.executable, "train.py", "--task", task, "--mode", mode])]
-        # 학습이 끝나면 돌고 있는 분류기에 새 모델을 바로 반영한다(재시작 불필요).
-        started = _run_steps("train", f"{task} / {mode} 재학습", steps, src_dir, on_done=_reload)
+        spec_dir = os.path.join(root_dir, "data", "spectrogram")
+        if not os.path.isdir(spec_dir) or not os.listdir(spec_dir):
+            return jsonify({"ok": False,
+                            "error": "스펙트로그램이 없습니다. 전처리를 먼저 하세요"}), 409
+
+        label = f"{task} / {mode} 학습"
+        steps = [(label, [sys.executable, "train.py", "--task", task, "--mode", mode])]
+        started = _run_steps("train", label, steps, src_dir, on_done=_reload)
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
         return jsonify({"ok": True, "job": _job_snapshot()})
@@ -404,7 +413,6 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     # ---- 학습 자료 보기 / 내려받기 / 지우기 -------------------------------
     # 브라우저에서 다룰 수 있는 폴더는 아래 둘로 제한한다. 요청 경로는 반드시
     # realpath로 풀어서 이 안에 있는지 확인한다(../ 로 저장소 밖을 건드리지 못하게).
-    root_dir = os.path.abspath(os.path.join(src_dir, ".."))
     ALLOWED_ROOTS = (os.path.join(root_dir, "data"), os.path.join(root_dir, "models"))
 
     def _safe_path(rel):
@@ -647,12 +655,19 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     @app.route("/api/train/options")
     def api_train_options():
-        raw_dir = os.path.join(src_dir, "..", "data", "raw")
+        raw_dir = os.path.join(root_dir, "data", "raw")
+        spec_dir = os.path.join(root_dir, "data", "spectrogram")
         have = sorted(s for s in sensor_control.VALID_STATES
                       if os.path.isfile(os.path.join(raw_dir, sensor_control.KOR_FILENAMES[s])))
+        # 상태별로 스펙트로그램이 몇 장 변환돼 있는지 (전처리 버튼에 표시)
+        converted = {}
+        for s in sensor_control.VALID_STATES:
+            d = os.path.join(spec_dir, s)
+            converted[s] = (len([n for n in os.listdir(d) if n.lower().endswith(".png")])
+                            if os.path.isdir(d) else 0)
         return jsonify({"tasks": list(TASKS), "modes": list(MODES),
                         "states": list(sensor_control.VALID_STATES),
-                        "collected": have,
+                        "collected": have, "converted": converted,
                         "hardware": sensor_control.HARDWARE_AVAILABLE,
                         "model": clf.model_name, "classes": list(clf.classes)})
 
