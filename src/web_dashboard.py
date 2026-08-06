@@ -68,9 +68,16 @@ def _worker(clf, source):
         time.sleep(1.0 / clf.sample_rate)
 
 
-def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5000, refresh_hz=5.0):
+def _web_dir():
+    """저장소의 web/ 디렉터리(초록말 UI). 없으면 None."""
+    d = os.path.join(os.path.dirname(__file__), "..", "web")
+    return d if os.path.isfile(os.path.join(d, "chorokmal.html")) else None
+
+
+def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5000,
+            refresh_hz=5.0, ui="초록말"):
     try:
-        from flask import Flask, jsonify
+        from flask import Flask, jsonify, send_from_directory
     except ImportError:
         print("[web] Flask가 필요합니다:  pip install flask")
         raise
@@ -83,10 +90,19 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     threading.Thread(target=_worker, args=(clf, source), daemon=True).start()
 
-    app = Flask(__name__)
+    web_dir = _web_dir() if ui == "초록말" else None
+    if ui == "초록말" and web_dir is None:
+        print("[web] web/chorokmal.html 을 찾지 못해 기본 화면으로 실행합니다.")
+
+    # 초록말 UI는 web/static 을 그대로 /static 으로 내보낸다. Flask 기본 static
+    # 폴더(src/static)는 존재하지 않으므로 여기서 직접 지정해야 404가 나지 않는다.
+    app = (Flask(__name__, static_folder=os.path.join(web_dir, "static"), static_url_path="/static")
+           if web_dir else Flask(__name__))
 
     @app.route("/")
     def index():
+        if web_dir:
+            return send_from_directory(web_dir, "chorokmal.html")
         return PAGE
 
     @app.route("/data")
@@ -236,12 +252,15 @@ def main():
                         help="CSV·하드웨어 없을 때 라이브로 생성할 상태")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--ui", default="초록말", choices=["초록말", "기본"],
+                        help="초록말=web/ 디자인 화면, 기본=예전 내장 화면")
     args = parser.parse_args()
 
     if not os.path.exists(args.model):
         print(f"[web] 모델 파일이 없습니다: {args.model}  (먼저 train.py 실행)")
         return
-    run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, host=args.host, port=args.port)
+    run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, host=args.host,
+            port=args.port, ui=args.ui)
 
 
 if __name__ == "__main__":

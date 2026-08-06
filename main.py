@@ -34,6 +34,8 @@ def main():
     parser.add_argument("--web", action="store_true",
                          help="웹 대시보드 모드 (브라우저로 http://<파이 IP>:5000 접속). VNC 없이 봄")
     parser.add_argument("--port", type=int, default=5000, help="웹 대시보드 포트 (--web일 때)")
+    parser.add_argument("--ui", default="초록말", choices=["초록말", "기본"],
+                         help="웹 화면 종류 (--web일 때). 초록말=web/ 디자인 화면, 기본=예전 내장 화면")
     args = parser.parse_args()
 
     if not os.path.exists(args.model):
@@ -43,7 +45,7 @@ def main():
 
     if args.web:
         from web_dashboard import run_web
-        run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, port=args.port)
+        run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, port=args.port, ui=args.ui)
     elif args.no_gui:
         run_headless(args.model, args.sim_csv, sim_state=args.sim_state)
     else:

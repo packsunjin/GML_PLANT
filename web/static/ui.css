@@ -1,0 +1,34 @@
+/* 초록말 대시보드 보정 스타일
+   (Lovable 빌드의 컴파일된 Tailwind에 없는 규칙만 여기서 채웁니다) */
+
+:root {
+  /* 수분 관련 상태색 — 원본 팔레트에 파랑 계열이 없어 여기서 정의 */
+  --water: oklch(56% .135 247);
+  --water-deep: oklch(45% .13 250);
+  --water-soft: oklch(95% .03 247);
+  --water-soft-border: oklch(88% .055 247);
+}
+
+body {
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+               'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+}
+
+/* 화면 전환 */
+.screen { display: none; }
+.screen.is-on { display: block; }
+[data-go], [data-missing] { cursor: pointer; }
+
+/* 선택된 탭이 hover 시 배경이 씻겨 흰 글씨만 남는 것 방지 */
+aside nav [data-go].bg-primary:hover { background-color: var(--primary-hover); }
+nav.fixed [data-go]:hover { color: var(--primary); }
+
+/* 원본은 콘텐츠를 max-w-6xl로 묶어 넓은 화면에서 좌우가 비어 보입니다 */
+main .max-w-6xl { max-width: min(1560px, 100%); }
+
+/* 빌드된 Tailwind에 sm:hidden이 없어, 좁은 화면 대체 표시는 여기서 처리 */
+[data-narrow-only] { display: none; }
+@media (max-width: 767px) {
+  [data-narrow-only] { display: block; }
+  [data-wide-only] { display: none; }
+}
