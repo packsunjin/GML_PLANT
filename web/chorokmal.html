@@ -52,6 +52,35 @@
               class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">순환</button>
     </div>
     <span class="text-[11px] font-medium text-subtle" data-mode="hint">확인 중…</span>
+    <span style="flex:1"></span>
+    <button type="button" data-job="toggle"
+            class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">수집 · 학습</button>
+  </section>
+
+  <!-- 데이터 수집 / 재학습 (SSH 없이 브라우저에서) -->
+  <section data-job="panel" style="display:none"
+           class="flex flex-col gap-3 rounded-3xl border border-border bg-card px-5 py-4 shadow-soft">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">1 · 데이터 수집</span>
+      <div class="flex flex-wrap gap-1.5" data-job="collect-buttons"></div>
+      <label class="flex items-center gap-1.5 text-[11px] font-medium text-subtle">
+        길이
+        <input type="number" data-job="duration" value="30" min="5" max="600" step="5"
+               class="w-16 rounded-lg border border-border bg-muted px-2 py-1 text-right text-xs font-bold text-secondary-foreground">
+        초
+      </label>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">2 · 재학습</span>
+      <select data-job="task" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
+      <select data-job="mode" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
+      <button type="button" data-job="train"
+              class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">전처리 + 학습 시작</button>
+      <span class="text-[11px] font-medium text-subtle" data-job="hint"></span>
+    </div>
+    <pre data-job="log"
+         style="display:none;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all"
+         class="rounded-2xl bg-muted px-4 py-3 text-[11px] leading-relaxed text-secondary-foreground"></pre>
   </section>
 
   <!-- 경고 배너 (정상이 아닐 때만) -->

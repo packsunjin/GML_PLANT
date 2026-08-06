@@ -442,10 +442,131 @@
       .catch(function () {});
   }
 
+  // ── 수집 · 학습 (SSH 없이 브라우저에서) ──────────────────────────
+  var jobOpts = null, jobTimer = null, jobRunning = false, jobFinished = false;
+
+  function jobEl(name) { return $('[data-job="' + name + '"]'); }
+
+  function loadJobOptions() {
+    if (demo) return;
+    fetch("/api/train/options", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (o) {
+        jobOpts = o;
+        var box = jobEl("collect-buttons");
+        if (box) {
+          box.innerHTML = "";
+          o.states.forEach(function (s) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.dataset.jobCollect = s;
+            b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
+            // 이미 수집된 상태는 표시해 준다(다시 누르면 덮어쓰기).
+            b.textContent = o.collected.indexOf(s) >= 0 ? s + " ✓" : s;
+            box.appendChild(b);
+          });
+        }
+        fillSelect(jobEl("task"), o.tasks, "3종");
+        fillSelect(jobEl("mode"), o.modes, "둘다");
+        // 방금 끝난 작업의 결과 문구는 덮어쓰지 않는다(완료/실패 표시가 사라지지 않도록).
+        var hint = jobEl("hint");
+        if (hint && !jobRunning && !jobFinished) {
+          hint.textContent = o.hardware
+            ? "현재 모델: " + o.model
+            : "센서가 없어 수집하면 시뮬레이션 신호가 저장됩니다";
+        }
+      })
+      .catch(function () {});
+  }
+
+  function fillSelect(sel, values, pick) {
+    if (!sel || sel.options.length) return;
+    values.forEach(function (v) {
+      var o = document.createElement("option");
+      o.value = v; o.textContent = v;
+      if (v === pick) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function renderJob(j) {
+    var log = jobEl("log"), hint = jobEl("hint");
+    jobRunning = !!j.running;
+    jobFinished = !j.running && j.ok !== null && j.ok !== undefined;
+    if (log && j.log && j.log.length) {
+      log.style.display = "block";
+      var atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+      log.textContent = j.log.join("\n");
+      if (atBottom) log.scrollTop = log.scrollHeight;
+    }
+    if (hint) {
+      if (j.running) {
+        var sec = j.started ? Math.round(Date.now() / 1000 - j.started) : 0;
+        hint.textContent = "▶ " + (j.label || "") + " · " + (j.step || "") + " (" + sec + "초)";
+      } else if (j.ok === true) {
+        hint.textContent = "✅ " + (j.label || "") + " 완료";
+      } else if (j.ok === false) {
+        hint.textContent = "❌ " + (j.label || "") + " 실패 — 아래 로그 확인";
+      }
+    }
+    // 실행 중에는 버튼을 잠근다(동시에 두 작업이 돌지 않도록).
+    $$("[data-job-collect]").concat([jobEl("train")]).forEach(function (b) {
+      if (b) { b.disabled = j.running; b.style.opacity = j.running ? "0.5" : ""; }
+    });
+    if (!j.running && jobTimer) {
+      clearInterval(jobTimer); jobTimer = null;
+      loadJobOptions();   // 수집 후 ✓ 표시, 학습 후 모델명 갱신
+    }
+  }
+
+  function watchJob() {
+    if (jobTimer) return;
+    jobTimer = setInterval(function () {
+      fetch("/api/job", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(renderJob)
+        .catch(function () {});
+    }, 1000);
+  }
+
+  function postJob(url, body) {
+    var hint = jobEl("hint");
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                 body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (res) {
+        if (res.j.ok) { renderJob(res.j.job); watchJob(); }
+        else if (hint) hint.textContent = "❌ " + (res.j.error || "실패");
+      })
+      .catch(function () { if (hint) hint.textContent = "❌ 요청을 보내지 못했습니다"; });
+  }
+
   // ── 조작 ─────────────────────────────────────────────────────────
   document.addEventListener("click", function (e) {
     var mode = e.target.closest("[data-mode-set]");
     if (mode) { setMode(mode.dataset.modeSet); return; }
+
+    var toggle = e.target.closest('[data-job="toggle"]');
+    if (toggle) {
+      var panel = jobEl("panel");
+      var open = panel.style.display === "none";
+      panel.style.display = open ? "flex" : "none";
+      toggle.classList.toggle("bg-primary", open);
+      toggle.classList.toggle("text-primary-foreground", open);
+      if (open && !jobOpts) { loadJobOptions(); watchJob(); }
+      return;
+    }
+    var col = e.target.closest("[data-job-collect]");
+    if (col && !col.disabled) {
+      var dur = parseFloat((jobEl("duration") || {}).value) || 30;
+      postJob("/api/collect", { state: col.dataset.jobCollect, duration: dur });
+      return;
+    }
+    if (e.target.closest('[data-job="train"]') && !jobEl("train").disabled) {
+      postJob("/api/train", { task: jobEl("task").value, mode: jobEl("mode").value });
+      return;
+    }
+
     var pause = e.target.closest('[data-act="pause"]');
     if (pause) {
       paused = !paused;

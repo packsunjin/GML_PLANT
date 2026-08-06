@@ -93,15 +93,8 @@ class RealtimeClassifier:
                  sample_rate=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC,
                  sim_source_csv=None, predict_hz=PREDICT_HZ,
                  sim_state="정상", smooth_window=5):
-        bundle = joblib.load(model_path)
-        self.model = bundle["model"]
-        self.classes = bundle["classes"]  # 예: ["정상","수분부족","자극"] 또는 2-class ["정상","자극"]
-        self.model_name = bundle.get("name", "unknown")
-        # 이 키가 없는 joblib은 모두 (이 기능이 생기기 전) pixel 방식으로 학습된 것이므로 "pixel"로 취급
-        self.feature_mode = bundle.get("feature_mode", "pixel")
-        self.img_size = bundle.get("img_size", IMG_SIZE)  # feature_mode=="explicit"일 때는 사용 안 함
-        # 학습 때 쓴 필터 대역(없는 예전 번들은 기본 0.5~45Hz + 50Hz 노치). 추론도 동일 대역 사용.
-        self.filter = bundle.get("filter", {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0})
+        self.model_path = model_path
+        self._install_bundle(joblib.load(model_path))
 
         self.sample_rate = sample_rate
         self.window_len = int(window_sec * sample_rate)
@@ -140,6 +133,33 @@ class RealtimeClassifier:
         # 만들어졌으므로, 라이브도 같은 방식이어야 학습/추론이 일치한다.
         self._sim_n = 0
         self._paced_n = 0   # pace()가 지금까지 맞춘 샘플 수(목표 시각 계산용)
+
+    def _install_bundle(self, bundle):
+        """joblib 번들의 내용을 속성에 반영한다. 마지막에 _view를 통째로 갈아끼우는 이유는
+        step()이 백그라운드 스레드에서 계속 도는 중에도 모델을 바꿀 수 있어야 하기 때문이다.
+        step()은 맨 앞에서 _view를 지역변수로 한 번만 읽으므로, 모델과 특징 추출 방식이
+        서로 다른 번들에서 섞이는 일이 없다(파이썬 속성 대입은 원자적)."""
+        self.model = bundle["model"]
+        self.classes = bundle["classes"]  # 예: ["정상","수분부족","자극"] 또는 2-class ["정상","자극"]
+        self.model_name = bundle.get("name", "unknown")
+        # 이 키가 없는 joblib은 모두 (이 기능이 생기기 전) pixel 방식으로 학습된 것이므로 "pixel"로 취급
+        self.feature_mode = bundle.get("feature_mode", "pixel")
+        self.img_size = bundle.get("img_size", IMG_SIZE)  # feature_mode=="explicit"일 때는 사용 안 함
+        # 학습 때 쓴 필터 대역(없는 예전 번들은 기본 0.5~45Hz + 50Hz 노치). 추론도 동일 대역 사용.
+        self.filter = bundle.get("filter", {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0})
+        self._view = (self.model, self.classes, self.feature_mode, self.img_size, self.filter)
+
+    def reload_model(self, model_path=None):
+        """저장된 모델 파일을 다시 읽어 실행 중에 교체한다(웹에서 재학습한 직후 등).
+        클래스 구성이 달라질 수 있으므로 스무딩 이력은 비운다."""
+        path = model_path or self.model_path
+        bundle = joblib.load(path)
+        self._proba_history.clear()
+        self._pred_history.clear()
+        self._install_bundle(bundle)
+        self.model_path = path
+        return {"name": self.model_name, "classes": list(self.classes),
+                "feature_mode": self.feature_mode, "path": path}
 
     def pace(self):
         """다음 샘플 시각까지만 대기한다(누적 드리프트 보정).
@@ -208,36 +228,43 @@ class RealtimeClassifier:
             return None
         self._samples_since_predict = 0
 
+        # 모델은 실행 중에 교체될 수 있으므로(reload_model) 한 번만 읽어 고정한다.
+        model, classes, feature_mode, img_size, filt = self._view
+
         signal = np.array(self.buffer)
         feature, filtered, Sxx_db, f, t = signal_to_feature(
-            signal, self.sample_rate, img_size=self.img_size, feature_mode=self.feature_mode,
-            low=self.filter["lowcut"], high=self.filter["highcut"],
-            notch_freq=self.filter["notch_freq"], notch_q=self.filter["notch_q"]
+            signal, self.sample_rate, img_size=img_size, feature_mode=feature_mode,
+            low=filt["lowcut"], high=filt["highcut"],
+            notch_freq=filt["notch_freq"], notch_q=filt["notch_q"]
         )
 
         # 확률 벡터가 있으면 최근 창을 평균해 argmax로 스무딩(확률 평균), 없으면 예측 인덱스
         # 다수결로 스무딩한다. smooth_window=1이면 스무딩 없이 단일 예측과 동일하게 동작한다.
         try:
-            proba_vec = self.model.predict_proba([feature])[0]
+            proba_vec = model.predict_proba([feature])[0]
         except Exception:
             proba_vec = None
 
         if proba_vec is not None:
+            # 모델이 바뀌어 클래스 수가 달라졌으면 이전 이력과 길이가 안 맞으므로 비운다.
+            if self._proba_history and len(self._proba_history[0]) != len(proba_vec):
+                self._proba_history.clear()
             self._proba_history.append(np.asarray(proba_vec, dtype=np.float64))
             mean_proba = np.mean(self._proba_history, axis=0)
             pred_idx = int(np.argmax(mean_proba))
             proba = float(mean_proba[pred_idx])
-            probs = {cls: float(mean_proba[i]) for i, cls in enumerate(self.classes)}
+            probs = {cls: float(mean_proba[i]) for i, cls in enumerate(classes)}
         else:
-            self._pred_history.append(int(self.model.predict([feature])[0]))
+            self._pred_history.append(int(model.predict([feature])[0]))
             vals, counts = np.unique(np.array(self._pred_history), return_counts=True)
             pred_idx = int(vals[np.argmax(counts)])
             proba = None
             probs = None
-        state = self.classes[pred_idx]
+        state = classes[pred_idx]
 
         return {
             "state": state,
+            "classes": list(classes),
             "emoji": STATE_EMOJI.get(state, "❓"),
             "proba": proba,
             "probs": probs,  # {상태: 확률} 전체 (웹 대시보드 등에서 사용). predict_proba 없으면 None

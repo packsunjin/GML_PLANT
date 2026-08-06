@@ -18,8 +18,11 @@ web_dashboard.py
 
 import argparse
 import os
+import subprocess
+import sys
 import threading
 import time
+from collections import deque
 
 import numpy as np
 
@@ -29,6 +32,80 @@ from inference import RealtimeClassifier, SAMPLE_RATE_HZ
 # 최신 결과를 담는 공유 상태 (백그라운드 스레드가 갱신, 웹 요청이 읽음)
 _latest = {"ready": False}
 _lock = threading.Lock()
+
+# ---- 수집/학습 작업 (SSH 없이 브라우저에서 실행) -------------------------
+# 한 번에 하나만 돌린다. 실시간 루프와 같은 프로세스에서 무거운 학습을 돌리면 GIL 때문에
+# 대시보드가 멈추므로, 별도 프로세스(subprocess)로 띄우고 출력만 받아온다.
+_job = {"running": False, "kind": None, "label": None, "ok": None,
+        "started": None, "finished": None, "step": None}
+_job_log = deque(maxlen=400)
+_job_lock = threading.Lock()
+# 수집 중에는 실시간 루프를 재운다. 같은 ADS1115를 두 프로세스가 번갈아 읽으면
+# 수집 쪽 샘플레이트가 떨어지는데, 그러면 학습 데이터의 시간축이 어긋난다.
+_pause = threading.Event()
+
+
+def _job_say(line):
+    with _job_lock:
+        _job_log.append(line.rstrip())
+
+
+def _job_snapshot():
+    with _job_lock:
+        d = dict(_job)
+        d["log"] = list(_job_log)
+        return d
+
+
+def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
+    """steps = [(단계이름, 커맨드 리스트), ...] 를 순서대로 별도 프로세스로 실행하고
+    표준출력을 _job_log에 모은다. 이미 실행 중이면 False를 돌려준다."""
+    with _job_lock:
+        if _job["running"]:
+            return False
+        _job.update({"running": True, "kind": kind, "label": label, "ok": None,
+                     "started": time.time(), "finished": None, "step": steps[0][0]})
+        _job_log.clear()
+
+    def work():
+        ok = True
+        if pause_live:
+            _pause.set()
+            time.sleep(0.3)   # 실시간 루프가 대기 상태로 들어갈 여유
+        try:
+            for name, cmd in steps:
+                with _job_lock:
+                    _job["step"] = name
+                _job_say(f"── {name} ──")
+                # 자식 프로세스가 한글을 그대로 뱉도록 UTF-8을 강제한다(파이 기본 로캘이
+                # C인 경우 UnicodeEncodeError로 죽는 것을 막는다).
+                env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+                proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True,
+                                        encoding="utf-8", errors="replace", bufsize=1)
+                for line in proc.stdout:
+                    _job_say(line)
+                if proc.wait() != 0:
+                    _job_say(f"❌ '{name}' 단계가 실패했습니다 (종료코드 {proc.returncode})")
+                    ok = False
+                    break
+        except Exception as e:
+            _job_say(f"❌ 오류: {e}")
+            ok = False
+        finally:
+            if pause_live:
+                _pause.clear()
+            if ok and on_done is not None:
+                try:
+                    on_done()
+                except Exception as e:
+                    _job_say(f"⚠️ 후처리 실패: {e}")
+            with _job_lock:
+                _job.update({"running": False, "ok": ok, "finished": time.time(), "step": None})
+            _job_say("✅ 완료" if ok else "중단됨")
+
+    threading.Thread(target=work, daemon=True).start()
+    return True
 
 
 def _payload(result, recent, clf):
@@ -60,6 +137,10 @@ def _worker(clf, source):
     """백그라운드: 실시간으로 step()을 돌리며 최근 5초 버퍼와 최신 결과를 갱신한다."""
     recent = np.zeros(int(5 * clf.sample_rate))
     while True:
+        # 수집 작업 중에는 센서를 양보하고 쉰다. 다시 시작할 때 pace()가 목표 시각을
+        # 리셋하므로(1초 이상 밀리면 t0 재설정) 밀린 만큼 폭주하지 않는다.
+        while _pause.is_set():
+            time.sleep(0.2)
         result = clf.step()
         if result is not None:
             n_new = min(clf.predict_every, len(result["filtered_signal"]), len(recent))
@@ -146,6 +227,68 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             return jsonify({"ok": True, **_mode_info()})
         return jsonify(_mode_info())
 
+    # ---- 데이터 수집 / 재학습 (SSH 없이 브라우저에서) ---------------------
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    TASKS = ("3종", "정상-수분부족", "정상-자극", "전체")
+    MODES = ("픽셀", "특징", "둘다")
+
+    def _reload():
+        info = clf.reload_model()
+        _job_say(f"↻ 새 모델 적용: {info['name']} / 클래스 {info['classes']}")
+        print(f"[web] 모델 교체 -> {info['name']} {info['classes']}")
+
+    @app.route("/api/job")
+    def api_job():
+        return jsonify(_job_snapshot())
+
+    @app.route("/api/collect", methods=["POST"])
+    def api_collect():
+        body = request.get_json(silent=True) or {}
+        state = body.get("state")
+        if state not in sensor_control.VALID_STATES:
+            return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
+        try:
+            duration = float(body.get("duration", 30))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "수집 시간이 숫자가 아닙니다"}), 400
+        if not (5 <= duration <= 600):
+            return jsonify({"ok": False, "error": "수집 시간은 5~600초로 넣어주세요"}), 400
+
+        cmd = [sys.executable, "sensor_control.py", "--state", state,
+               "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ)]
+        started = _run_steps("collect", f"{state} {duration:g}초 수집",
+                             [(f"'{state}' 수집", cmd)], src_dir, pause_live=True)
+        if not started:
+            return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
+        return jsonify({"ok": True, "job": _job_snapshot()})
+
+    @app.route("/api/train", methods=["POST"])
+    def api_train():
+        body = request.get_json(silent=True) or {}
+        task = body.get("task", "3종")
+        mode = body.get("mode", "둘다")
+        if task not in TASKS or mode not in MODES:
+            return jsonify({"ok": False, "error": "알 수 없는 학습 옵션입니다"}), 400
+
+        steps = [("전처리 (필터 → 스펙트로그램 → 특징)", [sys.executable, "preprocess.py"]),
+                 (f"학습 ({task} / {mode})",
+                  [sys.executable, "train.py", "--task", task, "--mode", mode])]
+        # 학습이 끝나면 돌고 있는 분류기에 새 모델을 바로 반영한다(재시작 불필요).
+        started = _run_steps("train", f"{task} / {mode} 재학습", steps, src_dir, on_done=_reload)
+        if not started:
+            return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
+        return jsonify({"ok": True, "job": _job_snapshot()})
+
+    @app.route("/api/train/options")
+    def api_train_options():
+        raw_dir = os.path.join(src_dir, "..", "data", "raw")
+        have = sorted(s for s in sensor_control.VALID_STATES
+                      if os.path.isfile(os.path.join(raw_dir, sensor_control.KOR_FILENAMES[s])))
+        return jsonify({"tasks": list(TASKS), "modes": list(MODES),
+                        "states": list(sensor_control.VALID_STATES),
+                        "collected": have,
+                        "hardware": sensor_control.HARDWARE_AVAILABLE,
+                        "model": clf.model_name, "classes": list(clf.classes)})
 
     ip_hint = os.environ.get("GML_IP", "<파이 IP>")
     print(f"[web] 브라우저에서 접속:  http://{ip_hint}:{port}   (같은 기기면 http://localhost:{port})")
