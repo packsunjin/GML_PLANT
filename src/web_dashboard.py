@@ -189,11 +189,33 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     app = (Flask(__name__, static_folder=os.path.join(web_dir, "static"), static_url_path="/static")
            if web_dir else Flask(__name__))
 
+    # git pull 로 JS/CSS만 바뀌면 브라우저가 캐시된 옛 파일을 계속 써서 "버튼이 안 눌리는"
+    # 증상이 난다(HTML은 새것, live.js는 옛것). Flask 기본 static 캐시가 12시간이라
+    # 헤더만 바꿔서는 이미 캐시된 사본이 안 지워지므로, URL 자체에 파일 수정시각을 붙여
+    # 새 주소로 만든다.
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+    def _asset_version():
+        stamps = []
+        for name in ("live.js", "ui.css", "app.css"):
+            p = os.path.join(web_dir, "static", name) if web_dir else None
+            if p and os.path.isfile(p):
+                stamps.append(int(os.path.getmtime(p)))
+        return str(max(stamps)) if stamps else "0"
+
     @app.route("/")
     def index():
-        if web_dir:
-            return send_from_directory(web_dir, "chorokmal.html")
-        return PAGE
+        if not web_dir:
+            return PAGE
+        with open(os.path.join(web_dir, "chorokmal.html"), encoding="utf-8") as f:
+            html = f.read()
+        v = _asset_version()
+        for name in ("live.js", "ui.css", "app.css"):
+            html = html.replace(f'"/static/{name}"', f'"/static/{name}?v={v}"')
+        resp = app.make_response(html)
+        resp.headers["Content-Type"] = "text/html; charset=utf-8"
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     @app.route("/data")
     def data():
@@ -278,6 +300,106 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
         return jsonify({"ok": True, "job": _job_snapshot()})
+
+    # ---- 학습 자료 보기 / 내려받기 / 지우기 -------------------------------
+    # 브라우저에서 다룰 수 있는 폴더는 아래 둘로 제한한다. 요청 경로는 반드시
+    # realpath로 풀어서 이 안에 있는지 확인한다(../ 로 저장소 밖을 건드리지 못하게).
+    root_dir = os.path.abspath(os.path.join(src_dir, ".."))
+    ALLOWED_ROOTS = (os.path.join(root_dir, "data"), os.path.join(root_dir, "models"))
+
+    def _safe_path(rel):
+        """저장소 기준 상대경로를 검증해 절대경로로 바꾼다. 허용 폴더 밖이면 None."""
+        if not rel or os.path.isabs(rel) or "\x00" in rel:
+            return None
+        full = os.path.realpath(os.path.join(root_dir, rel))
+        for base in ALLOWED_ROOTS:
+            if full == os.path.realpath(base) or full.startswith(os.path.realpath(base) + os.sep):
+                return full
+        return None
+
+    def _entry(full):
+        st = os.stat(full)
+        return {"path": os.path.relpath(full, root_dir).replace(os.sep, "/"),
+                "name": os.path.basename(full),
+                "size": st.st_size,
+                "mtime": int(st.st_mtime)}
+
+    # 스펙트로그램은 수집을 늘리면 수천 장이 될 수 있어 목록을 잘라 보낸다.
+    LIST_CAP = 300
+
+    def _listing(rel_dir, exts, recursive=False):
+        base = os.path.join(root_dir, rel_dir)
+        out, total = [], 0
+        if not os.path.isdir(base):
+            return out, 0
+        walker = os.walk(base) if recursive else [(base, [], sorted(os.listdir(base)))]
+        for dirpath, _, names in walker:
+            for n in sorted(names):
+                full = os.path.join(dirpath, n)
+                if os.path.isfile(full) and n.lower().endswith(exts):
+                    total += 1
+                    if len(out) < LIST_CAP:
+                        out.append(_entry(full))
+        return out, total
+
+    def _group(key, title, kind, note, rel_dir, exts, recursive=False):
+        files, total = _listing(rel_dir, exts, recursive)
+        return {"key": key, "title": title, "kind": kind, "note": note,
+                "files": files, "total": total}
+
+    @app.route("/api/files")
+    def api_files():
+        return jsonify({"current_model": os.path.relpath(os.path.realpath(clf.model_path),
+                                                         root_dir).replace(os.sep, "/"),
+                        "groups": [
+            _group("raw", "원시 데이터 (CSV)", "csv",
+                   "수집한 전위 신호. 지우고 다시 수집할 수 있어요.", "data/raw", (".csv",)),
+            _group("features", "특징 테이블 (CSV)", "csv",
+                   "전처리가 뽑은 윈도우별 특징 14개.", "data", (".csv",)),
+            _group("spectrogram", "스펙트로그램 이미지", "image",
+                   "학습에 쓰인 224x224 이미지. 상태별로 들어 있어요.",
+                   "data/spectrogram", (".png",), recursive=True),
+            _group("eval", "평가 이미지 (혼동행렬)", "image",
+                   "학습 결과 confusion matrix.", "models", (".png",)),
+            _group("model", "학습된 모델", "model",
+                   "지우면 해당 모델로는 실행할 수 없게 됩니다.", "models", (".joblib",)),
+        ]})
+
+    @app.route("/api/files/download")
+    def api_files_download():
+        full = _safe_path(request.args.get("path", ""))
+        if not full or not os.path.isfile(full):
+            return jsonify({"ok": False, "error": "없는 파일이거나 접근할 수 없는 경로입니다"}), 404
+        as_attachment = request.args.get("view") != "1"
+        return send_from_directory(os.path.dirname(full), os.path.basename(full),
+                                   as_attachment=as_attachment)
+
+    @app.route("/api/files/delete", methods=["POST"])
+    def api_files_delete():
+        body = request.get_json(silent=True) or {}
+        paths = body.get("paths") or ([body["path"]] if body.get("path") else [])
+        if not paths:
+            return jsonify({"ok": False, "error": "지울 파일이 없습니다"}), 400
+        with _job_lock:
+            if _job["running"]:
+                return jsonify({"ok": False, "error": "작업이 도는 중에는 지울 수 없습니다"}), 409
+        deleted, failed = [], []
+        for rel in paths:
+            full = _safe_path(rel)
+            if not full or not os.path.isfile(full):
+                failed.append({"path": rel, "error": "없는 파일이거나 접근할 수 없는 경로"})
+                continue
+            # 지금 추론에 쓰고 있는 모델 파일은 지우지 못하게 막는다.
+            if os.path.realpath(full) == os.path.realpath(clf.model_path):
+                failed.append({"path": rel, "error": "지금 사용 중인 모델이라 지울 수 없습니다"})
+                continue
+            try:
+                os.remove(full)
+                deleted.append(rel)
+            except OSError as e:
+                failed.append({"path": rel, "error": str(e)})
+        print(f"[web] 파일 삭제: {len(deleted)}개 성공, {len(failed)}개 실패")
+        return jsonify({"ok": not failed, "deleted": deleted, "failed": failed})
 
     @app.route("/api/train/options")
     def api_train_options():

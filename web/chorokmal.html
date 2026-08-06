@@ -53,8 +53,12 @@
     </div>
     <span class="text-[11px] font-medium text-subtle" data-mode="hint">확인 중…</span>
     <span style="flex:1"></span>
+    <span data-job="badge" style="display:none"
+          class="rounded-xl bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground">작업 중…</span>
     <button type="button" data-job="toggle"
             class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">수집 · 학습</button>
+    <button type="button" data-files="toggle"
+            class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">학습 자료</button>
   </section>
 
   <!-- 데이터 수집 / 재학습 (SSH 없이 브라우저에서) -->
@@ -82,6 +86,44 @@
          style="display:none;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all"
          class="rounded-2xl bg-muted px-4 py-3 text-[11px] leading-relaxed text-secondary-foreground"></pre>
   </section>
+
+  <!-- 학습 자료 보기 / 내려받기 / 지우기 -->
+  <section data-files="panel" style="display:none"
+           class="flex flex-col gap-3 rounded-3xl border border-border bg-card px-5 py-4 shadow-soft">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">학습 자료</span>
+      <div class="flex flex-wrap gap-1.5" data-files="tabs"></div>
+      <span style="flex:1"></span>
+      <button type="button" data-files="refresh"
+              class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border">새로고침</button>
+      <button type="button" data-files="delete"
+              class="rounded-xl px-3 py-1.5 text-[11px] font-bold transition"
+              style="background:var(--destructive);color:#fff">선택 삭제</button>
+    </div>
+    <p class="text-[11px] font-medium text-subtle" data-files="note"></p>
+    <div data-files="list" style="max-height:320px;overflow:auto"
+         class="rounded-2xl bg-muted px-3 py-2"></div>
+    <p class="text-[11px] font-medium text-subtle" data-files="hint"></p>
+  </section>
+
+  <!-- 이미지 미리보기 -->
+  <div data-files="preview" style="display:none;position:fixed;inset:0;z-index:60;
+       background:rgba(15,25,18,.55);align-items:center;justify-content:center;padding:24px">
+    <div class="rounded-3xl bg-card p-4 shadow-soft" style="max-width:min(760px,92vw)">
+      <div class="mb-3 flex items-center gap-3">
+        <span class="text-sm font-bold text-foreground" data-files="preview-name"></span>
+        <span style="flex:1"></span>
+        <a data-files="preview-dl" href="#" download
+           class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground">내려받기</a>
+        <button type="button" data-files="preview-close"
+                class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground">닫기</button>
+      </div>
+      <!-- 스펙트로그램 원본이 224px라 그대로 두면 너무 작다. 폭에 맞춰 키우고
+           확대 시 뭉개지지 않도록 픽셀 보간을 끈다. -->
+      <img data-files="preview-img" alt="" style="width:100%;max-height:70vh;object-fit:contain;
+           display:block;image-rendering:pixelated;border-radius:16px">
+    </div>
+  </div>
 
   <!-- 경고 배너 (정상이 아닐 때만) -->
   <section data-live="alert-banner" style="display:none"

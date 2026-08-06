@@ -493,6 +493,14 @@
     var log = jobEl("log"), hint = jobEl("hint");
     jobRunning = !!j.running;
     jobFinished = !j.running && j.ok !== null && j.ok !== undefined;
+
+    // 패널을 닫아 놔도 작업이 도는지 알 수 있게 헤더에 배지를 띄운다.
+    var badge = jobEl("badge");
+    if (badge) {
+      badge.style.display = j.running ? "inline-block" : "none";
+      // 단계 이름은 길어서 배지에서 잘리므로 짧은 라벨만 쓴다(자세한 단계는 패널에서).
+      if (j.running) badge.textContent = "▶ " + (j.label || "작업") + " 중";
+    }
     if (log && j.log && j.log.length) {
       log.style.display = "block";
       var atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
@@ -529,8 +537,12 @@
     }, 1000);
   }
 
-  function postJob(url, body) {
-    var hint = jobEl("hint");
+  function postJob(url, body, startedText) {
+    var hint = jobEl("hint"), log = jobEl("log");
+    // 요청이 왕복하는 동안 아무 반응이 없으면 "안 눌린다"고 느끼므로 즉시 표시한다.
+    jobFinished = false;
+    if (hint) hint.textContent = "▶ " + startedText + " 시작하는 중…";
+    if (log) { log.style.display = "block"; log.textContent = "시작하는 중…"; }
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
                  body: JSON.stringify(body) })
       .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
@@ -539,6 +551,107 @@
         else if (hint) hint.textContent = "❌ " + (res.j.error || "실패");
       })
       .catch(function () { if (hint) hint.textContent = "❌ 요청을 보내지 못했습니다"; });
+  }
+
+  // ── 학습 자료 (보기 / 내려받기 / 지우기) ─────────────────────────
+  var filesData = null, filesTab = null;
+
+  function fEl(n) { return $('[data-files="' + n + '"]'); }
+  function human(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(0) + " KB";
+    return (b / 1024 / 1024).toFixed(1) + " MB";
+  }
+  function dlUrl(p, view) {
+    return "/api/files/download?path=" + encodeURIComponent(p) + (view ? "&view=1" : "");
+  }
+
+  function loadFiles() {
+    if (demo) { fEl("hint").textContent = "데모 화면이라 파일 목록은 백엔드에서만 보입니다"; return; }
+    fetch("/api/files", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        filesData = d;
+        if (!filesTab || !d.groups.some(function (g) { return g.key === filesTab; })) {
+          filesTab = d.groups.length ? d.groups[0].key : null;
+        }
+        renderFiles();
+      })
+      .catch(function () { fEl("hint").textContent = "목록을 불러오지 못했습니다"; });
+  }
+
+  function renderFiles() {
+    if (!filesData) return;
+    var tabs = fEl("tabs"), list = fEl("list"), note = fEl("note");
+    tabs.innerHTML = "";
+    filesData.groups.forEach(function (g) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.dataset.filesTab = g.key;
+      var on = g.key === filesTab;
+      b.className = "rounded-xl px-3 py-1.5 text-[11px] font-bold transition " +
+        (on ? "bg-primary text-primary-foreground" : "bg-muted text-secondary-foreground hover:bg-border");
+      b.textContent = g.title + " " + g.total;
+      tabs.appendChild(b);
+    });
+
+    var grp = filesData.groups.filter(function (g) { return g.key === filesTab; })[0];
+    if (!grp) { list.innerHTML = ""; return; }
+    note.textContent = grp.note +
+      (grp.total > grp.files.length ? "  (" + grp.total + "개 중 " + grp.files.length + "개만 표시)" : "");
+
+    if (!grp.files.length) {
+      list.innerHTML = '<p class="py-6 text-center text-xs text-subtle">아직 파일이 없습니다.</p>';
+      return;
+    }
+    list.innerHTML = grp.files.map(function (f) {
+      var inUse = f.path === filesData.current_model;
+      var isImg = grp.kind === "image";
+      return '<div class="flex items-center gap-2 border-b border-border py-2 last:border-b-0">' +
+        '<input type="checkbox" data-files-pick="' + f.path + '"' + (inUse ? " disabled" : "") + '>' +
+        (isImg ? '<img src="' + dlUrl(f.path, 1) + '" alt="" data-files-open="' + f.path +
+                 '" style="width:34px;height:34px;object-fit:cover;border-radius:6px;cursor:pointer">' : '') +
+        '<button type="button" data-files-open="' + f.path + '"' +
+          (isImg ? '' : ' disabled') +
+          ' class="min-w-0 flex-1 text-left"' + (isImg ? '' : ' style="cursor:default"') + '>' +
+          // 모델/혼동행렬 파일명은 접미사(_특징_정상-자극 등)로만 구분되므로 자르지 않는다.
+          '<span class="block text-xs font-bold text-foreground" style="word-break:break-all">' + f.name +
+            (inUse ? ' <span class="text-[10px] font-medium text-subtle">· 사용 중</span>' : '') + '</span>' +
+          '<span class="block text-[10px] text-subtle">' + human(f.size) + ' · ' +
+            hhmm(f.mtime * 1000) + '</span>' +
+        '</button>' +
+        '<a href="' + dlUrl(f.path) + '" download ' +
+          'class="shrink-0 rounded-lg bg-card px-2.5 py-1 text-[10px] font-bold text-secondary-foreground">내려받기</a>' +
+      '</div>';
+    }).join("");
+  }
+
+  function previewFile(path) {
+    var box = fEl("preview");
+    if (!box) return;
+    if (!path) { box.style.display = "none"; return; }
+    fEl("preview-img").src = dlUrl(path, 1);
+    fEl("preview-name").textContent = path;
+    fEl("preview-dl").href = dlUrl(path);
+    box.style.display = "flex";
+  }
+
+  function deleteChecked() {
+    var picks = $$("[data-files-pick]").filter(function (c) { return c.checked; })
+                                       .map(function (c) { return c.dataset.filesPick; });
+    var hint = fEl("hint");
+    if (!picks.length) { hint.textContent = "지울 파일을 먼저 선택하세요"; return; }
+    if (!window.confirm(picks.length + "개 파일을 지웁니다. 되돌릴 수 없어요. 계속할까요?")) return;
+    fetch("/api/files/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+                                 body: JSON.stringify({ paths: picks }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.error) { hint.textContent = "❌ " + d.error; return; }
+        hint.textContent = "🗑 " + (d.deleted || []).length + "개 삭제" +
+          ((d.failed || []).length ? " · 실패 " + d.failed.length + "개: " + d.failed[0].error : "");
+        loadFiles();
+      })
+      .catch(function () { hint.textContent = "❌ 삭제 요청을 보내지 못했습니다"; });
   }
 
   // ── 조작 ─────────────────────────────────────────────────────────
@@ -559,13 +672,36 @@
     var col = e.target.closest("[data-job-collect]");
     if (col && !col.disabled) {
       var dur = parseFloat((jobEl("duration") || {}).value) || 30;
-      postJob("/api/collect", { state: col.dataset.jobCollect, duration: dur });
+      postJob("/api/collect", { state: col.dataset.jobCollect, duration: dur },
+              col.dataset.jobCollect + " " + dur + "초 수집");
       return;
     }
     if (e.target.closest('[data-job="train"]') && !jobEl("train").disabled) {
-      postJob("/api/train", { task: jobEl("task").value, mode: jobEl("mode").value });
+      postJob("/api/train", { task: jobEl("task").value, mode: jobEl("mode").value },
+              jobEl("task").value + " 재학습");
       return;
     }
+
+    // ── 학습 자료 패널 ──
+    var ftog = e.target.closest('[data-files="toggle"]');
+    if (ftog) {
+      var fp = $('[data-files="panel"]');
+      var fopen = fp.style.display === "none";
+      fp.style.display = fopen ? "flex" : "none";
+      ftog.classList.toggle("bg-primary", fopen);
+      ftog.classList.toggle("text-primary-foreground", fopen);
+      if (fopen) loadFiles();
+      return;
+    }
+    if (e.target.closest('[data-files="refresh"]')) { loadFiles(); return; }
+    var tab = e.target.closest("[data-files-tab]");
+    if (tab) { filesTab = tab.dataset.filesTab; renderFiles(); return; }
+    if (e.target.closest('[data-files="delete"]')) { deleteChecked(); return; }
+    var openImg = e.target.closest("[data-files-open]");
+    if (openImg) { previewFile(openImg.dataset.filesOpen); return; }
+    if (e.target.closest('[data-files="preview-close"]')) { previewFile(null); return; }
+    var pv = $('[data-files="preview"]');
+    if (pv && pv.style.display === "flex" && e.target === pv) { previewFile(null); return; }
 
     var pause = e.target.closest('[data-act="pause"]');
     if (pause) {
@@ -603,4 +739,13 @@
   setInterval(poll, POLL_MS);
   loadMode();
   setInterval(loadMode, 5000);
+
+  // 다른 기기(폰/노트북)에서 시작한 작업도 헤더 배지에 보이도록, 패널을 열지 않아도
+  // 처음 한 번은 상태를 확인하고 도는 중이면 폴링을 이어간다.
+  if (!demo) {
+    fetch("/api/job", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { renderJob(j); if (j.running) watchJob(); })
+      .catch(function () {});
+  }
 })();
