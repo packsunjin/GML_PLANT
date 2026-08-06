@@ -406,32 +406,144 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                         "min": round(float(v.min()), 5), "max": round(float(v.max()), 5),
                         "signal": [round(float(x), 5) for x in sig]})
 
+    # ---- 휴지통 -----------------------------------------------------------
+    # 삭제는 바로 지우지 않고 .trash/ 로 옮긴다. 잘못 지워도 되돌릴 수 있어야 하기 때문.
+    # 원래 경로는 manifest.json에 적어 두고, 복원할 때 그 자리로 돌려놓는다.
+    trash_dir = os.path.join(root_dir, ".trash")
+    trash_manifest = os.path.join(trash_dir, "manifest.json")
+    _trash_lock = threading.Lock()
+
+    def _trash_load():
+        try:
+            import json
+            with open(trash_manifest, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _trash_save(items):
+        import json
+        os.makedirs(trash_dir, exist_ok=True)
+        with open(trash_manifest, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False)
+
+    def _trash_entries():
+        """manifest와 실제 파일을 맞춰 본 목록. 파일이 사라진 항목은 걸러낸다."""
+        out = []
+        for it in _trash_load():
+            full = os.path.join(trash_dir, it["id"])
+            if os.path.isfile(full):
+                st = os.stat(full)
+                out.append({**it, "size": st.st_size})
+        out.sort(key=lambda x: x.get("deleted_at", 0), reverse=True)
+        return out
+
     @app.route("/api/files/delete", methods=["POST"])
     def api_files_delete():
+        """파일을 휴지통(.trash/)으로 옮긴다. purge=true면 바로 완전 삭제."""
         body = request.get_json(silent=True) or {}
         paths = body.get("paths") or ([body["path"]] if body.get("path") else [])
+        purge = bool(body.get("purge"))
         if not paths:
             return jsonify({"ok": False, "error": "지울 파일이 없습니다"}), 400
         with _job_lock:
             if _job["running"]:
                 return jsonify({"ok": False, "error": "작업이 도는 중에는 지울 수 없습니다"}), 409
+
         deleted, failed = [], []
-        for rel in paths:
-            full = _safe_path(rel)
-            if not full or not os.path.isfile(full):
-                failed.append({"path": rel, "error": "없는 파일이거나 접근할 수 없는 경로"})
-                continue
-            # 지금 추론에 쓰고 있는 모델 파일은 지우지 못하게 막는다.
-            if os.path.realpath(full) == os.path.realpath(clf.model_path):
-                failed.append({"path": rel, "error": "지금 사용 중인 모델이라 지울 수 없습니다"})
-                continue
-            try:
-                os.remove(full)
-                deleted.append(rel)
-            except OSError as e:
-                failed.append({"path": rel, "error": str(e)})
-        print(f"[web] 파일 삭제: {len(deleted)}개 성공, {len(failed)}개 실패")
-        return jsonify({"ok": not failed, "deleted": deleted, "failed": failed})
+        with _trash_lock:
+            items = _trash_load()
+            for rel in paths:
+                full = _safe_path(rel)
+                if not full or not os.path.isfile(full):
+                    failed.append({"path": rel, "error": "없는 파일이거나 접근할 수 없는 경로"})
+                    continue
+                # 지금 추론에 쓰고 있는 모델 파일은 지우지 못하게 막는다.
+                if os.path.realpath(full) == os.path.realpath(clf.model_path):
+                    failed.append({"path": rel, "error": "지금 사용 중인 모델이라 지울 수 없습니다"})
+                    continue
+                try:
+                    if purge:
+                        os.remove(full)
+                    else:
+                        os.makedirs(trash_dir, exist_ok=True)
+                        # 같은 이름이 여러 번 지워질 수 있으므로 시각+일련번호로 유일하게 만든다.
+                        tid = f"{int(time.time()*1000)}_{len(items)}_{os.path.basename(full)}"
+                        os.replace(full, os.path.join(trash_dir, tid))
+                        items.append({"id": tid, "path": rel, "name": os.path.basename(full),
+                                      "deleted_at": int(time.time())})
+                    deleted.append(rel)
+                except OSError as e:
+                    failed.append({"path": rel, "error": str(e)})
+            if not purge:
+                _trash_save(items)
+
+        print(f"[web] {'완전삭제' if purge else '휴지통 이동'}: {len(deleted)}개 성공, {len(failed)}개 실패")
+        return jsonify({"ok": not failed, "deleted": deleted, "failed": failed,
+                        "purged": purge, "trash": len(_trash_entries())})
+
+    @app.route("/api/trash")
+    def api_trash():
+        return jsonify({"items": _trash_entries()})
+
+    @app.route("/api/trash/restore", methods=["POST"])
+    def api_trash_restore():
+        body = request.get_json(silent=True) or {}
+        ids = set(body.get("ids") or [])
+        if not ids:
+            return jsonify({"ok": False, "error": "복원할 항목이 없습니다"}), 400
+        restored, failed = [], []
+        with _trash_lock:
+            items = _trash_load()
+            keep = []
+            for it in items:
+                if it["id"] not in ids:
+                    keep.append(it)
+                    continue
+                src = os.path.join(trash_dir, it["id"])
+                dst = _safe_path(it["path"])
+                if not os.path.isfile(src) or not dst:
+                    failed.append({"id": it["id"], "error": "원본 경로를 확인할 수 없습니다"})
+                    continue
+                if os.path.exists(dst):
+                    failed.append({"id": it["id"], "error": "같은 이름의 파일이 이미 있습니다"})
+                    keep.append(it)
+                    continue
+                try:
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    os.replace(src, dst)
+                    restored.append(it["path"])
+                except OSError as e:
+                    failed.append({"id": it["id"], "error": str(e)})
+                    keep.append(it)
+            _trash_save(keep)
+        print(f"[web] 휴지통 복원: {len(restored)}개")
+        return jsonify({"ok": not failed, "restored": restored, "failed": failed})
+
+    @app.route("/api/trash/empty", methods=["POST"])
+    def api_trash_empty():
+        """ids를 주면 그것만, 안 주면 휴지통 전체를 완전히 지운다."""
+        body = request.get_json(silent=True) or {}
+        ids = set(body.get("ids") or [])
+        removed, failed = [], []
+        with _trash_lock:
+            items = _trash_load()
+            keep = []
+            for it in items:
+                if ids and it["id"] not in ids:
+                    keep.append(it)
+                    continue
+                try:
+                    src = os.path.join(trash_dir, it["id"])
+                    if os.path.isfile(src):
+                        os.remove(src)
+                    removed.append(it["name"])
+                except OSError as e:
+                    failed.append({"id": it["id"], "error": str(e)})
+                    keep.append(it)
+            _trash_save(keep)
+        print(f"[web] 휴지통 비우기: {len(removed)}개 완전 삭제")
+        return jsonify({"ok": not failed, "removed": removed, "failed": failed})
 
     @app.route("/api/train/options")
     def api_train_options():

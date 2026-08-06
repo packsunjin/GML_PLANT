@@ -96,9 +96,19 @@
       <span style="flex:1"></span>
       <button type="button" data-files="refresh"
               class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border">새로고침</button>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <label class="flex cursor-pointer items-center gap-1.5 rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground">
+        <input type="checkbox" data-files="all"> 모두 선택
+      </label>
+      <span class="text-[11px] font-medium text-subtle" data-files="count">0개 선택</span>
+      <span style="flex:1"></span>
+      <!-- 일반 탭에서는 휴지통으로, 휴지통 탭에서는 복원/완전삭제 버튼이 나온다 -->
+      <button type="button" data-files="restore" style="display:none"
+              class="rounded-xl bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground transition">되돌리기</button>
       <button type="button" data-files="delete"
               class="rounded-xl px-3 py-1.5 text-[11px] font-bold transition"
-              style="background:var(--destructive);color:#fff">선택 삭제</button>
+              style="background:var(--destructive);color:#fff">휴지통으로</button>
     </div>
     <p class="text-[11px] font-medium text-subtle" data-files="note"></p>
     <div data-files="list" style="max-height:320px;overflow:auto"

@@ -27,6 +27,16 @@
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var live = function (n) { return $('[data-live="' + n + '"]'); };
+
+  // 활성/비활성 버튼 색. bg-primary만 켜고 bg-muted/text-secondary-foreground를 그대로 두면
+  // 초록 배경 위에 초록 글자가 남아 글씨가 안 보인다. 네 클래스를 항상 같이 뒤집는다.
+  function setActive(btn, on) {
+    if (!btn) return;
+    btn.classList.toggle("bg-primary", on);
+    btn.classList.toggle("text-primary-foreground", on);
+    btn.classList.toggle("bg-muted", !on);
+    btn.classList.toggle("text-secondary-foreground", !on);
+  }
   var setText = function (n, v) { var el = live(n); if (el) el.textContent = v; };
 
   // 화면 상태
@@ -397,10 +407,7 @@
     modeState = m;
     $$("[data-mode-set]").forEach(function (b) {
       var on = b.dataset.modeSet === m.sim_state;
-      b.classList.toggle("bg-primary", on && m.editable);
-      b.classList.toggle("text-primary-foreground", on && m.editable);
-      b.classList.toggle("bg-muted", !(on && m.editable));
-      b.classList.toggle("text-secondary-foreground", !(on && m.editable));
+      setActive(b, on && m.editable);
       b.disabled = !m.editable;
       b.style.opacity = m.editable ? "1" : ".45";
       b.style.cursor = m.editable ? "pointer" : "not-allowed";
@@ -566,18 +573,44 @@
     return "/api/files/download?path=" + encodeURIComponent(p) + (view ? "&view=1" : "");
   }
 
+  var TRASH_KEY = "__trash__";
+
   function loadFiles() {
     if (demo) { fEl("hint").textContent = "데모 화면이라 파일 목록은 백엔드에서만 보입니다"; return; }
-    fetch("/api/files", { cache: "no-store" })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        filesData = d;
-        if (!filesTab || !d.groups.some(function (g) { return g.key === filesTab; })) {
-          filesTab = d.groups.length ? d.groups[0].key : null;
-        }
-        renderFiles();
-      })
-      .catch(function () { fEl("hint").textContent = "목록을 불러오지 못했습니다"; });
+    Promise.all([
+      fetch("/api/files", { cache: "no-store" }).then(function (r) { return r.json(); }),
+      fetch("/api/trash", { cache: "no-store" }).then(function (r) { return r.json(); })
+    ]).then(function (res) {
+      var d = res[0];
+      // 휴지통을 마지막 탭으로 붙인다(파일 그룹과 같은 모양으로 다루기 위해).
+      d.groups = d.groups.concat([{
+        key: TRASH_KEY, title: "휴지통", kind: "trash",
+        note: "지운 파일이 여기 있어요. 되돌리거나 완전히 지울 수 있습니다.",
+        files: (res[1].items || []).map(function (it) {
+          return { path: it.id, name: it.name, size: it.size,
+                   mtime: it.deleted_at, from: it.path };
+        }),
+        total: (res[1].items || []).length
+      }]);
+      filesData = d;
+      if (!filesTab || !d.groups.some(function (g) { return g.key === filesTab; })) {
+        filesTab = d.groups.length ? d.groups[0].key : null;
+      }
+      renderFiles();
+    }).catch(function () { fEl("hint").textContent = "목록을 불러오지 못했습니다"; });
+  }
+
+  // 체크 상태에 따라 "모두 선택"과 선택 개수를 갱신한다.
+  function syncPicks() {
+    var boxes = $$("[data-files-pick]").filter(function (c) { return !c.disabled; });
+    var on = boxes.filter(function (c) { return c.checked; });
+    var all = fEl("all"), cnt = fEl("count");
+    if (all) {
+      all.checked = boxes.length > 0 && on.length === boxes.length;
+      all.indeterminate = on.length > 0 && on.length < boxes.length;
+      all.disabled = boxes.length === 0;
+    }
+    if (cnt) cnt.textContent = on.length + "개 선택";
   }
 
   function renderFiles() {
@@ -600,14 +633,24 @@
     note.textContent = grp.note +
       (grp.total > grp.files.length ? "  (" + grp.total + "개 중 " + grp.files.length + "개만 표시)" : "");
 
+    // 휴지통 탭에서만 '되돌리기'가 나오고, 삭제 버튼은 '완전 삭제'로 바뀐다.
+    var isTrash = grp.kind === "trash";
+    var restoreBtn = fEl("restore"), delBtn = fEl("delete");
+    if (restoreBtn) restoreBtn.style.display = isTrash ? "inline-block" : "none";
+    if (delBtn) delBtn.textContent = isTrash ? "완전 삭제" : "휴지통으로";
+
     if (!grp.files.length) {
-      list.innerHTML = '<p class="py-6 text-center text-xs text-subtle">아직 파일이 없습니다.</p>';
+      list.style.display = "block";
+      list.innerHTML = '<p class="py-6 text-center text-xs text-subtle">' +
+        (isTrash ? "휴지통이 비어 있습니다." : "아직 파일이 없습니다.") + "</p>";
+      syncPicks();
       return;
     }
     // 이미지는 뭔지 보고 지울 수 있어야 하므로 목록이 아니라 사진 그리드로 보여준다.
-    if (grp.kind === "image") { renderImageGrid(grp, list); return; }
+    if (grp.kind === "image") { renderImageGrid(grp, list); syncPicks(); return; }
     renderFileList(grp, list);
     if (grp.kind === "csv") grp.files.forEach(drawCsvPreview);
+    syncPicks();
   }
 
   function renderImageGrid(grp, list) {
@@ -639,8 +682,9 @@
   function renderFileList(grp, list) {
     list.style.display = "block";
     list.style.gridTemplateColumns = "";
+    var isTrash = grp.kind === "trash";
     list.innerHTML = grp.files.map(function (f) {
-      var inUse = f.path === filesData.current_model;
+      var inUse = !isTrash && f.path === filesData.current_model;
       var isCsv = grp.kind === "csv";
       return '<div class="flex items-center gap-2 border-b border-border py-2 last:border-b-0">' +
         '<input type="checkbox" data-files-pick="' + f.path + '"' + (inUse ? " disabled" : "") + '>' +
@@ -651,10 +695,14 @@
           '<span class="block text-xs font-bold text-foreground" style="word-break:break-all">' + f.name +
             (inUse ? ' <span class="text-[10px] font-medium text-subtle">· 사용 중</span>' : '') + '</span>' +
           '<span class="block text-[10px] text-subtle" data-files-meta="' + f.path + '">' +
-            human(f.size) + ' · ' + hhmm(f.mtime * 1000) + '</span>' +
+            human(f.size) + ' · ' +
+            (isTrash ? hhmm(f.mtime * 1000) + " 삭제 · 원래 위치 " + f.from
+                     : hhmm(f.mtime * 1000)) + '</span>' +
         '</div>' +
-        '<a href="' + dlUrl(f.path) + '" download ' +
-          'class="shrink-0 rounded-lg bg-card px-2.5 py-1 text-[10px] font-bold text-secondary-foreground">내려받기</a>' +
+        // 휴지통 파일은 내려받기 경로가 없다(복원한 뒤에 받으면 된다).
+        (isTrash ? '' :
+          '<a href="' + dlUrl(f.path) + '" download ' +
+          'class="shrink-0 rounded-lg bg-card px-2.5 py-1 text-[10px] font-bold text-secondary-foreground">내려받기</a>') +
       '</div>';
     }).join("");
   }
@@ -708,22 +756,48 @@
     box.style.display = "flex";
   }
 
-  function deleteChecked() {
-    var picks = $$("[data-files-pick]").filter(function (c) { return c.checked; })
-                                       .map(function (c) { return c.dataset.filesPick; });
+  function picked() {
+    return $$("[data-files-pick]").filter(function (c) { return c.checked && !c.disabled; })
+                                  .map(function (c) { return c.dataset.filesPick; });
+  }
+
+  function filesPost(url, body, done) {
     var hint = fEl("hint");
-    if (!picks.length) { hint.textContent = "지울 파일을 먼저 선택하세요"; return; }
-    if (!window.confirm(picks.length + "개 파일을 지웁니다. 되돌릴 수 없어요. 계속할까요?")) return;
-    fetch("/api/files/delete", { method: "POST", headers: { "Content-Type": "application/json" },
-                                 body: JSON.stringify({ paths: picks }) })
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                 body: JSON.stringify(body) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.error) { hint.textContent = "❌ " + d.error; return; }
-        hint.textContent = "🗑 " + (d.deleted || []).length + "개 삭제" +
+        hint.textContent = done(d) +
           ((d.failed || []).length ? " · 실패 " + d.failed.length + "개: " + d.failed[0].error : "");
         loadFiles();
       })
-      .catch(function () { hint.textContent = "❌ 삭제 요청을 보내지 못했습니다"; });
+      .catch(function () { hint.textContent = "❌ 요청을 보내지 못했습니다"; });
+  }
+
+  function deleteChecked() {
+    var picks = picked(), hint = fEl("hint");
+    if (!picks.length) { hint.textContent = "지울 파일을 먼저 선택하세요"; return; }
+
+    if (filesTab === TRASH_KEY) {
+      if (!window.confirm(picks.length + "개를 완전히 지웁니다. 되돌릴 수 없어요. 계속할까요?")) return;
+      filesPost("/api/trash/empty", { ids: picks }, function (d) {
+        return "🔥 " + (d.removed || []).length + "개 완전 삭제";
+      });
+      return;
+    }
+    // 일반 탭에서는 바로 지우지 않고 휴지통으로 옮긴다(되돌릴 수 있음).
+    filesPost("/api/files/delete", { paths: picks }, function (d) {
+      return "🗑 " + (d.deleted || []).length + "개를 휴지통으로 옮겼어요 (되돌리기 가능)";
+    });
+  }
+
+  function restoreChecked() {
+    var picks = picked(), hint = fEl("hint");
+    if (!picks.length) { hint.textContent = "되돌릴 항목을 먼저 선택하세요"; return; }
+    filesPost("/api/trash/restore", { ids: picks }, function (d) {
+      return "↩ " + (d.restored || []).length + "개 되돌렸어요";
+    });
   }
 
   // ── 조작 ─────────────────────────────────────────────────────────
@@ -736,8 +810,7 @@
       var panel = jobEl("panel");
       var open = panel.style.display === "none";
       panel.style.display = open ? "flex" : "none";
-      toggle.classList.toggle("bg-primary", open);
-      toggle.classList.toggle("text-primary-foreground", open);
+      setActive(toggle, open);
       if (open && !jobOpts) { loadJobOptions(); watchJob(); }
       return;
     }
@@ -760,8 +833,7 @@
       var fp = $('[data-files="panel"]');
       var fopen = fp.style.display === "none";
       fp.style.display = fopen ? "flex" : "none";
-      ftog.classList.toggle("bg-primary", fopen);
-      ftog.classList.toggle("text-primary-foreground", fopen);
+      setActive(ftog, fopen);
       if (fopen) loadFiles();
       return;
     }
@@ -769,6 +841,7 @@
     var tab = e.target.closest("[data-files-tab]");
     if (tab) { filesTab = tab.dataset.filesTab; renderFiles(); return; }
     if (e.target.closest('[data-files="delete"]')) { deleteChecked(); return; }
+    if (e.target.closest('[data-files="restore"]')) { restoreChecked(); return; }
     var openImg = e.target.closest("[data-files-open]");
     if (openImg) { previewFile(openImg.dataset.filesOpen); return; }
     if (e.target.closest('[data-files="preview-close"]')) { previewFile(null); return; }
@@ -779,8 +852,7 @@
     if (pause) {
       paused = !paused;
       pause.textContent = paused ? "다시 재생" : "일시정지";
-      pause.classList.toggle("bg-primary", paused);
-      pause.classList.toggle("text-primary-foreground", paused);
+      setActive(pause, paused);
       return;
     }
     if (e.target.closest("[data-graph-open]")) { modal(true); return; }
@@ -789,6 +861,18 @@
     if (m && m.style.display === "flex" && e.target === m) modal(false);
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") modal(false); });
+
+  // 체크박스는 click이 아니라 change로 잡아야 키보드 조작도 반영된다.
+  document.addEventListener("change", function (e) {
+    if (e.target.matches('[data-files="all"]')) {
+      $$("[data-files-pick]").forEach(function (c) {
+        if (!c.disabled) c.checked = e.target.checked;
+      });
+      syncPicks();
+      return;
+    }
+    if (e.target.matches("[data-files-pick]")) syncPicks();
+  });
 
   function modal(open) {
     var m = document.getElementById("graphModal");
