@@ -54,6 +54,38 @@ http://<파이 IP>:5000        # 예: http://192.168.137.237:5000
 
 > 실측 데이터를 새로 모은 게 아니라면 **다시 학습(preprocess/train)할 필요 없이 바로 실행**하면 됩니다. 모델은 이미 저장돼 있어요.
 
+### 전원만 꽂으면 자동으로 켜지게 (SSH 없이)
+
+위 ②~④단계를 매번 하기 싫으면 **한 번만** 등록해 두세요. 그 뒤로는 **전원 케이블만 꽂으면**
+부팅과 함께 대시보드가 뜨고, 폰/노트북 브라우저로 바로 들어가면 됩니다.
+모니터·키보드·SSH 전부 필요 없습니다.
+
+```bash
+cd ~/project
+bash deploy/install.sh              # 자동시작 등록
+bash deploy/install.sh --hotspot    # + 파이를 Wi-Fi 핫스팟으로 (공유기 없는 발표장용)
+```
+
+| 확인할 것 | 명령 |
+|---|---|
+| 지금 도는지 | `systemctl status plant-dashboard` |
+| 로그 보기 | `journalctl -u plant-dashboard -f` |
+| 잠깐 끄기 | `sudo systemctl stop plant-dashboard` |
+| 자동시작 해제 | `sudo systemctl disable --now plant-dashboard` |
+
+- 프로그램이 예외로 죽어도 **10초 뒤 자동 재시작**됩니다(`Restart=always`).
+- 스크립트가 `deploy/plant-dashboard.service` 템플릿의 경로·사용자·파이썬을 **자동으로 찾아 채웁니다.**
+  `venv`가 있으면 그 파이썬을 쓰고, 없으면 시스템 파이썬을 쓰며 경고를 띄웁니다.
+- `i2c` 그룹에 없으면 자동으로 추가합니다(**재부팅 후 적용**).
+- 실행 후 **상태 전환은 웹 화면의 모드 버튼**으로 하면 되므로(아래 `/api/mode` 참고) SSH가 필요 없습니다.
+
+**접속 주소**
+- 같은 Wi-Fi: `http://<파이 IP>:5000` (IP가 매번 바뀌면 `http://sunjin.local:5000` 도 됩니다)
+- `--hotspot`으로 등록했으면: 폰을 `GML-PLANT`(비번 `gml12345`)에 연결 → `http://10.42.0.1:5000`
+
+> 센서를 아직 안 붙였으면 하드웨어가 없으므로 자동으로 **시뮬레이션 모드**로 뜹니다.
+> 센서를 붙이면 같은 서비스가 그대로 실제 신호를 읽습니다(코드 수정 불필요).
+
 ## 폴더 구조
 
 ```
@@ -71,6 +103,10 @@ project/
     inference.py            # (4) 실시간 추론 엔진
     gui.py                   # (4) VNC용 실시간 GUI / 헤드리스 대시보드
     web_dashboard.py         # (4) 브라우저용 실시간 웹 대시보드 (Flask, --web)
+  web/                # (4) 초록말 UI (chorokmal.html + static/)
+  deploy/
+    plant-dashboard.service  # 전원만 꽂으면 자동 실행되게 하는 systemd 유닛 템플릿
+    install.sh               # 위 유닛을 경로/사용자 자동 감지해 설치 (--hotspot 옵션)
   main.py             # 최상위 실행 진입점
   requirements.txt
   README.md

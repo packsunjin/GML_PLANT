@@ -1,0 +1,20 @@
+[Unit]
+Description=실시간 식물 상태 분류 대시보드 (Green Mind Lab)
+# 네트워크가 올라온 뒤에 시작. 네트워크가 없어도 대시보드 자체는 뜨므로 Wants(약한 의존)로 둔다.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__PROJECT__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__PYTHON__ __PROJECT__/main.py --web --port 5000
+# 예외로 죽어도 10초 뒤 자동 재시작 (전원만 꽂아두고 방치하는 것이 목적이므로)
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
