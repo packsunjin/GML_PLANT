@@ -135,7 +135,7 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0, sim_state="정상"):
                     fig.savefig(out_path)
                     print(f"상태: {result['emoji']} {result['state']}  (확신도={result['proba']}) -> {out_path}")
 
-            time.sleep(1.0 / clf.sample_rate)
+            clf.pace()
     except KeyboardInterrupt:
         print("\n[gui] Ctrl+C 감지 - 안전 종료합니다.")
     finally:
@@ -182,7 +182,7 @@ def run_headless(model_path, sim_csv, refresh_hz=2.0, sim_state="정상"):
                     if result is not None:
                         last_result = result
                     live.update(render(last_result))
-                    time.sleep(1.0 / clf.sample_rate)
+                    clf.pace()
         else:
             while True:
                 result = clf.step()
@@ -192,7 +192,7 @@ def run_headless(model_path, sim_csv, refresh_hz=2.0, sim_state="정상"):
                         f"\r상태: {result['emoji']} {result['state']:6s}  확신도={proba_str:>7s}   "
                     )
                     sys.stdout.flush()
-                time.sleep(1.0 / clf.sample_rate)
+                clf.pace()
     except KeyboardInterrupt:
         print("\n[headless] Ctrl+C 감지 - 안전 종료합니다.")
 

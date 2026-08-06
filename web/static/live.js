@@ -189,6 +189,19 @@
     if (!d || !d.ready) return;
     lastSeen = Date.now();
 
+    // 실측 샘플레이트. 명목의 90% 미만이면 주파수축이 어긋나므로 눈에 띄게 표시한다.
+    var rateEl = $('[data-live="rate"]');
+    if (rateEl) {
+      var nominal = d.sample_rate || 250;
+      if (typeof d.actual_rate === "number" && isFinite(d.actual_rate)) {
+        rateEl.textContent = d.actual_rate.toFixed(0) + " Hz";
+        rateEl.style.color = d.actual_rate < nominal * 0.9 ? "var(--destructive)" : "";
+      } else {
+        rateEl.textContent = "— Hz";
+        rateEl.style.color = "";
+      }
+    }
+
     var st = STATE[d.state] || STATE["정상"];
     var scope = $("[data-state-scope]");
     if (scope) {
@@ -357,6 +370,7 @@
              p2p: +(Math.max.apply(null, arr) - Math.min.apply(null, arr)).toFixed(4),
              temp: 22.5 + Math.sin(t / 20) * 3,
              humidity: 45 + Math.sin(t / 13) * 18,
+             sample_rate: 250, actual_rate: 250,
              source: "데모 데이터 (백엔드 없음)" };
   }
 

@@ -134,6 +134,38 @@ class RealtimeClassifier:
             self._sim_csv_path = sim_source_csv
 
         self._t0 = time.time()
+        # 라이브 시뮬레이션의 신호 시간축은 벽시계가 아니라 "읽은 샘플 수 / 샘플레이트"로 센다.
+        # 벽시계를 쓰면 루프가 명목 속도보다 느릴 때(실측 233Hz vs 명목 250Hz) 생성된 신호가
+        # 250Hz로 해석되어 모든 주파수가 그 비율만큼 밀린다. 학습 데이터(CSV)는 t=i/fs로
+        # 만들어졌으므로, 라이브도 같은 방식이어야 학습/추론이 일치한다.
+        self._sim_n = 0
+        self._paced_n = 0   # pace()가 지금까지 맞춘 샘플 수(목표 시각 계산용)
+
+    def pace(self):
+        """다음 샘플 시각까지만 대기한다(누적 드리프트 보정).
+
+        `time.sleep(1/fs)`를 그대로 쓰면 step()의 처리 시간이 매번 더해져 실제 샘플레이트가
+        명목치보다 낮아진다(측정: 250Hz 명목 -> 233Hz 실측). 그러면 필터·스펙트로그램이
+        가정하는 fs와 실제 취득 속도가 어긋나 주파수가 왜곡된다. 목표 시각 기준으로 자면
+        처리 시간이 흔들려도 평균 샘플레이트가 명목치에 붙는다."""
+        self._paced_n += 1
+        target = self._t0 + self._paced_n / self.sample_rate
+        remain = target - time.time()
+        if remain > 0:
+            time.sleep(remain)
+        elif remain < -1.0:
+            # 1초 이상 밀렸으면 따라잡기를 포기하고 기준 시각을 현재로 리셋한다
+            # (일시적인 부하 뒤에 sleep 없는 폭주 루프가 되는 것을 막는다).
+            self._t0 = time.time()
+            self._paced_n = 0
+
+    def actual_rate(self):
+        """지금까지 실제로 읽은 평균 샘플레이트(Hz). 명목 sample_rate와 크게 다르면
+        (예: 파이가 부하로 못 따라가면) 필터/스펙트로그램의 주파수축이 어긋난다."""
+        el = time.time() - self._t0
+        if el <= 0 or self._paced_n == 0:
+            return None
+        return round(self._paced_n / el, 1)
 
     def input_source(self):
         """현재 입력 신호의 출처를 (kind, 사람이 읽는 라벨)로 반환한다.
@@ -157,7 +189,9 @@ class RealtimeClassifier:
             v = self._sim_rows[self._sim_idx % len(self._sim_rows)]
             self._sim_idx += 1
             return v
-        t = time.time() - self._t0
+        # 벽시계가 아니라 샘플 인덱스로 시간축을 만든다(위 _sim_n 주석 참조).
+        t = self._sim_n / self.sample_rate
+        self._sim_n += 1
         return read_single_realtime(state_for_sim=self._current_sim_state(t), t=t)
 
     def step(self):
@@ -226,7 +260,7 @@ def main():
             if result is not None:
                 p = f"{result['proba']:.2f}" if result["proba"] is not None else "N/A"
                 print(f"상태: {result['state']} {result['emoji']}  (확신도={p})")
-            time.sleep(1.0 / clf.sample_rate)
+            clf.pace()
     except KeyboardInterrupt:
         print("\n[inference] Ctrl+C 감지 - 안전 종료")
 

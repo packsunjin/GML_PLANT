@@ -49,6 +49,10 @@ def _payload(result, recent, clf):
         "p2p": round(float(np.max(filt) - np.min(filt)), 4),
         # 아날로그 습도 센서(ADS1115 A1). 안 꽂혀 있으면 None -> 화면은 "센서 대기 중"
         "humidity": sensor_control.read_moisture(),
+        # 실제로 초당 몇 샘플을 읽고 있는지. 명목(250Hz)보다 많이 낮으면 필터/스펙트로그램이
+        # 가정하는 주파수축이 어긋나 정확도가 떨어진다는 신호다.
+        "sample_rate": SAMPLE_RATE_HZ,
+        "actual_rate": clf.actual_rate(),
     }
 
 
@@ -70,7 +74,7 @@ def _worker(clf, source):
             with _lock:
                 _latest.clear()
                 _latest.update(payload)
-        time.sleep(1.0 / clf.sample_rate)
+        clf.pace()
 
 
 def _web_dir():
