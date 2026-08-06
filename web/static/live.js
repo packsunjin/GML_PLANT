@@ -394,10 +394,23 @@
         apply(d);
       })
       .catch(function () {
-        demo = true;
+        if (!demo) enterDemo();
         setText("latency", "— ms");
         apply(demoPayload());
       });
+  }
+
+  // 백엔드가 없으면(파일만 열었거나 배포된 미리보기) 수집·학습·파일 기능은 동작할 수
+  // 없으므로 버튼 자체를 감춘다. 눌러도 안 되는 버튼을 남겨 두면 고장난 것처럼 보인다.
+  function enterDemo() {
+    demo = true;
+    ['[data-job="toggle"]', '[data-files="toggle"]',
+     '[data-job="panel"]', '[data-files="panel"]'].forEach(function (sel) {
+      var el = $(sel);
+      if (el) el.style.display = "none";
+    });
+    var hint = $('[data-mode="hint"]');
+    if (hint) hint.textContent = "미리보기 — 실제 측정이 아니라 예시 데이터로 도는 화면입니다";
   }
 
   // ── 모드 전환 (SSH 없이 브라우저에서) ────────────────────────────
@@ -426,7 +439,7 @@
     if (demo) {
       renderMode({ source_kind: "sim", sim_state: "순환", editable: false });
       var hint = $('[data-mode="hint"]');
-      if (hint) hint.textContent = "데모 화면이라 모드 전환은 백엔드에서만 됩니다";
+      if (hint) hint.textContent = "미리보기 — 예시 데이터로 도는 화면입니다 (실제 측정 아님)";
       return;
     }
     fetch("/api/mode", { cache: "no-store" })
