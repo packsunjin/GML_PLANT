@@ -48,6 +48,25 @@
     <!-- 상태 원 -->
     <section class="rounded-4xl border border-border bg-card p-6 shadow-soft md:p-8 lg:col-span-7">
       <div class="flex flex-col items-center">
+
+      <div class="flex w-full items-center justify-center gap-4">
+        <!-- 왼쪽: 온도 -->
+        <div class="flex flex-1 justify-center" data-wide-only>
+          <div style="width:100%;max-width:180px">
+            <div class="flex items-baseline justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">온도</span>
+              <span class="text-lg font-black tabular-nums text-foreground" data-live="temp">—</span>
+            </div>
+            <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
+              <span data-live="temp-band"
+                    style="position:absolute;top:0;bottom:0;left:32%;width:24%;border-radius:999px;background:color-mix(in srgb, var(--warning) 34%, transparent)"></span>
+              <span data-live="temp-dot"
+                    style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
+            </div>
+            <p class="mt-2 text-[11px] font-medium text-subtle" data-live="temp-range">적정 18–24°C</p>
+          </div>
+        </div>
+
         <div class="relative flex shrink-0 items-center justify-center" data-state-scope
              style="width:min(300px,72vw);aspect-ratio:1;--state:var(--primary);--state-deep:var(--primary-hover);--state-soft:var(--primary-soft)">
           <svg viewBox="0 0 36 36" class="h-full w-full -rotate-90">
@@ -72,6 +91,52 @@
             <span class="mt-0.5 text-[11px] font-medium text-subtle" data-live="duration">—</span>
           </div>
         </div>
+
+        <!-- 오른쪽: 습도 -->
+        <div class="flex flex-1 justify-center" data-wide-only>
+          <div style="width:100%;max-width:180px">
+            <div class="flex items-baseline justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">습도</span>
+              <span class="text-lg font-black tabular-nums text-foreground" data-live="humidity">—</span>
+            </div>
+            <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
+              <span data-live="hum-band"
+                    style="position:absolute;top:0;bottom:0;left:45%;width:25%;border-radius:999px;background:color-mix(in srgb, var(--water) 28%, transparent)"></span>
+              <span data-live="hum-dot"
+                    style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
+            </div>
+            <p class="mt-2 text-[11px] font-medium text-subtle" data-live="hum-range">적정 45–70%</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 좁은 화면: 온·습도 -->
+      <div class="mt-6 w-full space-y-4" data-narrow-only style="max-width:420px">
+        <div>
+          <div class="flex items-baseline justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">온도</span>
+            <span class="text-lg font-black tabular-nums text-foreground" data-live="temp-m">—</span>
+          </div>
+          <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
+            <span style="position:absolute;top:0;bottom:0;left:32%;width:24%;border-radius:999px;background:color-mix(in srgb, var(--warning) 34%, transparent)"></span>
+            <span data-live="temp-dot-m"
+                  style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
+          </div>
+          <p class="mt-2 text-[11px] font-medium text-subtle">적정 18–24°C</p>
+        </div>
+        <div>
+          <div class="flex items-baseline justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">습도</span>
+            <span class="text-lg font-black tabular-nums text-foreground" data-live="humidity-m">—</span>
+          </div>
+          <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
+            <span style="position:absolute;top:0;bottom:0;left:45%;width:25%;border-radius:999px;background:color-mix(in srgb, var(--water) 28%, transparent)"></span>
+            <span data-live="hum-dot-m"
+                  style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
+          </div>
+          <p class="mt-2 text-[11px] font-medium text-subtle">적정 45–70%</p>
+        </div>
+      </div>
 
         <div class="mt-6 grid w-full grid-cols-3 gap-2 border-t border-border pt-5">
           <div class="text-center">

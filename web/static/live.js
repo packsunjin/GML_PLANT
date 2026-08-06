@@ -292,6 +292,40 @@
     if (conf != null) setText("quality", conf >= 70 ? "좋음" : conf >= 45 ? "보통" : "낮음");
 
     setText("source", d.source || "입력 소스 확인 중");
+    applyEnv(d);
+  }
+
+  // ── 온·습도 게이지 ───────────────────────────────────────────────
+  // 백엔드가 temp / humidity 를 보내주면 자동으로 채워집니다. 센서가 아직 없으면
+  // 값 없음(—)으로 두고 점을 회색으로 남겨 실제 측정이 아님을 드러냅니다.
+  var TEMP_SCALE = [10, 35], HUM_SCALE = [0, 100];
+
+  function gauge(value, scale, valEls, dotEls, unit, color) {
+    var has = typeof value === "number" && isFinite(value);
+    valEls.forEach(function (n) { setText(n, has ? value.toFixed(1) + unit : "—"); });
+    dotEls.forEach(function (n) {
+      var dot = live(n);
+      if (!dot) return;
+      if (!has) {
+        dot.style.background = "var(--border)";
+        dot.style.left = "50%";
+        return;
+      }
+      var pct = (value - scale[0]) / (scale[1] - scale[0]) * 100;
+      dot.style.left = Math.max(0, Math.min(100, pct)).toFixed(1) + "%";
+      dot.style.background = color;
+    });
+  }
+
+  function applyEnv(d) {
+    gauge(d.temp, TEMP_SCALE, ["temp", "temp-m"], ["temp-dot", "temp-dot-m"], "°C", "var(--warning)");
+    gauge(d.humidity, HUM_SCALE, ["humidity", "humidity-m"], ["hum-dot", "hum-dot-m"], "%", "var(--water)");
+
+    var missing = !(typeof d.temp === "number") && !(typeof d.humidity === "number");
+    var note = live("temp-range");
+    if (note) note.textContent = missing ? "적정 18–24°C · 센서 대기 중" : "적정 18–24°C";
+    var note2 = live("hum-range");
+    if (note2) note2.textContent = missing ? "적정 45–70% · 센서 대기 중" : "적정 45–70%";
   }
 
   // ── 데모 (백엔드 없이 파일만 열었을 때) ──────────────────────────
@@ -326,6 +360,8 @@
     return { ready: true, state: state, proba: top, probs: probs, signal: signal, spec: spec,
              mean: +mean.toFixed(4), std: +std.toFixed(4),
              p2p: +(Math.max.apply(null, arr) - Math.min.apply(null, arr)).toFixed(4),
+             temp: 22.5 + Math.sin(t / 20) * 3,
+             humidity: 45 + Math.sin(t / 13) * 18,
              source: "데모 데이터 (백엔드 없음)" };
   }
 
