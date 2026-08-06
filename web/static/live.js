@@ -604,26 +604,98 @@
       list.innerHTML = '<p class="py-6 text-center text-xs text-subtle">아직 파일이 없습니다.</p>';
       return;
     }
+    // 이미지는 뭔지 보고 지울 수 있어야 하므로 목록이 아니라 사진 그리드로 보여준다.
+    if (grp.kind === "image") { renderImageGrid(grp, list); return; }
+    renderFileList(grp, list);
+    if (grp.kind === "csv") grp.files.forEach(drawCsvPreview);
+  }
+
+  function renderImageGrid(grp, list) {
+    list.style.display = "grid";
+    list.style.gridTemplateColumns = "repeat(auto-fill,minmax(132px,1fr))";
+    list.style.gap = "10px";
+    list.innerHTML = grp.files.map(function (f) {
+      return '<figure class="rounded-2xl bg-card p-2" style="margin:0">' +
+        '<div style="position:relative">' +
+          '<img src="' + dlUrl(f.path, 1) + '" alt="' + f.name + '" data-files-open="' + f.path + '"' +
+            ' style="width:100%;aspect-ratio:1;object-fit:contain;background:#0d140f;' +
+                   'border-radius:10px;cursor:zoom-in;image-rendering:pixelated">' +
+          '<input type="checkbox" data-files-pick="' + f.path + '"' +
+            ' style="position:absolute;top:6px;left:6px;width:18px;height:18px;cursor:pointer">' +
+        '</div>' +
+        '<figcaption class="mt-1.5">' +
+          '<span class="block text-[10px] font-bold text-foreground" style="word-break:break-all">' +
+            f.name + '</span>' +
+          '<span class="mt-0.5 flex items-center gap-1.5">' +
+            '<span class="text-[10px] text-subtle">' + human(f.size) + '</span>' +
+            '<a href="' + dlUrl(f.path) + '" download ' +
+              'class="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-secondary-foreground">받기</a>' +
+          '</span>' +
+        '</figcaption>' +
+      '</figure>';
+    }).join("");
+  }
+
+  function renderFileList(grp, list) {
+    list.style.display = "block";
+    list.style.gridTemplateColumns = "";
     list.innerHTML = grp.files.map(function (f) {
       var inUse = f.path === filesData.current_model;
-      var isImg = grp.kind === "image";
+      var isCsv = grp.kind === "csv";
       return '<div class="flex items-center gap-2 border-b border-border py-2 last:border-b-0">' +
         '<input type="checkbox" data-files-pick="' + f.path + '"' + (inUse ? " disabled" : "") + '>' +
-        (isImg ? '<img src="' + dlUrl(f.path, 1) + '" alt="" data-files-open="' + f.path +
-                 '" style="width:34px;height:34px;object-fit:cover;border-radius:6px;cursor:pointer">' : '') +
-        '<button type="button" data-files-open="' + f.path + '"' +
-          (isImg ? '' : ' disabled') +
-          ' class="min-w-0 flex-1 text-left"' + (isImg ? '' : ' style="cursor:default"') + '>' +
+        (isCsv ? '<canvas data-files-wave="' + f.path + '" width="150" height="40" ' +
+                 'style="width:75px;height:40px;background:#0d140f;border-radius:6px;flex:none"></canvas>' : '') +
+        '<div class="min-w-0 flex-1">' +
           // 모델/혼동행렬 파일명은 접미사(_특징_정상-자극 등)로만 구분되므로 자르지 않는다.
           '<span class="block text-xs font-bold text-foreground" style="word-break:break-all">' + f.name +
             (inUse ? ' <span class="text-[10px] font-medium text-subtle">· 사용 중</span>' : '') + '</span>' +
-          '<span class="block text-[10px] text-subtle">' + human(f.size) + ' · ' +
-            hhmm(f.mtime * 1000) + '</span>' +
-        '</button>' +
+          '<span class="block text-[10px] text-subtle" data-files-meta="' + f.path + '">' +
+            human(f.size) + ' · ' + hhmm(f.mtime * 1000) + '</span>' +
+        '</div>' +
         '<a href="' + dlUrl(f.path) + '" download ' +
           'class="shrink-0 rounded-lg bg-card px-2.5 py-1 text-[10px] font-bold text-secondary-foreground">내려받기</a>' +
       '</div>';
     }).join("");
+  }
+
+  // CSV는 그림이 없으니 실제 파형을 작게 그려 어떤 파일인지 보이게 한다.
+  function drawCsvPreview(f) {
+    fetch("/api/files/preview?path=" + encodeURIComponent(f.path), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var meta = $('[data-files-meta="' + f.path + '"]');
+        var cv = $('[data-files-wave="' + f.path + '"]');
+        if (!d.ok) return;
+        if (d.kind === "table") {
+          if (cv) cv.style.display = "none";
+          if (meta) {
+            var lab = Object.keys(d.labels || {}).map(function (k) { return k + " " + d.labels[k]; });
+            meta.textContent = human(f.size) + " · " + d.rows + "행" +
+              (lab.length ? " · " + lab.join(" / ") : "");
+          }
+          return;
+        }
+        if (meta) {
+          meta.textContent = human(f.size) + " · " + d.rows + "샘플" +
+            (d.duration ? " · " + d.duration + "초" : "") +
+            " · " + d.min + "~" + d.max + " V";
+        }
+        if (!cv || !d.signal || d.signal.length < 2) return;
+        var ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
+        var lo = Math.min.apply(null, d.signal), hi = Math.max.apply(null, d.signal);
+        var span = (hi - lo) || 1e-6, step = w / (d.signal.length - 1);
+        ctx.clearRect(0, 0, w, h);
+        ctx.beginPath();
+        d.signal.forEach(function (v, i) {
+          var y = h - 3 - ((v - lo) / span) * (h - 6);
+          if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * step, y);
+        });
+        ctx.strokeStyle = cssVal("--signal") || "#5fce7a";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      })
+      .catch(function () {});
   }
 
   function previewFile(path) {

@@ -374,6 +374,38 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return send_from_directory(os.path.dirname(full), os.path.basename(full),
                                    as_attachment=as_attachment)
 
+    @app.route("/api/files/preview")
+    def api_files_preview():
+        """CSV는 그림이 없으니 파형을 그릴 수 있게 값만 추려서 보낸다.
+        (어떤 파일인지 눈으로 보고 지울 수 있어야 하므로)"""
+        full = _safe_path(request.args.get("path", ""))
+        if not full or not os.path.isfile(full) or not full.lower().endswith(".csv"):
+            return jsonify({"ok": False, "error": "미리보기를 만들 수 없는 파일입니다"}), 404
+        try:
+            import pandas as pd
+            df = pd.read_csv(full)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"읽지 못했습니다: {e}"}), 400
+
+        col = "voltage" if "voltage" in df.columns else None
+        if col is None:
+            # features.csv 처럼 파형이 아닌 표는 클래스별 개수만 알려준다.
+            info = {}
+            if "label" in df.columns:
+                info = {str(k): int(v) for k, v in df["label"].value_counts().items()}
+            return jsonify({"ok": True, "kind": "table", "rows": int(len(df)),
+                            "columns": list(df.columns)[:20], "labels": info})
+
+        v = df[col].to_numpy(dtype=float)
+        n = 400                       # 화면에 그릴 만큼만 균등 추출
+        idx = np.linspace(0, len(v) - 1, min(n, len(v))).astype(int)
+        sig = v[idx]
+        dur = float(df["timestamp_sec"].iloc[-1]) if "timestamp_sec" in df.columns else None
+        return jsonify({"ok": True, "kind": "wave", "rows": int(len(v)),
+                        "duration": round(dur, 2) if dur is not None else None,
+                        "min": round(float(v.min()), 5), "max": round(float(v.max()), 5),
+                        "signal": [round(float(x), 5) for x in sig]})
+
     @app.route("/api/files/delete", methods=["POST"])
     def api_files_delete():
         body = request.get_json(silent=True) or {}
