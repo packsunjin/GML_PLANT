@@ -120,14 +120,17 @@ class _IIODht:
 if ENV_SENSOR is None:
     _iio = _IIODht.find()
     if _iio:
+        # 장치 노드가 있으면 센서를 인정한다. dht11 커널 드라이버는 첫 읽기가
+        # 자주 -ETIMEDOUT 으로 실패하고(2초 간격 제한도 있다), 몇 번 더 시도하면
+        # 붙는 경우가 많다. 여기서 실패했다고 없는 센서로 처리하면 안 된다.
+        _env_dev = _IIODht(_iio)
+        ENV_SENSOR, _env_kind = "DHT22", "dht"
+        ENV_ERROR = None
         try:
-            _env_dev = _IIODht(_iio)
-            _env_dev.temperature          # 실제로 읽히는지 확인
-            ENV_SENSOR, _env_kind = "DHT22", "dht"
-            ENV_ERROR = None
+            _env_dev.temperature
         except Exception as _e3:
-            _env_dev = None
-            ENV_ERROR = f"커널 DHT 드라이버({_iio}) 읽기 실패({_e3})"
+            # 값은 백그라운드 스레드가 계속 다시 읽는다. 사유만 남겨 진단에 띄운다.
+            ENV_LAST_ERROR = f"{_e3} (첫 읽기 실패 — 재시도 중)"
     else:
         ENV_ERROR = ((ENV_ERROR + "; ") if ENV_ERROR else "") + \
             "커널 DHT 드라이버 없음(config.txt 에 dtoverlay=dht11,gpiopin=" + \

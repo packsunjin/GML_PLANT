@@ -644,12 +644,15 @@
           L.push("   ※ 자세한 진단:  cd ~/project/src && python3 check_sensors.py");
         } else if (s.env_sensor === "DHT22" && s.temp == null) {
           L.push("");
-          L.push("※ DHT22 는 잡혔는데 값이 안 옵니다. 아래를 확인하세요.");
-          L.push("   1) DATA 선이 GPIO " + s.dht_pin + " (기본 D4 = 물리 7번) 에 꽂혀 있나요?");
-          L.push("      ADS1115 A1 에 꽂혀 있으면 절대 안 읽힙니다.");
-          L.push("   2) 전원은 3V3(물리 1번), GND 는 공통(물리 6번) 인가요?");
-          L.push("   3) 모듈이 아닌 맨 센서라면 DATA–VCC 사이에 10kΩ 풀업 저항이 필요합니다.");
-          L.push("   4) 핀을 바꿨으면:  GML_DHT_PIN=D17 python3 main.py --web");
+          L.push("※ 커널 드라이버는 올라왔는데 센서가 응답하지 않습니다(timed out).");
+          L.push("   = 오버레이/장치는 정상, 배선이나 센서 쪽 문제입니다.");
+          L.push("");
+          L.push("   1) config.txt 의 gpiopin= 번호와 실제로 꽂은 핀이 같나요?");
+          L.push("      dtoverlay=dht11,gpiopin=4  →  DATA 는 GPIO4 = 물리 7번");
+          L.push("   2) VCC 는 3V3(물리 1번), GND 는 공통(물리 6번) 인가요?");
+          L.push("   3) 맨 센서(4핀)면 DATA–VCC 사이에 10kΩ 풀업 저항이 필요합니다.");
+          L.push("   4) 첫 몇 번은 원래 실패합니다. 계속 재시도 중이니 10초쯤 두고 보세요.");
+          L.push("   5) 그래도 안 되면:  cd ~/project/src && python3 check_sensors.py");
         }
         box.style.display = "block";
         box.textContent = L.join("\n");

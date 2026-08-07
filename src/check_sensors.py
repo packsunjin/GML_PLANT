@@ -49,14 +49,28 @@ def main():
     devs = sorted(glob.glob("/sys/bus/iio/devices/iio:device*"))
     print("IIO 장치  :", devs or "(없음)")
     for d in devs:
-        for f in ("in_temp_input", "in_humidityrelative_input"):
-            p = os.path.join(d, f)
-            if os.path.isfile(p):
-                try:
-                    with open(p) as fh:
-                        print(f"  {f} = {float(fh.read().strip())/1000:.1f}")
-                except Exception as e:
-                    print(f"  {f} 읽기 실패: {e}")
+        # dht11 커널 드라이버는 첫 읽기가 자주 타임아웃난다. 3초 간격으로 여러 번 시도한다.
+        import time
+        ok = 0
+        for i in range(6):
+            try:
+                with open(os.path.join(d, "in_temp_input")) as fh:
+                    t = float(fh.read().strip()) / 1000
+                with open(os.path.join(d, "in_humidityrelative_input")) as fh:
+                    h = float(fh.read().strip()) / 1000
+                print(f"  시도 {i+1}: 온도 {t:.1f} °C / 습도 {h:.1f} %")
+                ok += 1
+            except Exception as e:
+                print(f"  시도 {i+1}: 실패 ({e})")
+            time.sleep(3)
+        print(f"  -> 6번 중 {ok}번 성공")
+        if ok == 0:
+            print("  ⚠️  장치는 있는데 센서가 응답하지 않습니다 = 배선/센서 문제.")
+            print("      · config.txt 의 gpiopin= 번호와 실제로 꽂은 핀이 같은지")
+            print("      · VCC=3V3(물리 1번), GND=공통(물리 6번) 인지")
+            print("      · 맨 센서(4핀)면 DATA-VCC 사이 10kΩ 풀업이 있는지")
+        elif ok < 6:
+            print("  ✅ 읽힙니다. (DHT22 는 원래 실패가 잦아 코드가 재시도합니다)")
     if not devs:
         print("\n  -> 켜는 법:")
         print(f"     echo 'dtoverlay=dht11,gpiopin=4' | sudo tee -a {cfg}")
