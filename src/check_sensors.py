@@ -94,23 +94,49 @@ def main():
                   "moisture_percent", "moisture_volts", "moisture_error", "dht_pin"):
             print(f"  {k:18s}: {st.get(k)}")
 
-        line("AD8232 출력 전압 (전극 상태 확인)")
+        line("AD8232 전극 상태 (10초 측정)")
         if sc.HARDWARE_AVAILABLE:
             import time
+            import numpy as np
+            # 전극을 바꿀 때마다 5분씩 수집하지 않아도 되게, 10초만 재서
+            # 기준점과 fast-restore 강하 비율을 바로 보여준다.
+            fs, dur = 250.0, 10.0
             vs = []
-            for _ in range(10):
+            t0 = time.time()
+            i = 0
+            while time.time() - t0 < dur:
                 vs.append(sc.chan.voltage)
-                time.sleep(0.2)
-            print("  " + "  ".join(f"{v:.3f}" for v in vs))
-            avg = sum(vs) / len(vs)
-            print(f"  평균 {avg:.3f} V")
+                i += 1
+                nxt = t0 + i / fs
+                if nxt > time.time():
+                    time.sleep(nxt - time.time())
+            v = np.asarray(vs, dtype=float)
+            avg = float(np.mean(v))
+            print(f"  {len(v)}샘플 / {time.time()-t0:.1f}초  (실효 {len(v)/(time.time()-t0):.0f}Hz)")
+            print(f"  기준점 평균 {avg:.3f} V   표준편차 {v.std():.4f} V   범위 {v.min():.3f}~{v.max():.3f}")
+
             if avg > 2.8 or avg < 0.4:
-                print("  ⚠️  전원 레일에 붙어 있습니다 = 전극이 안 붙었거나(leads-off) 배선 문제.")
-                print("      RA/LA/RL 3개 모두 연결됐는지, GND 공통인지 확인하세요.")
-            elif 1.2 < avg < 2.1:
-                print("  ✅ 정상 범위(전원의 절반 근처)입니다.")
+                print("  ❌ 전원 레일에 붙어 있습니다 = 전극이 안 붙었거나 배선 문제.")
+                print("     RA/LA/RL 3개 모두 연결됐는지, GND 공통인지 확인하세요.")
+            elif not (1.2 < avg < 2.1):
+                print("  ⚠️  기준점이 가운데(약 1.65V)에서 벗어나 있습니다.")
             else:
-                print("  ? 애매한 값입니다. 전극 접촉을 다시 확인해 보세요.")
+                print("  ✅ 기준점 정상 (전원의 절반 근처)")
+
+            # fast-restore 강하 비율 — 이 숫자가 전극 접촉의 품질 지표다.
+            med = float(np.median(v))
+            drop = float(np.mean(v < med * 0.5))
+            print(f"\n  fast-restore 강하 비율: {100*drop:.2f}%   <- 이 숫자를 보세요")
+            if drop < 0.001:
+                print("  ✅ 접촉이 좋습니다. 이 상태로 수집하세요.")
+            elif drop < 0.01:
+                print("  △ 조금 있습니다. 쓸 수는 있지만 더 낮추면 좋습니다.")
+            else:
+                print("  ❌ 접촉 저항이 높습니다. 전극을 개선하세요:")
+                print("     · 패드 밑 줄기에 물 한 방울 (젤이 마르면 저항이 확 올라갑니다)")
+                print("     · 패드를 줄기에 감아 붙여 닿는 면적을 넓히기")
+                print("     · 점퍼선 핀을 줄기에 1~2mm 찔러넣기 (가장 확실)")
+            print("  (전극을 바꾸고 이 명령을 다시 돌려 숫자를 비교하세요)")
         else:
             print("  (I2C 하드웨어가 없어 건너뜁니다)")
     except Exception as e:
