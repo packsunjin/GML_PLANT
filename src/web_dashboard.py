@@ -583,6 +583,28 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                         out.append(_entry(full))
         return out, total
 
+    # 상태별 하위 폴더를 각각 훑어, 상태 정보를 붙이고 상태마다 같은 개수만 보낸다.
+    PER_STATE_CAP = 120
+
+    def _spectrogram_group():
+        base = os.path.join(root_dir, "data", "spectrogram")
+        files, totals = [], {}
+        for st in sensor_control.VALID_STATES:
+            d = os.path.join(base, st)
+            if not os.path.isdir(d):
+                totals[st] = 0
+                continue
+            names = sorted(n for n in os.listdir(d) if n.lower().endswith(".png"))
+            totals[st] = len(names)
+            for n in names[:PER_STATE_CAP]:
+                e = _entry(os.path.join(d, n))
+                e["state"] = st            # 프런트가 이걸로 상태별 필터를 만든다
+                files.append(e)
+        return {"key": "spectrogram", "title": "스펙트로그램", "kind": "image",
+                "note": "학습에 쓰인 224x224 이미지.",
+                "files": files, "total": sum(totals.values()),
+                "states": totals}
+
     def _group(key, title, kind, note, rel_dir, exts, recursive=False):
         files, total = _listing(rel_dir, exts, recursive)
         return {"key": key, "title": title, "kind": kind, "note": note,
@@ -597,9 +619,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                    "수집한 전위 신호. 지우고 다시 수집할 수 있어요.", "data/raw", (".csv",)),
             _group("features", "특징 테이블 (CSV)", "csv",
                    "전처리가 뽑은 윈도우별 특징 14개.", "data", (".csv",)),
-            _group("spectrogram", "스펙트로그램 이미지", "image",
-                   "학습에 쓰인 224x224 이미지. 상태별로 들어 있어요.",
-                   "data/spectrogram", (".png",), recursive=True),
+            _spectrogram_group(),
             _group("eval", "평가 이미지 (혼동행렬)", "image",
                    "학습 결과 confusion matrix.", "models", (".png",)),
             _group("model", "학습된 모델", "model",

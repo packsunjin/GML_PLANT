@@ -821,7 +821,7 @@
   }
 
   // ── 학습 자료 (보기 / 내려받기 / 지우기) ─────────────────────────
-  var filesData = null, filesTab = null;
+  var filesData = null, filesTab = null, specState = null;
 
   function fEl(n) { return $('[data-files="' + n + '"]'); }
   function human(b) {
@@ -898,6 +898,36 @@
     var restoreBtn = fEl("restore"), delBtn = fEl("delete");
     if (restoreBtn) restoreBtn.style.display = isTrash ? "inline-block" : "none";
     if (delBtn) delBtn.textContent = isTrash ? "완전 삭제" : "휴지통으로";
+
+    // 스펙트로그램은 상태(정상/수분부족/자극)별로 나눠 볼 수 있게 필터 줄을 띄운다.
+    var sub = fEl("subtabs");
+    if (sub) {
+      if (grp.states) {
+        var keys = Object.keys(grp.states);
+        if (specState !== null && keys.indexOf(specState) < 0) specState = null;
+        sub.style.display = "flex";
+        sub.innerHTML = "";
+        [["", "전체 " + grp.total]].concat(keys.map(function (k) {
+          return [k, k + " " + grp.states[k]];
+        })).forEach(function (pair) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.dataset.specState = pair[0];
+          b.className = "rounded-xl px-3 py-1.5 text-[11px] font-bold transition";
+          b.textContent = pair[1];
+          setActive(b, (specState || "") === pair[0]);
+          sub.appendChild(b);
+        });
+      } else {
+        sub.style.display = "none";
+        sub.innerHTML = "";
+      }
+    }
+    if (grp.states && specState) {
+      grp = Object.assign({}, grp, {
+        files: grp.files.filter(function (f) { return f.state === specState; })
+      });
+    }
 
     if (!grp.files.length) {
       list.style.display = "block";
@@ -1136,6 +1166,8 @@
     if (e.target.closest('[data-files="refresh"]')) { loadFiles(); return; }
     var tab = e.target.closest("[data-files-tab]");
     if (tab) { filesTab = tab.dataset.filesTab; renderFiles(); return; }
+    var sst = e.target.closest("[data-spec-state]");
+    if (sst) { specState = sst.dataset.specState || null; renderFiles(); return; }
     if (e.target.closest('[data-files="delete"]')) { deleteChecked(); return; }
     if (e.target.closest('[data-files="restore"]')) { restoreChecked(); return; }
     var openImg = e.target.closest("[data-files-open]");
