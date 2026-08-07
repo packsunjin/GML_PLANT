@@ -195,6 +195,9 @@ def _web_dir():
 #    용도가 아니라, 옆 사람이 실수로 누르거나 장난치는 것을 막는 잠금장치로 생각하면 된다.
 _ADMIN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "..", "data", "admin.json")
+# 처음 실행할 때 자동으로 걸리는 기본 비밀번호. 환경변수로 바꿔 실행할 수 있고,
+# 로그인한 뒤 /api/auth/setup 으로도 바꿀 수 있다.
+DEFAULT_ADMIN_PW = os.environ.get("GML_ADMIN_PW", "3831")
 
 
 def _admin_load():
@@ -283,10 +286,12 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     # 한 번 로그인하면 30일 유지 -> 실험할 때마다 다시 치지 않아도 된다.
     app.permanent_session_lifetime = datetime.timedelta(days=30)
 
-    if _admin.get("hash"):
-        print("[web] 관리자 비밀번호가 설정되어 있습니다. 수집/학습/삭제는 로그인 후 가능합니다.")
-    else:
-        print("[web] 관리자 비밀번호가 아직 없습니다. 브라우저에서 처음 한 번 설정해 주세요.")
+    if not _admin.get("hash"):
+        # 처음 실행이면 기본 비밀번호로 바로 잠근다(설정 화면을 거치지 않아도 되게).
+        _admin = _admin_set_password(DEFAULT_ADMIN_PW)
+        print(f"[web] 관리자 비밀번호를 기본값 '{DEFAULT_ADMIN_PW}' 으로 설정했습니다.")
+        print("[web] 바꾸려면: GML_ADMIN_PW=새비번 으로 실행하고 data/admin.json 을 지우세요.")
+    print("[web] 수집/변환/학습/삭제는 🔒 관리자 로그인 후 가능합니다.")
 
     def _is_admin():
         return bool(session.get("admin"))

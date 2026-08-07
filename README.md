@@ -459,11 +459,21 @@ curl -X POST http://<파이IP>:5000/api/mode \
 | 파일 삭제 · 휴지통 복원/비우기 | 모드 전환 (정상/수분부족/자극/순환) |
 | 토양수분 보정 | 자료 목록 보기 · 내려받기 · 센서 진단 |
 
-- **처음 실행하면 비밀번호가 없습니다.** `🔒 관리자` 를 누르면 설정 화면이 나오고,
-  거기서 정한 비밀번호가 `data/admin.json` 에 저장됩니다(해시 + 솔트, PBKDF2 20만 회).
-  비밀번호를 정하기 전까지는 잠기지 않으므로 설치 직후 바로 쓸 수 있습니다.
+- **기본 비밀번호는 `3831`** 입니다. 처음 실행할 때 자동으로 걸리므로 따로 설정할 필요가 없습니다.
+  `data/admin.json` 에 해시 + 솔트로 저장됩니다(PBKDF2-SHA256 20만 회, 평문 저장 아님).
+- 바꾸려면 둘 중 하나:
+  ```bash
+  # ① 다른 기본값으로 다시 만들기
+  rm data/admin.json && GML_ADMIN_PW=새비번 python3 main.py --web
+
+  # ② 로그인한 상태에서 API 로 변경
+  curl -c c.txt -X POST http://<파이IP>:5000/api/auth/login \
+       -H "Content-Type: application/json" -d '{"password":"3831"}'
+  curl -b c.txt -X POST http://<파이IP>:5000/api/auth/setup \
+       -H "Content-Type: application/json" -d '{"password":"새비번"}'
+  ```
 - 한 번 로그인하면 **30일 유지**됩니다. 브라우저를 껐다 켜도, 새로고침해도 그대로예요.
-- 비밀번호를 잊었으면 `rm data/admin.json` 후 다시 설정하면 됩니다.
+- 비밀번호를 잊었으면 `rm data/admin.json` 후 다시 실행하면 기본값 `3831` 로 돌아갑니다.
 
 > ⚠️ 같은 Wi-Fi 안에서 **HTTP로 평문 전송**됩니다. 인터넷에 열어두는 보안 장치가 아니라,
 > 발표 중에 누가 실수로 누르거나 장난치는 것을 막는 잠금장치로 생각하세요.
