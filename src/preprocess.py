@@ -107,13 +107,15 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
                  low=0.5, high=45.0, notch_freq=50.0,
                  quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V,
                  repair=True):
-    """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고, 각 윈도우의 명시적
-    특징 벡터를 (img_name, source_file, label, *features) 행 리스트로 함께 반환한다.
+    """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고,
+    (이미지 수, 특징 행 리스트, 실제로 사용한 노치 주파수)를 반환한다.
+    노치는 신호에서 50/60Hz를 재서 자동 보정하므로 파일마다 다를 수 있고,
+    추론이 같은 필터를 쓰도록 이 값을 메타에 기록해야 한다.
     low/high/notch_freq로 대역통과·노치 필터 대역을 조절한다(느린 식물 신호 보존 시 low를 낮춤)."""
     fname = os.path.basename(csv_path)
     if fname not in FILE_TO_STATE:
         print(f"  [건너뜀] 매핑되지 않은 파일: {fname}")
-        return 0, []
+        return 0, [], notch_freq
 
     cls = FILE_TO_STATE[fname]
     out_dir = os.path.join(out_root, cls)
@@ -144,6 +146,22 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             if abs(measured - fs) / fs > 0.05:
                 print(f"  [샘플레이트] CSV 실측 {measured:.1f}Hz (기본 {fs:.0f}Hz와 다름) -> 실측값 사용")
             fs = measured
+
+    # 전원 노이즈 주파수를 신호에서 직접 찾는다. 한국은 60Hz, 유럽/시뮬레이션은 50Hz라
+    # 고정값을 쓰면 한쪽이 항상 틀린다. 두 후보의 파워를 재서 센 쪽을 노치한다.
+    if notch_freq and len(raw_signal) > int(fs) * 2:
+        from scipy.signal import welch as _welch
+        _f, _P = _welch(raw_signal - raw_signal.mean(), fs=fs, nperseg=min(4096, len(raw_signal)))
+        def _at(hz):
+            m = (_f > hz - 1.5) & (_f < hz + 1.5)
+            return float(_P[m].sum()) if m.any() else 0.0
+        p50, p60 = _at(50.0), _at(60.0)
+        picked = 60.0 if p60 > p50 * 1.5 else (50.0 if p50 > p60 * 1.5 else notch_freq)
+        if picked != notch_freq:
+            tot = float(_P.sum()) or 1.0
+            print(f"  [전원 노이즈] 50Hz {100*p50/tot:.1f}% / 60Hz {100*p60/tot:.1f}% "
+                  f"-> 노치를 {picked:.0f}Hz 로 맞춤")
+            notch_freq = picked
 
     # 레일 포화 검사는 단전원(0~3.3V) 하드웨어 신호에만 의미가 있다. 시뮬레이션 CSV는
     # 0V를 중심으로 흔들리므로 그대로 적용하면 전부 "바닥 레일"로 오판한다.
@@ -220,7 +238,7 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             print("    ⚠️  쓸 수 있는 구간이 하나도 없습니다. 전극 접촉을 확인하고 다시 수집하세요.")
         elif count < 10:
             print(f"    ⚠️  쓸 수 있는 창이 {count}개뿐입니다. 더 길게 수집하는 것이 좋습니다.")
-    return count, feature_rows
+    return count, feature_rows, notch_freq
 
 
 def main():
@@ -231,7 +249,9 @@ def main():
     parser.add_argument("--lowcut", type=float, default=0.5,
                         help="대역통과 하한(Hz). 느린 식물 신호(수분부족 등)를 살리려면 0.05~0.1 처럼 낮추세요")
     parser.add_argument("--highcut", type=float, default=45.0, help="대역통과 상한(Hz)")
-    parser.add_argument("--notch", type=float, default=50.0, help="노치 주파수(Hz). 0이면 노치 끔")
+    parser.add_argument("--notch", type=float, default=50.0,
+                        help="노치 주파수(Hz). 0이면 노치 끔. 신호에서 50/60Hz를 직접 재서 "
+                             "센 쪽으로 자동 보정하므로 보통 그대로 두면 됩니다")
     parser.add_argument("--no-repair", action="store_true",
                         help="fast-restore 강하 보간을 끄고 원신호 그대로 사용한다")
     parser.add_argument("--no-quality", action="store_true",
@@ -268,22 +288,36 @@ def main():
 
     total = 0
     all_feature_rows = []
+    used_notches = []
     for fname in sorted(targets):
         if fname.endswith(".csv"):
             csv_path = os.path.join(args.raw_dir, fname)
-            count, feature_rows = process_file(csv_path, args.out_dir,
+            count, feature_rows, used_notch = process_file(csv_path, args.out_dir,
                                                low=args.lowcut, high=args.highcut, notch_freq=args.notch,
                                                quality=not args.no_quality,
                                                rail_high=args.rail_high, min_std=args.min_std,
                                                repair=not args.no_repair)
             total += count
             all_feature_rows.extend(feature_rows)
+            if count:
+                used_notches.append(used_notch)
+
+    # 실제로 사용한 노치 주파수를 메타에 남긴다(자동 보정된 값). 파일마다 다르면
+    # 가장 많이 쓰인 값을 쓰고 경고한다 - 서로 다른 전원 환경의 데이터가 섞였다는 뜻이다.
+    meta_notch = args.notch
+    if used_notches:
+        meta_notch = max(set(used_notches), key=used_notches.count)
+        if len(set(used_notches)) > 1:
+            print(f"⚠️  파일마다 전원 주파수가 다릅니다: {sorted(set(used_notches))}")
+            print(f"   -> 메타에는 {meta_notch:.0f}Hz 를 기록합니다. 같은 환경에서 다시 수집하는 것이 좋습니다.")
+        elif meta_notch != args.notch:
+            print(f"[preprocess] 노치 주파수 {meta_notch:.0f}Hz 를 메타에 기록합니다(자동 감지).")
 
     # 사용한 필터 대역을 사이드카로 기록 -> train.py가 읽어 모델 번들에 저장 -> inference가 동일 필터 사용.
     meta_path = os.path.join(os.path.dirname(args.features_csv) or ".", "preprocess_meta.json")
     with open(meta_path, "w", encoding="utf-8") as mf:
         json.dump({"lowcut": args.lowcut, "highcut": args.highcut,
-                   "notch_freq": args.notch, "notch_q": 30.0,
+                   "notch_freq": meta_notch, "notch_q": 30.0,
                    "sample_rate": SAMPLE_RATE_HZ, "window_sec": WINDOW_SEC, "step_sec": STEP_SEC}, mf)
     print(f"[preprocess] 필터 메타 저장 -> {meta_path}")
 
