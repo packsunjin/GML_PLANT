@@ -45,6 +45,31 @@ RAIL_HIGH_V = 3.0   # 이 위로 평균이 올라간 창은 버림
 RAIL_LOW_V = 0.3    # 이 아래로 내려간 창도 버림
 MIN_STD_V = 0.0005  # 필터 후 표준편차가 이보다 작으면 신호가 없다고 본다
 
+# AD8232의 fast-restore 는 전극 임피던스가 높으면 계속 재작동하면서 출력을 순간적으로
+# 0V 근처까지 떨어뜨린다(실측: 168ms마다 약 20ms). 이건 식물 신호가 아니라 회로 동작이고,
+# 2초 창마다 10여 번씩 들어가 모든 창을 오염시키므로 창 단위로 거를 수가 없다.
+# -> 그 구간만 찾아 양옆 값으로 이어 붙인다(심전도에서 페이스메이커 스파이크를 지우는 것과 같은 처리).
+DROPOUT_FRAC = 0.5   # 창 중앙값의 이 비율보다 낮으면 강하로 본다
+DROPOUT_MAX = 0.15   # 전체의 이 비율을 넘게 걸리면 신호 자체가 이상한 것이므로 손대지 않는다
+
+
+def repair_dropouts(raw_win):
+    """fast-restore 로 인한 순간적인 0V 강하를 양옆 값으로 보간해 없앤다.
+    (고친 샘플 수, 고친 신호)를 돌려준다. 고칠 게 없으면 원본을 그대로 준다."""
+    med = float(np.median(raw_win))
+    if med <= 0.3:                      # 0V 중심 신호(시뮬레이션)에는 적용하지 않는다
+        return 0, raw_win
+    bad = raw_win < med * DROPOUT_FRAC
+    n_bad = int(bad.sum())
+    if n_bad == 0 or n_bad > len(raw_win) * DROPOUT_MAX:
+        return 0, raw_win
+    fixed = raw_win.copy()
+    good = np.where(~bad)[0]
+    if len(good) < 2:
+        return 0, raw_win
+    fixed[bad] = np.interp(np.where(bad)[0], good, raw_win[good])
+    return n_bad, fixed
+
 SAMPLE_RATE_HZ = 250.0  # sensor_control.py 기본 샘플링과 일치
 WINDOW_SEC = 2.0        # 스펙트로그램 1장을 만들 신호 구간 길이
 STEP_SEC = 1.0          # 슬라이딩 윈도우 이동 간격 (오버랩으로 이미지 수 확보)
@@ -80,7 +105,8 @@ def make_spectrogram_image(Sxx_db, out_path, img_size=IMG_SIZE):
 
 def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, step_sec=STEP_SEC,
                  low=0.5, high=45.0, notch_freq=50.0,
-                 quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V):
+                 quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V,
+                 repair=True):
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고, 각 윈도우의 명시적
     특징 벡터를 (img_name, source_file, label, *features) 행 리스트로 함께 반환한다.
     low/high/notch_freq로 대역통과·노치 필터 대역을 조절한다(느린 식물 신호 보존 시 low를 낮춤)."""
@@ -131,6 +157,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     count = 0
     skipped_rail = 0
     skipped_flat = 0
+    repaired_samples = 0
+    repaired_windows = 0
     feature_rows = []
     base_name = os.path.splitext(fname)[0]
     # 필터는 각 윈도우를 개별적으로 적용한다. 실시간 추론(inference.py)은 스트리밍으로 들어온
@@ -150,6 +178,13 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             if m > rail_high or m < rail_low:
                 skipped_rail += 1
                 continue
+
+        # fast-restore 강하를 먼저 지우고 필터를 건다(필터 전에 지워야 링잉이 안 남는다).
+        if repair and hw_like:
+            n_fix, raw_win = repair_dropouts(raw_win)
+            if n_fix:
+                repaired_samples += n_fix
+                repaired_windows += 1
 
         segment = bandpass_filter(raw_win, fs, low=low, high=high, notch_freq=notch_freq)
 
@@ -171,6 +206,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
 
         count += 1
 
+    if repaired_windows:
+        print(f"    [보정] fast-restore 강하 제거 — {repaired_windows}창에서 {repaired_samples}샘플 보간")
     if quality and not hw_like:
         print("    [품질] 0V 중심 신호라 레일 포화 검사는 건너뜁니다(시뮬레이션 데이터).")
     total_win = count + skipped_rail + skipped_flat
@@ -195,6 +232,8 @@ def main():
                         help="대역통과 하한(Hz). 느린 식물 신호(수분부족 등)를 살리려면 0.05~0.1 처럼 낮추세요")
     parser.add_argument("--highcut", type=float, default=45.0, help="대역통과 상한(Hz)")
     parser.add_argument("--notch", type=float, default=50.0, help="노치 주파수(Hz). 0이면 노치 끔")
+    parser.add_argument("--no-repair", action="store_true",
+                        help="fast-restore 강하 보간을 끄고 원신호 그대로 사용한다")
     parser.add_argument("--no-quality", action="store_true",
                         help="품질 검사를 끄고 모든 창을 그대로 변환한다(포화 구간 포함)")
     parser.add_argument("--rail-high", type=float, default=RAIL_HIGH_V,
@@ -235,7 +274,8 @@ def main():
             count, feature_rows = process_file(csv_path, args.out_dir,
                                                low=args.lowcut, high=args.highcut, notch_freq=args.notch,
                                                quality=not args.no_quality,
-                                               rail_high=args.rail_high, min_std=args.min_std)
+                                               rail_high=args.rail_high, min_std=args.min_std,
+                                               repair=not args.no_repair)
             total += count
             all_feature_rows.extend(feature_rows)
 
