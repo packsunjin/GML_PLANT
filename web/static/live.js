@@ -484,6 +484,8 @@
             b.textContent = o.collected.indexOf(s) >= 0 ? s + " ✓" : s;
             box.appendChild(b);
           });
+          var last = remembered("collect", null);
+          selectCollect(o.states.indexOf(last) >= 0 ? last : o.states[0]);
         }
         // 전처리 버튼: 상태별 + 전체. 변환이 끝난 상태에는 이미지 장수를 붙여준다.
         var pbox = jobEl("prep-buttons");
@@ -562,6 +564,44 @@
     }
   }
 
+  // 수집: 상태를 먼저 고르고 '측정 시작'을 눌러야 실제로 시작한다.
+  // (버튼 한 번에 바로 측정되면 실수로 기존 데이터를 덮어쓰기 쉽다)
+  var collectPick = null;
+
+  function selectCollect(state) {
+    collectPick = state;
+    remember("collect", state);
+    $$("[data-job-collect]").forEach(function (b) {
+      setActive(b, b.dataset.jobCollect === state);
+    });
+    renderCollectHint();
+  }
+
+  function renderCollectHint() {
+    var hint = jobEl("collect-hint"), btn = jobEl("collect-start");
+    if (!hint || !btn) return;
+    if (!collectPick) {
+      hint.textContent = "상태를 먼저 골라주세요";
+      btn.disabled = true;
+      btn.style.opacity = "0.45";
+      return;
+    }
+    var unlimited = (jobEl("unlimited") || {}).checked;
+    var dur = parseFloat((jobEl("duration") || {}).value) || 30;
+    hint.textContent = unlimited
+      ? "'" + collectPick + "' 을(를) 중지할 때까지 측정합니다"
+      : "'" + collectPick + "' 을(를) " + dur + "초 동안 측정합니다";
+    if (!jobRunning) { btn.disabled = false; btn.style.opacity = ""; }
+  }
+
+  function startCollect() {
+    if (!collectPick) return;
+    var unlimited = (jobEl("unlimited") || {}).checked;
+    var dur = unlimited ? 0 : (parseFloat((jobEl("duration") || {}).value) || 30);
+    postJob("/api/collect", { state: collectPick, duration: dur },
+            collectPick + (unlimited ? " 수집 (중지할 때까지)" : " " + dur + "초 수집"));
+  }
+
   function renderJob(j) {
     var log = jobEl("log"), hint = jobEl("hint");
     jobRunning = !!j.running;
@@ -592,9 +632,10 @@
       }
     }
     // 실행 중에는 시작 버튼을 잠그고 중지 버튼을 띄운다.
-    $$("[data-job-collect]").concat($$("[data-job-prep]")).concat([jobEl("train")]).forEach(function (b) {
+    $$("[data-job-prep]").concat([jobEl("train"), jobEl("collect-start")]).forEach(function (b) {
       if (b) { b.disabled = j.running; b.style.opacity = j.running ? "0.5" : ""; }
     });
+    if (!j.running) renderCollectHint();
     $$('[data-job="stop"]').forEach(function (b) {
       b.style.display = j.running ? "inline-block" : "none";
       b.disabled = !!j.stopping;
@@ -1037,11 +1078,11 @@
     }
     var col = e.target.closest("[data-job-collect]");
     if (col && !col.disabled) {
-      // '중지할 때까지'를 켜면 duration=0 -> 서버가 무제한 수집으로 받는다.
-      var unlimited = (jobEl("unlimited") || {}).checked;
-      var dur = unlimited ? 0 : (parseFloat((jobEl("duration") || {}).value) || 30);
-      postJob("/api/collect", { state: col.dataset.jobCollect, duration: dur },
-              col.dataset.jobCollect + (unlimited ? " 수집 (중지할 때까지)" : " " + dur + "초 수집"));
+      selectCollect(col.dataset.jobCollect);
+      return;
+    }
+    if (e.target.closest('[data-job="collect-start"]') && !jobEl("collect-start").disabled) {
+      startCollect();
       return;
     }
     var prep = e.target.closest("[data-job-prep]");
@@ -1141,8 +1182,12 @@
       var dur = jobEl("duration");
       if (dur) { dur.disabled = e.target.checked; dur.style.opacity = e.target.checked ? "0.4" : ""; }
       remember("unlimited", e.target.checked ? "1" : "");
+      renderCollectHint();
     }
-    if (e.target.matches('[data-job="duration"]')) remember("duration", e.target.value);
+    if (e.target.matches('[data-job="duration"]')) {
+      remember("duration", e.target.value);
+      renderCollectHint();
+    }
     if (e.target.matches('[data-job="task"]') || e.target.matches('[data-job="mode"]')) {
       remember(e.target.dataset.job, e.target.value);
     }

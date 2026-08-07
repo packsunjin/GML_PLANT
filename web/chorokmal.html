@@ -104,8 +104,9 @@
 
     <!-- 1 · 수집 -->
     <div data-admin-pane="collect" class="flex flex-col gap-2.5">
-      <p class="text-[11px] text-subtle">상태를 하나씩 눌러 전위 신호를 모읍니다. 이미 모은 상태는 다시 누르면 덮어써요.</p>
+      <p class="text-[11px] text-subtle">측정할 상태를 고르고 <b>측정 시작</b>을 누르세요. 이미 모은 상태는 덮어써요.</p>
       <div class="flex flex-wrap items-center gap-2">
+        <span class="text-[11px] font-medium text-subtle">상태</span>
         <div class="flex flex-wrap gap-1.5" data-job="collect-buttons"></div>
         <label class="flex items-center gap-1.5 text-[11px] font-medium text-subtle">
           길이
@@ -116,6 +117,11 @@
         <label class="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-subtle">
           <input type="checkbox" data-job="unlimited"> 중지할 때까지
         </label>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" data-job="collect-start"
+                class="rounded-xl bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground transition">▶ 측정 시작</button>
+        <span class="text-[11px] font-medium text-subtle" data-job="collect-hint">상태를 먼저 골라주세요</span>
       </div>
     </div>
 
