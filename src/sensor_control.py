@@ -197,6 +197,14 @@ ENV_CACHE_SEC = 2.0
 _env_thread = None
 
 
+# ADS1115는 채널이 하나뿐인 ADC를 mux로 돌려쓴다. A0(전위)를 250Hz로 읽는 도중에
+# 누가 A1(토양수분)을 읽으면 mux가 전환되면서 A0 스트림에 엉뚱한 값(주로 0V)이 섞인다.
+# 실제로 이 때문에 168ms마다 2샘플씩 정확히 0V로 떨어지는 인공 신호가 기록된 적이 있다.
+# -> 버스 접근을 락으로 직렬화하고, 고속 수집 중에는 보조 채널을 아예 건드리지 않는다.
+_ads_lock = threading.Lock()
+SUSPEND_AUX = False     # True면 read_moisture()가 버스를 만지지 않는다
+
+
 def read_moisture(raw=False):
     """A1에 연결된 아날로그 토양수분 센서를 0~100%로 환산해 돌려준다.
 
@@ -213,8 +221,12 @@ def read_moisture(raw=False):
         return out(None, None, "I2C 하드웨어 없음 (시뮬레이션 모드)")
     if moisture_chan is None:
         return out(None, None, "ADS1115 A1 채널을 열지 못함")
+    if SUSPEND_AUX:
+        # 고속 수집 중. A1을 읽으면 A0 스트림이 오염되므로 건너뛴다.
+        return out(None, None, "수집 중에는 토양수분을 읽지 않습니다")
     try:
-        volts = moisture_chan.voltage
+        with _ads_lock:
+            volts = moisture_chan.voltage
     except Exception as e:
         return out(None, None, f"읽기 실패: {e}")
 
@@ -356,7 +368,8 @@ VALID_STATES = tuple(KOR_FILENAMES.keys())
 
 def read_sample_hardware():
     """ADS1115에서 실측 전위(V) 1개 샘플을 읽어온다."""
-    return chan.voltage
+    with _ads_lock:
+        return chan.voltage
 
 
 def simulate_sample(t, state):
@@ -428,6 +441,45 @@ def _install_stop_handler():
             pass   # 메인 스레드가 아니면 등록할 수 없다
 
 
+def _report_artifacts(values, fs):
+    """수집한 신호에 사람이 만든 인공 패턴이 섞였는지 확인해 알려준다.
+
+    ADS1115 채널이 섞이거나 다른 프로세스가 같은 ADC를 동시에 읽으면, 정확히 0V로
+    딱 떨어지는 값이 아주 규칙적인 주기로 나타난다. 눈으로는 그럴듯해 보여서
+    학습까지 가버리기 쉬우므로 여기서 잡아 준다."""
+    if not HARDWARE_AVAILABLE or len(values) < int(fs) * 5:
+        return
+    v = np.asarray(values, dtype=float)
+
+    zero = np.abs(v) < 0.005          # 0V에 딱 붙은 샘플
+    frac = float(zero.mean())
+    if frac < 0.002:
+        return
+    # 주기성 판정은 간격 통계보다 스펙트럼이 안정적이다. 깊은 강하만 잡히면
+    # 간격이 한 주기/두 주기로 섞여 통계가 무너지기 때문이다.
+    # 0V 여부를 0/1 신호로 보고 스펙트럼에 뾰족한 봉우리가 있으면 주기적이라고 본다.
+    mask = zero.astype(float)
+    mask -= mask.mean()
+    n = 1 << (len(mask).bit_length() - 1)      # 2의 거듭제곱 길이로 자른다
+    spec = np.abs(np.fft.rfft(mask[:n])) ** 2
+    freqs = np.fft.rfftfreq(n, d=1.0 / fs)
+    lo = np.searchsorted(freqs, 0.5)           # 0.5Hz 아래(느린 변동)는 제외
+    if lo >= len(spec) - 2:
+        return
+    peak = int(lo + np.argmax(spec[lo:]))
+    ratio = float(spec[peak] / np.mean(spec[lo:]))
+
+    # 봉우리가 평균의 50배를 넘으면 사람이 만든 주기 신호로 본다.
+    if ratio > 50:
+        f0 = float(freqs[peak])
+        print(f"[sensor_control] ⚠️  주기적인 0V 강하가 발견됐습니다 "
+              f"({f0:.1f}Hz = {1000/f0:.0f}ms 간격, 전체의 {100*frac:.1f}%, 봉우리 {ratio:.0f}배).")
+        print("    식물 신호가 아니라 ADC 읽기 아티팩트입니다. 아래를 확인하세요:")
+        print("    · 웹 대시보드(main.py --web)가 동시에 돌고 있지 않은지 — 같은 ADS1115를")
+        print("      두 프로세스가 번갈아 읽으면 A0 스트림에 다른 채널 값이 섞입니다.")
+        print("    · 수집은 웹의 '측정 시작' 으로 하거나, 대시보드를 끄고 하세요.")
+
+
 def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     """
     지정한 상태(state)에 대해 duration_sec 동안 sample_rate_hz로 샘플링하여
@@ -456,6 +508,10 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     stopped = False
     start = time.time()
     next_report = progress_sec
+
+    global SUSPEND_AUX
+    if HARDWARE_AVAILABLE:
+        SUSPEND_AUX = True   # 수집 동안 A1(토양수분) 읽기 중단
 
     def report(i, elapsed=None):
         # 경과 시간은 실제 시계 기준으로 보여준다. 하드웨어가 느리면 '샘플 수'와
@@ -506,6 +562,8 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     except KeyboardInterrupt:
         stopped = True
         print(f"[sensor_control] ⏹ 중지 요청 — 지금까지 모은 {len(rows)} 샘플을 저장합니다.")
+    finally:
+        SUSPEND_AUX = False
 
     if not rows:
         print("[sensor_control] 모은 데이터가 없어 저장하지 않습니다.")
@@ -515,6 +573,8 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
         writer = csv.writer(f)
         writer.writerow(["timestamp_sec", "voltage"])
         writer.writerows(rows)
+
+    _report_artifacts([r[1] for r in rows], sample_rate_hz)
 
     span = float(rows[-1][0]) if rows else 0.0
     actual = (len(rows) / span) if span > 0 else float(sample_rate_hz)
