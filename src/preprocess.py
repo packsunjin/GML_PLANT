@@ -104,6 +104,17 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     df = pd.read_csv(csv_path)
     raw_signal = df["voltage"].to_numpy(dtype=float)
 
+    # 샘플레이트는 가정하지 않고 CSV의 timestamp 에서 실제로 계산한다.
+    # 하드웨어가 목표 속도를 못 따라가면(ADS1115 가 느릴 때) 실제 250Hz가 아닌데,
+    # 250Hz로 가정하면 필터 대역과 스펙트로그램 주파수축이 통째로 어긋난다.
+    if "timestamp_sec" in df.columns and len(df) > 10:
+        dt = float(np.median(np.diff(df["timestamp_sec"].to_numpy(dtype=float))))
+        if dt > 0:
+            measured = 1.0 / dt
+            if abs(measured - fs) / fs > 0.05:
+                print(f"  [샘플레이트] CSV 실측 {measured:.1f}Hz (기본 {fs:.0f}Hz와 다름) -> 실측값 사용")
+            fs = measured
+
     # 레일 포화 검사는 단전원(0~3.3V) 하드웨어 신호에만 의미가 있다. 시뮬레이션 CSV는
     # 0V를 중심으로 흔들리므로 그대로 적용하면 전부 "바닥 레일"로 오판한다.
     # 파일의 중앙값이 0.5V보다 위면 하드웨어 신호로 보고 레일 검사를 켠다.

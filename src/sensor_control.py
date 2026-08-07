@@ -35,8 +35,28 @@ try:
     import adafruit_ads1x15.ads1115 as ADS
     from adafruit_ads1x15.analog_in import AnalogIn
 
-    i2c = busio.I2C(board.SCL, board.SDA)
+    # I2C 기본 속도는 100kHz라 250Hz 샘플링에 필요한 왕복을 못 채운다. 400kHz로 올린다.
+    try:
+        i2c = busio.I2C(board.SCL, board.SDA, frequency=400_000)
+    except TypeError:
+        i2c = busio.I2C(board.SCL, board.SDA)   # frequency 인자를 안 받는 옛 버전
     ads = ADS.ADS1115(i2c)
+
+    # ⚠️ 기본값(128 SPS + 싱글샷)으로는 250Hz 수집이 불가능하다.
+    # 싱글샷은 읽을 때마다 변환을 시작하고 끝날 때까지 기다리므로 한 샘플에 ~8ms,
+    # 실측 약 100Hz밖에 안 나온다. 그러면 CSV의 시간축(t=i/250)과 실제가 2.5배
+    # 어긋나 모든 주파수 분석이 틀어진다.
+    # -> 데이터레이트를 최대(860 SPS)로 올리고 연속 변환 모드로 바꾼다.
+    try:
+        ads.data_rate = 860
+    except Exception:
+        pass
+    try:
+        from adafruit_ads1x15.ads1x15 import Mode
+        ads.mode = Mode.CONTINUOUS
+    except Exception:
+        pass
+
     # 채널 0(A0) 지정. 라이브러리 버전에 따라 ADS.P0가 없을 수 있어(P0는 곧 정수 0) 안전하게 폴백한다.
     _CH0 = getattr(ADS, "P0", 0)
     chan = AnalogIn(ads, _CH0)  # AD8232 출력 -> A0
@@ -437,27 +457,35 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     start = time.time()
     next_report = progress_sec
 
-    def report(i):
-        done = i * interval
+    def report(i, elapsed=None):
+        # 경과 시간은 실제 시계 기준으로 보여준다. 하드웨어가 느리면 '샘플 수'와
+        # '실제 초'가 어긋나는데, 그걸 숨기면 원인을 못 찾는다.
+        done = elapsed if elapsed is not None else i * interval
+        rate = (i / done) if done > 0 else 0.0
+        slow = f"  ⚠️ 실측 {rate:.0f}Hz" if rate < sample_rate_hz * 0.9 else ""
         if unlimited:
-            print(f"[sensor_control] 수집 중… {done:.0f}초 ({i} 샘플)")
+            print(f"[sensor_control] 수집 중… {done:.0f}초 ({i} 샘플){slow}")
         else:
             print(f"[sensor_control] 수집 중… {done:.0f}/{duration_sec:.0f}초 "
-                  f"({i}/{n_samples} 샘플, {100.0 * i / max(1, n_samples):.0f}%)")
+                  f"({i}/{n_samples} 샘플, {100.0 * i / max(1, n_samples):.0f}%){slow}")
 
     try:
         if HARDWARE_AVAILABLE:
             i = 0
             while unlimited or i < n_samples:
-                rows.append((round(i * interval, 6), read_sample_hardware()))
+                # 시간축은 '가정한 격자(i/fs)'가 아니라 실제 경과 시간을 적는다.
+                # 하드웨어가 목표 속도를 못 따라가도 CSV의 시간이 거짓말하지 않게 하기 위함.
+                # (i/fs 로 적으면 100Hz로 잰 것을 250Hz라고 우기게 되어 주파수가 다 틀어진다)
+                now_t = time.time() - start
+                rows.append((round(now_t, 6), read_sample_hardware()))
                 i += 1
                 # 실제 하드웨어 샘플링 주기에 맞춰 페이싱
                 elapsed = time.time() - start
                 target = i * interval
                 if target > elapsed:
                     time.sleep(min(target - elapsed, interval))
-                if i * interval >= next_report:
-                    report(i)
+                if elapsed >= next_report:
+                    report(i, elapsed)
                     next_report += progress_sec
         else:
             # 시뮬레이션은 실시간 페이싱이 필요 없어 numpy로 한 번에 만들지만, 중간에
@@ -470,7 +498,7 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
                 v_array = simulate_batch(t_array, state)
                 rows.extend(zip(np.round(t_array, 6), v_array))
                 i += take
-                report(i)
+                report(i, i * interval)
                 if unlimited:
                     # 무제한 시뮬레이션은 실제 시간에 맞춰 흘러가게 한다
                     # (안 그러면 순식간에 메모리를 다 쓴다).
@@ -488,8 +516,15 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
         writer.writerow(["timestamp_sec", "voltage"])
         writer.writerows(rows)
 
+    span = float(rows[-1][0]) if rows else 0.0
+    actual = (len(rows) / span) if span > 0 else float(sample_rate_hz)
     print(f"[sensor_control] 저장 완료{' (중지됨)' if stopped else ''}: "
-          f"{out_path} ({len(rows)} rows, {len(rows) * interval:.1f}초)")
+          f"{out_path} ({len(rows)} rows, {span:.1f}초, 실측 {actual:.1f}Hz)")
+    if HARDWARE_AVAILABLE and actual < sample_rate_hz * 0.9:
+        print(f"[sensor_control] ⚠️  목표 {sample_rate_hz:.0f}Hz 인데 실제로는 {actual:.1f}Hz 로 읽혔습니다.")
+        print("    ADS1115 가 못 따라가는 것입니다. 시간축은 실제 시각으로 저장했으니 데이터는")
+        print("    유효하고, preprocess 가 CSV 의 timestamp 로 샘플레이트를 다시 계산합니다.")
+        print(f"    수집 자체를 맞추려면:  --rate {actual:.0f}  로 다시 수집하세요.")
     return out_path
 
 
