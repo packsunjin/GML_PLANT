@@ -500,8 +500,41 @@ def _report_artifacts(values, fs):
         print(f"    · 접촉이 좋아질수록 이 비율({100*frac:.1f}%)이 떨어집니다. 0에 가까우면 성공입니다.")
     else:
         print("    한 샘플만 튀는 모양입니다 = ADC 읽기/채널 혼선으로 보입니다.")
-        print("    · 웹 대시보드와 수집이 같은 ADS1115 를 동시에 읽고 있지 않은지 확인하세요.")
-        print("    · 수집은 웹의 '측정 시작' 으로 하는 것이 안전합니다.")
+    _report_i2c_users()
+
+
+def _report_i2c_users():
+    """I2C 장치를 열고 있는 다른 프로세스를 찾아 알려준다.
+
+    "웹으로 수집했는데도 오염됐다"는 상황에서, 정말 다른 프로세스가 같은 ADC를
+    붙잡고 있는지 추측하지 않고 확인하기 위한 것. /proc 만 뒤지므로 추가 설치가 필요 없다."""
+    me = os.getpid()
+    users = []
+    try:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit() or int(pid) == me:
+                continue
+            fd_dir = f"/proc/{pid}/fd"
+            try:
+                for fd in os.listdir(fd_dir):
+                    target = os.readlink(os.path.join(fd_dir, fd))
+                    if target.startswith("/dev/i2c-"):
+                        with open(f"/proc/{pid}/cmdline", "rb") as f:
+                            cmd = f.read().replace(b"\0", b" ").decode("utf-8", "replace").strip()
+                        users.append((pid, target, cmd[:90]))
+                        break
+            except (PermissionError, FileNotFoundError, OSError):
+                continue
+    except Exception:
+        return
+
+    if users:
+        print("    ⚠️  같은 I2C 장치를 열고 있는 다른 프로세스가 있습니다:")
+        for pid, dev, cmd in users:
+            print(f"       PID {pid}  {dev}  {cmd}")
+        print("    이 프로세스를 끄고 다시 수집하면 깨끗해집니다.")
+    else:
+        print("    (I2C 를 열고 있는 다른 프로세스는 없습니다 — 다른 원인입니다)")
 
 
 def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):

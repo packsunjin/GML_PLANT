@@ -76,6 +76,10 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
         ok = True
         if pause_live:
             _pause.set()
+            # 실시간 루프뿐 아니라 이 프로세스의 보조 채널(A1) 읽기도 막아야 한다.
+            # 온·습도 스레드는 DHT 읽기가 실패하면 대체값으로 A1(토양수분)을 읽는데,
+            # 그 순간 ADS1115 의 mux 가 전환되어 수집 중인 A0 스트림이 오염된다.
+            sensor_control.SUSPEND_AUX = True
             time.sleep(0.3)   # 실시간 루프가 대기 상태로 들어갈 여유
         try:
             for name, cmd in steps:
@@ -110,6 +114,7 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
             _job_proc["proc"] = None
             if pause_live:
                 _pause.clear()
+                sensor_control.SUSPEND_AUX = False
             stopped = bool(_job.get("stopping"))
             # 중지된 학습은 모델이 반쯤 저장됐을 수 있으므로 새 모델을 적용하지 않는다.
             if ok and not stopped and on_done is not None:
