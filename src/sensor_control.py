@@ -468,16 +468,31 @@ def _report_artifacts(values, fs):
         return
     peak = int(lo + np.argmax(spec[lo:]))
     ratio = float(spec[peak] / np.mean(spec[lo:]))
+    if ratio <= 50:
+        return
 
-    # 봉우리가 평균의 50배를 넘으면 사람이 만든 주기 신호로 본다.
-    if ratio > 50:
-        f0 = float(freqs[peak])
-        print(f"[sensor_control] ⚠️  주기적인 0V 강하가 발견됐습니다 "
-              f"({f0:.1f}Hz = {1000/f0:.0f}ms 간격, 전체의 {100*frac:.1f}%, 봉우리 {ratio:.0f}배).")
-        print("    식물 신호가 아니라 ADC 읽기 아티팩트입니다. 아래를 확인하세요:")
-        print("    · 웹 대시보드(main.py --web)가 동시에 돌고 있지 않은지 — 같은 ADS1115를")
-        print("      두 프로세스가 번갈아 읽으면 A0 스트림에 다른 채널 값이 섞입니다.")
-        print("    · 수집은 웹의 '측정 시작' 으로 하거나, 대시보드를 끄고 하세요.")
+    f0 = float(freqs[peak])
+    # 강하의 '모양'으로 원인을 나눈다.
+    #  - 여러 샘플에 걸쳐 부드럽게 내려갔다 올라오면 -> 진짜 아날로그 파형
+    #    (AD8232 fast-restore 가 전극 임피던스가 높아 계속 재작동하는 경우)
+    #  - 한 샘플만 툭 튀고 이웃은 멀쩡하면 -> ADC 읽기/채널 혼선
+    ramp = float(np.mean((np.abs(v) > 0.005) & (v < 0.5 * np.median(v[~zero]))))
+    analog = ramp > frac          # 바닥 샘플보다 '내려가는 중' 샘플이 많으면 아날로그
+
+    print(f"[sensor_control] ⚠️  주기적인 0V 강하가 발견됐습니다 "
+          f"({f0:.1f}Hz = {1000/f0:.0f}ms 간격, 전체의 {100*frac:.1f}%).")
+    if analog:
+        print("    여러 샘플에 걸쳐 부드럽게 내려갔다 올라옵니다 = 실제 아날로그 파형입니다.")
+        print("    AD8232 의 fast-restore 가 계속 재작동하는 것으로 보입니다.")
+        print("    전극 임피던스가 너무 높을 때 나타납니다 — 접촉을 개선하세요:")
+        print("    · 동봉된 심전도 패드는 사람 피부용이라 잎에는 거의 안 통합니다.")
+        print("    · 알루미늄 포일로 잎자루를 감싸고 그 위에 클립을 무세요.")
+        print("    · 포일과 식물 사이에 소금물 적신 휴지를 끼우면 훨씬 좋아집니다.")
+        print(f"    · 접촉이 좋아질수록 이 비율({100*frac:.1f}%)이 떨어집니다. 0에 가까우면 성공입니다.")
+    else:
+        print("    한 샘플만 튀는 모양입니다 = ADC 읽기/채널 혼선으로 보입니다.")
+        print("    · 웹 대시보드와 수집이 같은 ADS1115 를 동시에 읽고 있지 않은지 확인하세요.")
+        print("    · 수집은 웹의 '측정 시작' 으로 하는 것이 안전합니다.")
 
 
 def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
