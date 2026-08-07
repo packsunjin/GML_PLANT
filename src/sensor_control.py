@@ -83,13 +83,62 @@ except Exception as _e:
     _env_dev = None
     ENV_ERROR = f"AHT20 없음({_e})"
 
+class _IIODht:
+    """커널 dht11 오버레이(DHT22도 지원)가 만들어 주는 IIO 장치에서 읽는다.
+
+    라즈베리파이 5는 GPIO가 RP1 칩 뒤에 있어 파이썬 비트뱅잉(adafruit_dht)의
+    타이밍이 잘 맞지 않는다. 커널 드라이버는 그 문제를 겪지 않으므로 이쪽을 먼저 쓴다.
+
+    켜는 법: /boot/firmware/config.txt 에 `dtoverlay=dht11,gpiopin=4` 추가 후 재부팅.
+    """
+
+    def __init__(self, path):
+        self.path = path
+
+    @staticmethod
+    def find():
+        import glob
+        for d in sorted(glob.glob("/sys/bus/iio/devices/iio:device*")):
+            if (os.path.isfile(os.path.join(d, "in_temp_input")) and
+                    os.path.isfile(os.path.join(d, "in_humidityrelative_input"))):
+                return d
+        return None
+
+    def _read(self, name):
+        with open(os.path.join(self.path, name)) as f:
+            return float(f.read().strip()) / 1000.0   # 밀리 단위로 나온다
+
+    @property
+    def temperature(self):
+        return self._read("in_temp_input")
+
+    @property
+    def relative_humidity(self):
+        return self._read("in_humidityrelative_input")
+
+
 if ENV_SENSOR is None:
+    _iio = _IIODht.find()
+    if _iio:
+        try:
+            _env_dev = _IIODht(_iio)
+            _env_dev.temperature          # 실제로 읽히는지 확인
+            ENV_SENSOR, _env_kind = "DHT22", "dht"
+            ENV_ERROR = None
+        except Exception as _e3:
+            _env_dev = None
+            ENV_ERROR = f"커널 DHT 드라이버({_iio}) 읽기 실패({_e3})"
+    else:
+        ENV_ERROR = ((ENV_ERROR + "; ") if ENV_ERROR else "") + \
+            "커널 DHT 드라이버 없음(config.txt 에 dtoverlay=dht11,gpiopin=" + \
+            DHT_PIN_NAME.lstrip("D") + " 추가 후 재부팅하면 잡힙니다)"
+
+if ENV_SENSOR is None:
+    # 커널 드라이버가 없으면 파이썬 비트뱅잉으로 시도한다(파이 4 이하에서는 잘 동작).
     try:
         import adafruit_dht                                  # noqa: E402
         import board as _board                               # noqa: E402
         pin = getattr(_board, DHT_PIN_NAME)
-        # 라즈베리파이 5(및 최신 커널)에서는 pulseio 방식이 동작하지 않는다.
-        # use_pulseio=False(비트뱅잉)로 먼저 시도하고, 안 되면 기본 방식으로 넘어간다.
         try:
             _env_dev = adafruit_dht.DHT22(pin, use_pulseio=False)
         except TypeError:
@@ -98,7 +147,8 @@ if ENV_SENSOR is None:
         ENV_ERROR = None
     except Exception as _e2:
         _env_dev = None
-        ENV_ERROR = (f"{ENV_ERROR}; DHT22 없음({_e2})" if ENV_ERROR else f"DHT22 없음({_e2})")
+        ENV_ERROR = (f"{ENV_ERROR}; adafruit_dht 실패({_e2})" if ENV_ERROR
+                     else f"adafruit_dht 실패({_e2})")
 
 
 # 아날로그 습도(토양 수분) 센서 보정값 -- 실제 센서로 한 번 재보고 맞추세요.
@@ -261,6 +311,9 @@ def sensor_status():
         "env_error": ENV_ERROR if ENV_SENSOR is None else None,
         # 센서는 잡혔는데 값이 안 올 때의 마지막 실패 사유 (DHT22 배선/핀 진단용)
         "env_read_error": ENV_LAST_ERROR,
+        # 어떤 방법으로 읽고 있는지 (커널 드라이버 / 파이썬 비트뱅잉)
+        "env_method": (type(_env_dev).__name__ if _env_dev is not None else None),
+        "iio_device": _IIODht.find(),
         "temp": env["temp"],
         "humidity": env["humidity"],
         "humidity_source": env["source"],

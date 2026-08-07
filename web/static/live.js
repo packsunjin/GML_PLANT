@@ -627,14 +627,21 @@
         L.push("토양수분 전압   : " + (s.moisture_volts == null ? "—" : s.moisture_volts + " V") +
                                       (s.moisture_error ? "  ← " + s.moisture_error : ""));
         L.push("보정값          : 젖음 " + s.calibration.wet_v + "V / 마름 " + s.calibration.dry_v + "V");
+        if (s.env_method) L.push("읽는 방식        : " +
+          (s.env_method === "_IIODht" ? "커널 드라이버 (" + s.iio_device + ")" : "파이썬 (" + s.env_method + ")"));
         if (!s.env_sensor) {
           L.push("");
-          L.push("※ 온도를 재려면 AHT20(I2C 0x38) 또는 DHT22가 있어야 합니다.");
-          L.push("   AHT20: pip install adafruit-circuitpython-ahtx0  → 3V3/GND/SDA/SCL 에 연결");
-          L.push("   DHT22: pip install adafruit-circuitpython-dht");
-          L.push("          DATA 는 **파이 GPIO** 에 직접 (기본 " + s.dht_pin + " = 물리 7번).");
-          L.push("          ADS1115 에 꽂으면 안 됩니다 — 디지털 센서라 ADC 로는 못 읽습니다.");
-          L.push("          다른 핀에 꽂았으면:  GML_DHT_PIN=D17 python3 main.py --web");
+          L.push("※ DHT22 는 라즈베리파이 5에서 커널 드라이버로 읽는 게 확실합니다.");
+          L.push("   (파이 5는 GPIO가 RP1 칩 뒤에 있어 파이썬 비트뱅잉 타이밍이 잘 안 맞습니다)");
+          L.push("");
+          L.push("   1) sudo nano /boot/firmware/config.txt   ← 맨 아래에 한 줄 추가");
+          L.push("        dtoverlay=dht11,gpiopin=4");
+          L.push("   2) sudo reboot");
+          L.push("   3) 다시 '진단하기' → '읽는 방식: 커널 드라이버' 로 뜨면 성공");
+          L.push("");
+          L.push("   ※ 오버레이 이름은 dht11 이지만 DHT22 도 이걸로 동작합니다.");
+          L.push("   ※ DATA 는 파이 GPIO4(물리 7번). ADS1115 에 꽂으면 안 됩니다.");
+          L.push("   ※ 자세한 진단:  cd ~/project/src && python3 check_sensors.py");
         } else if (s.env_sensor === "DHT22" && s.temp == null) {
           L.push("");
           L.push("※ DHT22 는 잡혔는데 값이 안 옵니다. 아래를 확인하세요.");

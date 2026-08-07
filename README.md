@@ -107,6 +107,7 @@ project/
   deploy/
     plant-dashboard.service  # 전원만 꽂으면 자동 실행되게 하는 systemd 유닛 템플릿
     install.sh               # 위 유닛을 경로/사용자 자동 감지해 설치 (--hotspot 옵션)
+    check_sensors.py         # 센서가 왜 안 잡히는지 한 번에 진단
   main.py             # 최상위 실행 진입점
   requirements.txt
   README.md
@@ -266,9 +267,9 @@ python3 sensor_control.py --state 정상 --duration 5 --rate 250
 **중요:** `+ / − / OUT` 3핀 아날로그 센서는 **흙 수분만** 재고 **온도는 못 잽니다.**
 화면의 온도 게이지를 채우려면 아래 둘 중 하나가 필요합니다.
 
-| 센서 | 연결 | 설치 |
+| 센서 | 연결 | 준비 |
 |---|---|---|
-| **DHT22 / DHT11** | GPIO 1선 (기본 D4 = **물리 7번**) | `pip install adafruit-circuitpython-dht` |
+| **DHT22 / DHT11** | GPIO 1선 (기본 D4 = **물리 7번**) | 파이5는 **커널 오버레이**(아래), 파이4 이하는 `pip install adafruit-circuitpython-dht` |
 | AHT20 / AHT21 | I2C — 3V3 / GND / SDA(3번) / SCL(5번) | `pip install adafruit-circuitpython-ahtx0` |
 
 #### DHT22 배선 (핀이 `+ / OUT / −` 3개인 모듈)
@@ -282,13 +283,46 @@ python3 sensor_control.py --state 정상 --duration 5 --rate 250
 | `OUT` (DATA) | GPIO4 — 물리 **7번** |
 | `−` (GND) | GND — 물리 **6번** (AD8232/ADS1115와 공통) |
 
-- 다른 GPIO에 꽂았으면 알려주세요: `GML_DHT_PIN=D17 python3 main.py --web`
 - 3핀 **모듈**(작은 기판에 얹힌 형태)은 풀업 저항이 이미 붙어 있습니다.
   기판 없는 맨 센서(4핀)라면 `DATA`–`VCC` 사이에 **10kΩ 풀업 저항**이 필요합니다.
-- DHT22는 **읽기 실패가 잦은 센서**입니다(정상 동작 중에도 30% 안팎). 코드가 2.1초 간격으로
-  최대 3번까지 다시 읽고, 실패한 판은 직전 값을 유지해 화면이 깜빡이지 않게 합니다.
-- 라즈베리파이 5에서는 `pulseio` 방식이 동작하지 않아 **비트뱅잉(`use_pulseio=False`)** 으로
-  먼저 시도합니다(코드가 자동 처리).
+
+#### 라즈베리파이 5에서는 커널 드라이버를 쓰세요 (중요)
+
+파이 5는 GPIO가 **RP1 칩 뒤에** 있어서, 파이썬으로 파형을 직접 재는 방식
+(`adafruit_dht`의 비트뱅잉)은 타이밍이 잘 맞지 않아 **거의 항상 실패**합니다.
+커널 드라이버는 그 문제를 겪지 않습니다.
+
+```bash
+sudo nano /boot/firmware/config.txt      # 맨 아래에 한 줄 추가
+    dtoverlay=dht11,gpiopin=4
+sudo reboot
+```
+
+재부팅하면 `/sys/bus/iio/devices/iio:device0/` 가 생기고, 코드가 이걸 **자동으로 찾아
+먼저 사용**합니다(없으면 `adafruit_dht`로 폴백). 진단 화면의 `읽는 방식` 이
+`커널 드라이버` 로 나오면 성공입니다.
+
+> 오버레이 이름은 `dht11` 이지만 **DHT22도 이 오버레이로 동작합니다.**
+> 다른 GPIO에 꽂았으면 `gpiopin=` 숫자와 `GML_DHT_PIN=D17` 을 함께 맞춰주세요.
+
+```bash
+# 직접 확인
+cat /sys/bus/iio/devices/iio:device0/in_temp_input            # 21800 = 21.8 °C
+cat /sys/bus/iio/devices/iio:device0/in_humidityrelative_input # 57300 = 57.3 %
+```
+
+- DHT22는 **읽기 실패가 잦은 센서**입니다. 코드가 2.1초 간격으로 최대 3번까지 다시 읽고,
+  실패한 판은 직전 값을 유지해 화면이 깜빡이지 않게 합니다.
+
+#### 안 될 때 — 진단 스크립트
+
+```bash
+cd ~/project/src
+python3 check_sensors.py
+```
+
+파이 모델·커널·I2C 스캔·오버레이 설정·IIO 장치·라이브러리 설치 여부·`sensor_control`이
+본 결과·**AD8232 출력 전압(전극이 붙었는지)** 까지 한 번에 확인해 줍니다.
 
 AHT20은 ADS1115와 **같은 I2C 버스에 그냥 같이 물리면** 됩니다(주소가 `0x38`로 달라 충돌 없음).
 
