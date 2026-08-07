@@ -110,7 +110,11 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     if "timestamp_sec" in df.columns and len(df) > 10:
         dt = float(np.median(np.diff(df["timestamp_sec"].to_numpy(dtype=float))))
         if dt > 0:
-            measured = 1.0 / dt
+            # 부동소수 오차로 250이 249.9999... 로 나오면 창 길이가 1샘플 밀린다.
+            # 소수 둘째 자리로 정리하고, 정수에 아주 가까우면 정수로 스냅한다.
+            measured = round(1.0 / dt, 2)
+            if abs(measured - round(measured)) < 0.05:
+                measured = float(round(measured))
             if abs(measured - fs) / fs > 0.05:
                 print(f"  [샘플레이트] CSV 실측 {measured:.1f}Hz (기본 {fs:.0f}Hz와 다름) -> 실측값 사용")
             fs = measured
@@ -121,8 +125,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     hw_like = float(np.median(raw_signal)) > 0.5
     rail_check = quality and hw_like
 
-    win_len = int(window_sec * fs)
-    step_len = int(step_sec * fs)
+    win_len = int(round(window_sec * fs))
+    step_len = int(round(step_sec * fs))
 
     count = 0
     skipped_rail = 0
