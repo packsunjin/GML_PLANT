@@ -404,8 +404,7 @@
   // 없으므로 버튼 자체를 감춘다. 눌러도 안 되는 버튼을 남겨 두면 고장난 것처럼 보인다.
   function enterDemo() {
     demo = true;
-    ['[data-job="toggle"]', '[data-files="toggle"]',
-     '[data-job="panel"]', '[data-files="panel"]'].forEach(function (sel) {
+    ['[data-auth="button"]', '[data-admin="panel"]'].forEach(function (sel) {
       var el = $(sel);
       if (el) el.style.display = "none";
     });
@@ -511,6 +510,16 @@
         }
         fillSelect(jobEl("task"), o.tasks, "3종");
         fillSelect(jobEl("mode"), o.modes, "둘다");
+        restoreSettings();
+        // 어느 탭에 있든 전체 진행 상황이 보이게 요약을 띄운다.
+        var sum = $('[data-admin="summary"]');
+        if (sum) {
+          var done = o.states.filter(function (s2) { return o.collected.indexOf(s2) >= 0; }).length;
+          var conv = o.states.filter(function (s2) { return (o.converted || {})[s2] > 0; }).length;
+          sum.textContent = "수집 " + done + "/" + o.states.length +
+                            " · 변환 " + conv + "/" + o.states.length +
+                            " · 모델 " + (o.model || "—");
+        }
         // 방금 끝난 작업의 결과 문구는 덮어쓰지 않는다(완료/실패 표시가 사라지지 않도록).
         var hint = jobEl("hint");
         if (hint && !jobRunning && !jobFinished) {
@@ -527,9 +536,30 @@
     values.forEach(function (v) {
       var o = document.createElement("option");
       o.value = v; o.textContent = v;
-      if (v === pick) o.selected = true;
       sel.appendChild(o);
     });
+    sel.value = remembered(sel.dataset.job, pick);
+  }
+
+  // ── 설정 기억 (수집 길이, 무제한 여부, 학습 옵션) ────────────────
+  function remembered(key, fallback) {
+    try {
+      var v = localStorage.getItem("gml." + key);
+      return v === null ? fallback : v;
+    } catch (e) { return fallback; }
+  }
+
+  function remember(key, value) {
+    try { localStorage.setItem("gml." + key, value); } catch (e) {}
+  }
+
+  function restoreSettings() {
+    var dur = jobEl("duration"), un = jobEl("unlimited");
+    if (dur) dur.value = remembered("duration", dur.value);
+    if (un) {
+      un.checked = remembered("unlimited", "") === "1";
+      if (dur) { dur.disabled = un.checked; dur.style.opacity = un.checked ? "0.4" : ""; }
+    }
   }
 
   function renderJob(j) {
@@ -643,9 +673,100 @@
       .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
       .then(function (res) {
         if (res.j.ok) { renderJob(res.j.job); watchJob(); }
+        else if (handleAuthError(res.j)) { if (hint) hint.textContent = "🔒 관리자 로그인이 필요합니다"; }
         else if (hint) hint.textContent = "❌ " + (res.j.error || "실패");
       })
       .catch(function () { if (hint) hint.textContent = "❌ 요청을 보내지 못했습니다"; });
+  }
+
+  // ── 관리자 로그인 ────────────────────────────────────────────────
+  // 데이터를 바꾸는 동작만 잠근다. 화면 보기와 모드 전환은 열려 있다.
+  var auth = { configured: false, authed: false };
+
+  function aEl(n) { return $('[data-auth="' + n + '"]'); }
+
+  var adminTab = null;
+
+  function renderAuth() {
+    var btn = aEl("button");
+    if (btn) {
+      btn.textContent = auth.authed ? "🔓 관리자" : "🔒 관리자";
+      btn.title = auth.authed ? "누르면 로그아웃합니다"
+                              : (auth.configured ? "로그인" : "비밀번호를 처음 설정합니다");
+      setActive(btn, auth.authed);
+    }
+    // 관리자 기능은 로그인해야 화면에 나타난다(잠긴 버튼을 보여주지 않는다).
+    var panel = $('[data-admin="panel"]');
+    if (panel) panel.style.display = auth.authed ? "flex" : "none";
+    if (auth.authed) {
+      if (!adminTab) showAdminTab(localStorage.getItem("gml.tab") || "collect");
+      loadJobOptions();
+      loadFiles();
+    }
+  }
+
+  function showAdminTab(name) {
+    adminTab = name;
+    try { localStorage.setItem("gml.tab", name); } catch (e) {}
+    $$("[data-admin-tab]").forEach(function (b) {
+      setActive(b, b.dataset.adminTab === name);
+    });
+    $$("[data-admin-pane]").forEach(function (p) {
+      p.style.display = p.dataset.adminPane === name ? "flex" : "none";
+    });
+    if (name === "files") loadFiles();
+  }
+
+  function loadAuth() {
+    if (demo) return;
+    fetch("/api/auth", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (a) { auth = a; renderAuth(); })
+      .catch(function () {});
+  }
+
+  function openAuth() {
+    var m = aEl("modal");
+    aEl("title").textContent = auth.configured ? "관리자 로그인" : "관리자 비밀번호 설정";
+    aEl("desc").textContent = auth.configured
+      ? "수집 · 변환 · 학습 · 삭제는 관리자만 할 수 있어요."
+      : "처음이라 비밀번호를 정해야 해요. 4자 이상으로 정해주세요.";
+    aEl("pw").value = "";
+    aEl("msg").textContent = "";
+    m.style.display = "flex";
+    setTimeout(function () { aEl("pw").focus(); }, 50);
+  }
+
+  function submitAuth(e) {
+    e.preventDefault();
+    var pw = aEl("pw").value, msg = aEl("msg");
+    var url = auth.configured ? "/api/auth/login" : "/api/auth/setup";
+    msg.style.color = "var(--subtle)";
+    msg.textContent = "확인 중…";
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                 body: JSON.stringify({ password: pw }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) {
+          msg.style.color = "var(--destructive)";
+          msg.textContent = d.error || "실패했습니다";
+          return;
+        }
+        auth = { configured: d.configured, authed: d.authed };
+        aEl("modal").style.display = "none";
+        renderAuth();
+        loadJobOptions();
+      })
+      .catch(function () {
+        msg.style.color = "var(--destructive)";
+        msg.textContent = "요청을 보내지 못했습니다";
+      });
+  }
+
+  // 잠긴 상태에서 서버가 401을 주면 로그인 창을 띄운다(세션이 만료된 경우 등).
+  function handleAuthError(d) {
+    if (d && d.need_auth) { auth.authed = false; renderAuth(); openAuth(); return true; }
+    return false;
   }
 
   // ── 학습 자료 (보기 / 내려받기 / 지우기) ─────────────────────────
@@ -855,6 +976,7 @@
                  body: JSON.stringify(body) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        if (handleAuthError(d)) { hint.textContent = "🔒 관리자 로그인이 필요합니다"; return; }
         if (d.error) { hint.textContent = "❌ " + d.error; return; }
         hint.textContent = done(d) +
           ((d.failed || []).length ? " · 실패 " + d.failed.length + "개: " + d.failed[0].error : "");
@@ -893,15 +1015,6 @@
     var mode = e.target.closest("[data-mode-set]");
     if (mode) { setMode(mode.dataset.modeSet); return; }
 
-    var toggle = e.target.closest('[data-job="toggle"]');
-    if (toggle) {
-      var panel = jobEl("panel");
-      var open = panel.style.display === "none";
-      panel.style.display = open ? "flex" : "none";
-      setActive(toggle, open);
-      if (open && !jobOpts) { loadJobOptions(); watchJob(); }
-      return;
-    }
     var stopBtn = e.target.closest('[data-job="stop"]');
     if (stopBtn && !stopBtn.disabled) {
       stopBtn.disabled = true;
@@ -934,6 +1047,21 @@
               jobEl("task").value + " 학습");
       return;
     }
+    var atab = e.target.closest("[data-admin-tab]");
+    if (atab) { showAdminTab(atab.dataset.adminTab); return; }
+    var abtn = e.target.closest('[data-auth="button"]');
+    if (abtn) {
+      if (auth.authed) {
+        fetch("/api/auth/logout", { method: "POST" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { auth = { configured: d.configured, authed: d.authed }; renderAuth(); })
+          .catch(function () {});
+      } else { openAuth(); }
+      return;
+    }
+    if (e.target.closest('[data-auth="cancel"]')) { aEl("modal").style.display = "none"; return; }
+    var am = aEl("modal");
+    if (am && am.style.display === "flex" && e.target === am) { am.style.display = "none"; return; }
     if (e.target.closest('[data-job="sensors"]')) { loadSensors(); return; }
     var cal = e.target.closest("[data-cal]");
     if (cal) {
@@ -953,16 +1081,7 @@
       return;
     }
 
-    // ── 학습 자료 패널 ──
-    var ftog = e.target.closest('[data-files="toggle"]');
-    if (ftog) {
-      var fp = $('[data-files="panel"]');
-      var fopen = fp.style.display === "none";
-      fp.style.display = fopen ? "flex" : "none";
-      setActive(ftog, fopen);
-      if (fopen) loadFiles();
-      return;
-    }
+    // ── 학습 자료 ──
     if (e.target.closest('[data-files="refresh"]')) { loadFiles(); return; }
     var tab = e.target.closest("[data-files-tab]");
     if (tab) { filesTab = tab.dataset.filesTab; renderFiles(); return; }
@@ -986,7 +1105,16 @@
     var m = document.getElementById("graphModal");
     if (m && m.style.display === "flex" && e.target === m) modal(false);
   });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") modal(false); });
+  document.addEventListener("submit", function (e) {
+    if (e.target.matches('[data-auth="form"]')) submitAuth(e);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      modal(false);
+      var am = aEl("modal");
+      if (am) am.style.display = "none";
+    }
+  });
 
   // 체크박스는 click이 아니라 change로 잡아야 키보드 조작도 반영된다.
   document.addEventListener("change", function (e) {
@@ -1002,6 +1130,11 @@
     if (e.target.matches('[data-job="unlimited"]')) {
       var dur = jobEl("duration");
       if (dur) { dur.disabled = e.target.checked; dur.style.opacity = e.target.checked ? "0.4" : ""; }
+      remember("unlimited", e.target.checked ? "1" : "");
+    }
+    if (e.target.matches('[data-job="duration"]')) remember("duration", e.target.value);
+    if (e.target.matches('[data-job="task"]') || e.target.matches('[data-job="mode"]')) {
+      remember(e.target.dataset.job, e.target.value);
     }
   });
 
@@ -1026,6 +1159,7 @@
   setInterval(poll, POLL_MS);
   loadMode();
   setInterval(loadMode, 5000);
+  loadAuth();
 
   // 다른 기기(폰/노트북)에서 시작한 작업도 헤더 배지에 보이도록, 패널을 열지 않아도
   // 처음 한 번은 상태를 확인하고 도는 중이면 폴링을 이어간다.

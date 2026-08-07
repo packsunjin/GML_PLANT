@@ -187,10 +187,64 @@ def _web_dir():
     return d if os.path.isfile(os.path.join(d, "chorokmal.html")) else None
 
 
+# ---- 관리자 인증 -------------------------------------------------------
+# 데이터를 바꾸는 동작(수집/변환/학습/삭제/보정)만 비밀번호로 잠근다.
+# 화면 보기와 모드 전환은 발표할 때 불편하므로 열어 둔다.
+#
+# ⚠️ 같은 Wi-Fi 안에서 HTTP로 주고받으므로 비밀번호가 평문으로 흐른다. 인터넷에 열어두는
+#    용도가 아니라, 옆 사람이 실수로 누르거나 장난치는 것을 막는 잠금장치로 생각하면 된다.
+_ADMIN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "data", "admin.json")
+
+
+def _admin_load():
+    try:
+        import json
+        with open(_ADMIN_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _admin_save(data):
+    import json
+    os.makedirs(os.path.dirname(_ADMIN_PATH), exist_ok=True)
+    with open(_ADMIN_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    try:
+        os.chmod(_ADMIN_PATH, 0o600)   # 같은 기기의 다른 사용자에게 노출되지 않게
+    except OSError:
+        pass
+
+
+def _hash_pw(password, salt):
+    import hashlib
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+                               bytes.fromhex(salt), 200_000).hex()
+
+
+def _admin_set_password(password):
+    import secrets
+    salt = secrets.token_hex(16)
+    data = _admin_load()
+    data.update({"salt": salt, "hash": _hash_pw(password, salt)})
+    data.setdefault("secret", secrets.token_hex(32))   # 세션 쿠키 서명용(재시작해도 유지)
+    _admin_save(data)
+    return data
+
+
+def _admin_check(password):
+    import hmac
+    data = _admin_load()
+    if not data.get("hash"):
+        return False
+    return hmac.compare_digest(_hash_pw(password, data["salt"]), data["hash"])
+
+
 def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5000,
             refresh_hz=5.0, ui="초록말"):
     try:
-        from flask import Flask, jsonify, request, send_from_directory
+        from flask import Flask, jsonify, request, send_from_directory, session
     except ImportError:
         print("[web] Flask가 필요합니다:  pip install flask")
         raise
@@ -217,6 +271,75 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     # 헤더만 바꿔서는 이미 캐시된 사본이 안 지워지므로, URL 자체에 파일 수정시각을 붙여
     # 새 주소로 만든다.
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
+    # ---- 관리자 로그인 --------------------------------------------------
+    import datetime
+    import secrets as _secrets
+    _admin = _admin_load()
+    if not _admin.get("secret"):
+        _admin["secret"] = _secrets.token_hex(32)
+        _admin_save(_admin)
+    app.secret_key = _admin["secret"]
+    # 한 번 로그인하면 30일 유지 -> 실험할 때마다 다시 치지 않아도 된다.
+    app.permanent_session_lifetime = datetime.timedelta(days=30)
+
+    if _admin.get("hash"):
+        print("[web] 관리자 비밀번호가 설정되어 있습니다. 수집/학습/삭제는 로그인 후 가능합니다.")
+    else:
+        print("[web] 관리자 비밀번호가 아직 없습니다. 브라우저에서 처음 한 번 설정해 주세요.")
+
+    def _is_admin():
+        return bool(session.get("admin"))
+
+    def _auth_info():
+        return {"configured": bool(_admin_load().get("hash")), "authed": _is_admin()}
+
+    def require_admin(fn):
+        """데이터를 바꾸는 API 앞에 붙인다. 비밀번호가 아직 없으면 잠그지 않는다
+        (처음 설치하고 바로 쓸 수 있게). 설정한 뒤에는 로그인해야 통과한다."""
+        from functools import wraps
+
+        @wraps(fn)
+        def guard(*args, **kwargs):
+            if _admin_load().get("hash") and not _is_admin():
+                return jsonify({"ok": False, "error": "관리자 로그인이 필요합니다",
+                                "need_auth": True}), 401
+            return fn(*args, **kwargs)
+        return guard
+
+    @app.route("/api/auth")
+    def api_auth():
+        return jsonify(_auth_info())
+
+    @app.route("/api/auth/setup", methods=["POST"])
+    def api_auth_setup():
+        """처음 한 번 비밀번호를 정한다. 이미 설정돼 있으면 로그인한 상태에서만 바꿀 수 있다."""
+        body = request.get_json(silent=True) or {}
+        pw = (body.get("password") or "").strip()
+        if len(pw) < 4:
+            return jsonify({"ok": False, "error": "비밀번호는 4자 이상으로 정해주세요"}), 400
+        if _admin_load().get("hash") and not _is_admin():
+            return jsonify({"ok": False, "error": "비밀번호를 바꾸려면 먼저 로그인하세요",
+                            "need_auth": True}), 401
+        _admin_set_password(pw)
+        session.permanent = True
+        session["admin"] = True
+        print("[web] 관리자 비밀번호가 설정되었습니다.")
+        return jsonify({"ok": True, **_auth_info()})
+
+    @app.route("/api/auth/login", methods=["POST"])
+    def api_auth_login():
+        body = request.get_json(silent=True) or {}
+        if not _admin_check(body.get("password") or ""):
+            return jsonify({"ok": False, "error": "비밀번호가 맞지 않습니다"}), 401
+        session.permanent = True
+        session["admin"] = True
+        return jsonify({"ok": True, **_auth_info()})
+
+    @app.route("/api/auth/logout", methods=["POST"])
+    def api_auth_logout():
+        session.pop("admin", None)
+        return jsonify({"ok": True, **_auth_info()})
 
     def _asset_version():
         stamps = []
@@ -293,6 +416,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify(sensor_control.sensor_status())
 
     @app.route("/api/sensors/calibrate", methods=["POST"])
+    @require_admin
     def api_sensors_calibrate():
         """토양수분 보정. {"mark":"wet"} 또는 {"mark":"dry"} 를 보내면 지금 전압을
         그 기준으로 잡는다. wet_v/dry_v를 직접 넣어도 된다."""
@@ -321,6 +445,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"ok": True, **cal})
 
     @app.route("/api/job/stop", methods=["POST"])
+    @require_admin
     def api_job_stop():
         """돌고 있는 작업을 멈춘다. 수집이면 SIGINT를 보내 지금까지 모은 데이터를
         저장하고 끝나게 하고, 응답이 없으면 강제 종료한다."""
@@ -348,6 +473,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"ok": True, "label": label})
 
     @app.route("/api/collect", methods=["POST"])
+    @require_admin
     def api_collect():
         body = request.get_json(silent=True) or {}
         state = body.get("state")
@@ -371,6 +497,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"ok": True, "job": _job_snapshot()})
 
     @app.route("/api/preprocess", methods=["POST"])
+    @require_admin
     def api_preprocess():
         """스펙트로그램 변환(전처리)만 실행한다. state를 주면 그 상태 하나만
         다시 변환하고 나머지 상태의 결과는 건드리지 않는다."""
@@ -389,6 +516,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"ok": True, "job": _job_snapshot()})
 
     @app.route("/api/train", methods=["POST"])
+    @require_admin
     def api_train():
         """학습만 실행한다(전처리는 /api/preprocess 로 따로).
         학습이 끝나면 돌고 있는 분류기에 새 모델을 바로 반영한다."""
@@ -547,6 +675,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return out
 
     @app.route("/api/files/delete", methods=["POST"])
+    @require_admin
     def api_files_delete():
         """파일을 휴지통(.trash/)으로 옮긴다. purge=true면 바로 완전 삭제."""
         body = request.get_json(silent=True) or {}
@@ -595,6 +724,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"items": _trash_entries()})
 
     @app.route("/api/trash/restore", methods=["POST"])
+    @require_admin
     def api_trash_restore():
         body = request.get_json(silent=True) or {}
         ids = set(body.get("ids") or [])
@@ -629,6 +759,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"ok": not failed, "restored": restored, "failed": failed})
 
     @app.route("/api/trash/empty", methods=["POST"])
+    @require_admin
     def api_trash_empty():
         """ids를 주면 그것만, 안 주면 휴지통 전체를 완전히 지운다."""
         body = request.get_json(silent=True) or {}
