@@ -38,6 +38,13 @@ FILE_TO_STATE = {
     "자극.csv": "자극",
 }
 
+# ---- 품질 기준 --------------------------------------------------------
+# 전극이 잘 안 붙으면 AD8232 출력이 전원 레일에 붙어버린다(3.3V 계통 기준 3.2V 근처).
+# 그 구간은 증폭기 포화지 식물 신호가 아니므로 학습에서 제외한다.
+RAIL_HIGH_V = 3.0   # 이 위로 평균이 올라간 창은 버림
+RAIL_LOW_V = 0.3    # 이 아래로 내려간 창도 버림
+MIN_STD_V = 0.0005  # 필터 후 표준편차가 이보다 작으면 신호가 없다고 본다
+
 SAMPLE_RATE_HZ = 250.0  # sensor_control.py 기본 샘플링과 일치
 WINDOW_SEC = 2.0        # 스펙트로그램 1장을 만들 신호 구간 길이
 STEP_SEC = 1.0          # 슬라이딩 윈도우 이동 간격 (오버랩으로 이미지 수 확보)
@@ -72,7 +79,8 @@ def make_spectrogram_image(Sxx_db, out_path, img_size=IMG_SIZE):
 
 
 def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, step_sec=STEP_SEC,
-                 low=0.5, high=45.0, notch_freq=50.0):
+                 low=0.5, high=45.0, notch_freq=50.0,
+                 quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V):
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고, 각 윈도우의 명시적
     특징 벡터를 (img_name, source_file, label, *features) 행 리스트로 함께 반환한다.
     low/high/notch_freq로 대역통과·노치 필터 대역을 조절한다(느린 식물 신호 보존 시 low를 낮춤)."""
@@ -96,10 +104,18 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     df = pd.read_csv(csv_path)
     raw_signal = df["voltage"].to_numpy(dtype=float)
 
+    # 레일 포화 검사는 단전원(0~3.3V) 하드웨어 신호에만 의미가 있다. 시뮬레이션 CSV는
+    # 0V를 중심으로 흔들리므로 그대로 적용하면 전부 "바닥 레일"로 오판한다.
+    # 파일의 중앙값이 0.5V보다 위면 하드웨어 신호로 보고 레일 검사를 켠다.
+    hw_like = float(np.median(raw_signal)) > 0.5
+    rail_check = quality and hw_like
+
     win_len = int(window_sec * fs)
     step_len = int(step_sec * fs)
 
     count = 0
+    skipped_rail = 0
+    skipped_flat = 0
     feature_rows = []
     base_name = os.path.splitext(fname)[0]
     # 필터는 각 윈도우를 개별적으로 적용한다. 실시간 추론(inference.py)은 스트리밍으로 들어온
@@ -108,8 +124,24 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     # 잘라내면 윈도우 경계의 과도응답이 서로 달라 train/serve skew가 생긴다 — 특히 통계/주파수
     # 특징 14개는 이 차이에 민감하다.)
     for start in range(0, len(raw_signal) - win_len + 1, step_len):
-        segment = bandpass_filter(raw_signal[start:start + win_len], fs,
-                                  low=low, high=high, notch_freq=notch_freq)
+        raw_win = raw_signal[start:start + win_len]
+
+        # ---- 품질 검사 ----------------------------------------------------
+        # 전극 접촉이 나쁘면 AD8232 출력이 전원 레일에 붙는다(3.3V 계통에서 3.2V 근처).
+        # 그런 구간은 식물 신호가 아니라 증폭기 포화라서 학습에 넣으면 안 된다.
+        # 스펙트로그램은 장마다 정규화되므로 이미지만 봐서는 구분이 안 된다 -> 여기서 거른다.
+        if rail_check:
+            m = float(np.mean(raw_win))
+            if m > rail_high or m < rail_low:
+                skipped_rail += 1
+                continue
+
+        segment = bandpass_filter(raw_win, fs, low=low, high=high, notch_freq=notch_freq)
+
+        if quality and float(np.std(segment)) < min_std:
+            # 필터 후에도 거의 평평하면 신호가 없는 것(선 빠짐/전원만 잡힘).
+            skipped_flat += 1
+            continue
 
         f, t, Sxx = spectrogram(segment, fs=fs, nperseg=min(128, len(segment)),
                                  noverlap=64 if len(segment) > 128 else 0)
@@ -124,7 +156,18 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
 
         count += 1
 
-    print(f"  {fname} -> 클래스 '{cls}': {count}개 스펙트로그램 이미지 생성")
+    if quality and not hw_like:
+        print("    [품질] 0V 중심 신호라 레일 포화 검사는 건너뜁니다(시뮬레이션 데이터).")
+    total_win = count + skipped_rail + skipped_flat
+    print(f"  {fname} -> 클래스 '{cls}': {count}개 스펙트로그램 이미지 생성"
+          + (f"  (전체 {total_win}창 중 {100.0*count/total_win:.0f}% 사용)" if total_win else ""))
+    if skipped_rail or skipped_flat:
+        print(f"    [품질] 건너뜀 — 전원 레일 포화 {skipped_rail}창"
+              f"{f', 신호 없음 {skipped_flat}창' if skipped_flat else ''}")
+        if count == 0:
+            print("    ⚠️  쓸 수 있는 구간이 하나도 없습니다. 전극 접촉을 확인하고 다시 수집하세요.")
+        elif count < 10:
+            print(f"    ⚠️  쓸 수 있는 창이 {count}개뿐입니다. 더 길게 수집하는 것이 좋습니다.")
     return count, feature_rows
 
 
@@ -137,6 +180,12 @@ def main():
                         help="대역통과 하한(Hz). 느린 식물 신호(수분부족 등)를 살리려면 0.05~0.1 처럼 낮추세요")
     parser.add_argument("--highcut", type=float, default=45.0, help="대역통과 상한(Hz)")
     parser.add_argument("--notch", type=float, default=50.0, help="노치 주파수(Hz). 0이면 노치 끔")
+    parser.add_argument("--no-quality", action="store_true",
+                        help="품질 검사를 끄고 모든 창을 그대로 변환한다(포화 구간 포함)")
+    parser.add_argument("--rail-high", type=float, default=RAIL_HIGH_V,
+                        help=f"평균이 이 값보다 높은 창은 포화로 보고 버림(기본 {RAIL_HIGH_V}V)")
+    parser.add_argument("--min-std", type=float, default=MIN_STD_V,
+                        help=f"필터 후 표준편차가 이보다 작으면 신호 없음으로 보고 버림(기본 {MIN_STD_V}V)")
     parser.add_argument("--only", default=None, choices=sorted(set(FILE_TO_STATE.values())),
                         help="이 상태 하나만 변환한다. 나머지 상태의 결과는 그대로 둔다.")
     args = parser.parse_args()
@@ -169,7 +218,9 @@ def main():
         if fname.endswith(".csv"):
             csv_path = os.path.join(args.raw_dir, fname)
             count, feature_rows = process_file(csv_path, args.out_dir,
-                                               low=args.lowcut, high=args.highcut, notch_freq=args.notch)
+                                               low=args.lowcut, high=args.highcut, notch_freq=args.notch,
+                                               quality=not args.no_quality,
+                                               rail_high=args.rail_high, min_std=args.min_std)
             total += count
             all_feature_rows.extend(feature_rows)
 
