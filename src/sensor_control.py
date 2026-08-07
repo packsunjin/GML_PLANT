@@ -334,9 +334,18 @@ def set_moisture_calibration(wet_v=None, dry_v=None):
     return {"wet_v": MOISTURE_WET_V, "dry_v": MOISTURE_DRY_V}
 
 
-def sensor_status():
-    """센서가 왜 안 잡히는지 화면에서 바로 볼 수 있게 진단 정보를 모은다."""
+def sensor_status(wait_first=3.0):
+    """센서가 왜 안 잡히는지 화면에서 바로 볼 수 있게 진단 정보를 모은다.
+
+    온·습도는 백그라운드 스레드가 채우므로, 방금 시작한 직후에는 캐시가 비어 있어
+    센서가 멀쩡한데도 None 으로 보인다. 진단 호출에서는 첫 값이 들어올 때까지
+    잠깐(기본 3초) 기다린다. 실시간 루프는 이 함수를 쓰지 않으므로 영향이 없다."""
     pct, volts, why = read_moisture(raw=True)
+    start_env_thread()
+    if _env_dev is not None and wait_first > 0:
+        deadline = time.time() + wait_first
+        while _env_cache["t"] == 0.0 and time.time() < deadline:
+            time.sleep(0.1)
     env = read_environment()
     return {
         "i2c": HARDWARE_AVAILABLE,
