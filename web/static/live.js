@@ -1125,7 +1125,8 @@
                      : hhmm(f.mtime * 1000)) + '</span>' +
         '</div>' +
         // 모델 파일이면서 지금 쓰는 게 아니면, 이걸로 바로 갈아끼울 수 있는 버튼을 붙인다.
-        (!isTrash && grp.kind === "model" && !inUse ?
+        // (svm_model/rf_model은 비교용 raw 분류기라 번들 정보가 없어 바로 못 씀)
+        (!isTrash && grp.kind === "model" && !inUse && f.name.indexOf("best_model") === 0 ?
           '<button type="button" data-model-activate="' + f.path + '" ' +
           'class="shrink-0 rounded-lg bg-primary px-2.5 py-1 text-[10px] font-bold text-primary-foreground">사용하기</button>' : '') +
         // 휴지통 파일은 내려받기 경로가 없다(복원한 뒤에 받으면 된다).

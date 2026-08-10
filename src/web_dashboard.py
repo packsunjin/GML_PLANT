@@ -601,6 +601,12 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         full = _safe_path(body.get("path", ""))
         if not full or not os.path.isfile(full) or not full.lower().endswith(".joblib"):
             return jsonify({"ok": False, "error": "모델 파일을 찾을 수 없습니다"}), 404
+        # svm_model_*.joblib / rf_model_*.joblib은 비교용으로 남겨둔 raw 분류기 파일이라
+        # classes/feature_mode 같은 번들 정보가 없다. best_model_*.joblib만 바로 쓸 수 있다.
+        if not os.path.basename(full).startswith("best_model"):
+            return jsonify({"ok": False,
+                            "error": "이 파일은 raw 분류기라 바로 쓸 수 없어요. "
+                                     "best_model_로 시작하는 파일을 골라주세요"}), 400
         with _job_lock:
             if _job["running"]:
                 return jsonify({"ok": False, "error": "작업이 도는 중에는 모델을 바꿀 수 없습니다"}), 409
