@@ -410,6 +410,11 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     root_dir = os.path.abspath(os.path.join(src_dir, ".."))
     TASKS = ("3종", "정상-수분부족", "정상-자극", "전체")
     MODES = ("픽셀", "특징", "둘다")
+    # train.py의 TASKS와 같은 정의. 과제별로 스펙트로그램이 갖춰졌는지 판단하는 데 쓴다.
+    TASK_CLASSES = {"3종": ["정상", "수분부족", "자극"],
+                    "정상-수분부족": ["정상", "수분부족"],
+                    "정상-자극": ["정상", "자극"],
+                    "전체": ["정상", "수분부족", "자극"]}
 
     def _reload():
         info = clf.reload_model()
@@ -826,11 +831,31 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
             d = os.path.join(spec_dir, s)
             converted[s] = (len([n for n in os.listdir(d) if n.lower().endswith(".png")])
                             if os.path.isdir(d) else 0)
+        # 과제별로 필요한 클래스가 다 변환돼 있어야 고를 수 있다(없으면 이유를 같이 보낸다).
+        task_ready, task_reason = {}, {}
+        for t, classes in TASK_CLASSES.items():
+            missing = [c for c in classes if not converted.get(c)]
+            task_ready[t] = not missing
+            task_reason[t] = None if not missing else "먼저 변환하세요: " + ", ".join(missing)
         return jsonify({"tasks": list(TASKS), "modes": list(MODES),
                         "states": list(sensor_control.VALID_STATES),
                         "collected": have, "converted": converted,
+                        "task_classes": TASK_CLASSES,
+                        "task_ready": task_ready, "task_reason": task_reason,
                         "hardware": sensor_control.HARDWARE_AVAILABLE,
                         "model": clf.model_name, "classes": list(clf.classes)})
+
+    @app.route("/api/train/history")
+    def api_train_history():
+        """train.py가 학습마다 남긴 기록(과제/방식/정확도)을 최신순으로 돌려준다."""
+        import json
+        path = os.path.join(root_dir, "models", "train_history.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                hist = json.load(f)
+        except Exception:
+            hist = []
+        return jsonify({"history": list(reversed(hist))[:20]})
 
     ip_hint = os.environ.get("GML_IP", "<파이 IP>")
     print(f"[web] 브라우저에서 접속:  http://{ip_hint}:{port}   (같은 기기면 http://localhost:{port})")

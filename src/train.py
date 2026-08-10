@@ -30,6 +30,7 @@ import glob
 import json
 import os
 import sys
+import time
 
 import numpy as np
 import pandas as pd
@@ -83,6 +84,28 @@ def load_filter_meta(features_csv):
         except Exception:
             pass
     return dict(DEFAULT_FILTER)
+
+
+HISTORY_CAP = 50
+
+
+def _append_history(models_dir, record):
+    """학습할 때마다 결과를 models_dir/train_history.json에 누적한다.
+    웹 관리자 패널의 '최근 학습 결과' 목록이 이 파일을 읽는다."""
+    path = os.path.join(models_dir, "train_history.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            hist = json.load(f)
+    except Exception:
+        hist = []
+    hist.append(record)
+    hist = hist[-HISTORY_CAP:]
+    try:
+        os.makedirs(models_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(hist, f, ensure_ascii=False)
+    except OSError as e:
+        print(f"[train] 학습 기록 저장 실패: {e}")
 
 # --mode 한글 CLI 값 -> 내부 처리용 값. 파일명/표시에는 다시 한글(_특징 등)을 쓴다.
 MODE_CHOICES = {"픽셀": "pixel", "특징": "features", "둘다": "both"}
@@ -280,7 +303,8 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
 
 def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     tag_prefix = f"{MODE_KO[mode]}·{task}"
-    dist = ", ".join(f"{c}={int(np.sum(y == i))}" for i, c in enumerate(classes))
+    counts = {c: int(np.sum(y == i)) for i, c in enumerate(classes)}
+    dist = ", ".join(f"{c}={n}" for c, n in counts.items())
     print(f"[train] ({tag_prefix}) 총 샘플 수: {len(y)}  [{dist}]")
     validate_classes(y, classes)
 
@@ -293,8 +317,9 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
                                                 classes, mode=mode, cv_folds=cv_folds, task=task)
 
     best_name = max(results, key=lambda k: results[k]["accuracy"])
-    best_model = results[best_name]["model"]
-    best_acc = results[best_name]["accuracy"]
+    best_res = results[best_name]
+    best_model = best_res["model"]
+    best_acc = best_res["accuracy"]
 
     feature_mode = "pixel" if mode == "pixel" else "explicit"
     os.makedirs(models_dir, exist_ok=True)
@@ -316,6 +341,15 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
         print(f"[train] ({tag}) ✅ 검증 요구사항 충족: Accuracy 70% 이상 달성")
     else:
         print(f"[train] ({tag}) ⚠️ Accuracy가 70% 미만입니다. 데이터/파라미터를 조정하세요.")
+
+    _append_history(models_dir, {
+        "task": task, "mode": MODE_KO[mode], "trained_at": time.time(),
+        "best_name": best_name, "accuracy": best_acc,
+        "precision": best_res["precision"], "recall": best_res["recall"],
+        "classes": classes, "counts": counts,
+        "train_n": len(y_train), "test_n": len(y_test),
+        "model_file": os.path.basename(best_path),
+    })
 
     return results, best_name, best_acc
 

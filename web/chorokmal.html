@@ -132,13 +132,32 @@
     </div>
 
     <!-- 3 · 학습 -->
-    <div data-admin-pane="train" style="display:none" class="flex flex-col gap-2.5">
-      <p class="text-[11px] text-subtle">변환된 전체 데이터로 한 번에 학습하고, 끝나면 새 모델이 바로 적용됩니다.</p>
+    <div data-admin-pane="train" style="display:none" class="flex flex-col gap-3">
+      <p class="text-[11px] text-subtle">데이터가 갖춰진 과제만 고를 수 있어요. 학습이 끝나면 새 모델이 바로 적용됩니다.</p>
+
+      <!-- 상태별 변환 현황 -->
+      <div class="flex flex-wrap gap-1.5" data-job="train-status"></div>
+
       <div class="flex flex-wrap items-center gap-2">
-        <select data-job="task" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
-        <select data-job="mode" class="rounded-lg border border-border bg-muted px-2 py-1 text-xs font-bold text-secondary-foreground"></select>
+        <span class="text-[11px] font-medium text-subtle">과제</span>
+        <div class="flex flex-wrap gap-1.5" data-job="task-buttons"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-[11px] font-medium text-subtle">방식</span>
+        <div class="flex flex-wrap gap-1.5" data-job="mode-buttons"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
         <button type="button" data-job="train"
-                class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">학습 시작</button>
+                class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">▶ 학습 시작</button>
+        <span class="text-[11px] font-medium text-subtle" data-job="train-hint">과제를 먼저 골라주세요</span>
+      </div>
+
+      <!-- 최근 학습 결과 -->
+      <div class="flex flex-col gap-1.5 border-t border-border pt-2.5">
+        <p class="text-[11px] font-bold text-secondary-foreground">최근 학습 결과</p>
+        <div data-job="train-history" class="flex flex-col gap-1">
+          <p class="text-[11px] text-subtle">아직 학습 기록이 없어요</p>
+        </div>
       </div>
     </div>
 

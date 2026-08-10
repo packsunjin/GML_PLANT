@@ -510,8 +510,59 @@
           all.textContent = "전체";
           pbox.appendChild(all);
         }
-        fillSelect(jobEl("task"), o.tasks, "3종");
-        fillSelect(jobEl("mode"), o.modes, "둘다");
+        // 상태별 변환 현황: 학습 탭에서 어떤 과제를 고를 수 있는지 한눈에 보여준다.
+        var statusBox = jobEl("train-status");
+        if (statusBox) {
+          statusBox.innerHTML = "";
+          o.states.forEach(function (s) {
+            var collected = o.collected.indexOf(s) >= 0;
+            var n = (o.converted || {})[s] || 0;
+            var span = document.createElement("span");
+            span.className = "rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground";
+            span.style.opacity = n > 0 ? "" : "0.5";
+            span.textContent = s + ": " + (n > 0 ? "✓ 변환됨 " + n + "장"
+                                           : collected ? "수집됨 · 변환 필요" : "미수집");
+            statusBox.appendChild(span);
+          });
+        }
+
+        // 과제 버튼: 필요한 클래스가 다 변환돼 있지 않으면 고를 수 없게 잠근다.
+        var taskBox = jobEl("task-buttons");
+        if (taskBox) {
+          taskBox.innerHTML = "";
+          o.tasks.forEach(function (t) {
+            var ready = (o.task_ready || {})[t];
+            var b = document.createElement("button");
+            b.type = "button";
+            b.dataset.jobTask = t;
+            b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
+            b.textContent = t;
+            b.disabled = !ready;
+            b.style.opacity = ready ? "" : "0.4";
+            b.title = ready ? "" : ((o.task_reason || {})[t] || "데이터가 부족합니다");
+            taskBox.appendChild(b);
+          });
+          var readyTasks = o.tasks.filter(function (t) { return (o.task_ready || {})[t]; });
+          var lastTask = remembered("task", null);
+          selectTrainTask(readyTasks.indexOf(lastTask) >= 0 ? lastTask : (readyTasks[0] || null));
+        }
+
+        // 방식 버튼 (픽셀 / 특징 / 둘다)
+        var modeBox = jobEl("mode-buttons");
+        if (modeBox) {
+          modeBox.innerHTML = "";
+          o.modes.forEach(function (m) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.dataset.jobModeBtn = m;
+            b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
+            b.textContent = m;
+            modeBox.appendChild(b);
+          });
+          selectTrainMode(remembered("mode", "둘다"));
+        }
+
+        loadTrainHistory();
         restoreSettings();
         // 어느 탭에 있든 전체 진행 상황이 보이게 요약을 띄운다.
         var sum = $('[data-admin="summary"]');
@@ -531,16 +582,6 @@
         }
       })
       .catch(function () {});
-  }
-
-  function fillSelect(sel, values, pick) {
-    if (!sel || sel.options.length) return;
-    values.forEach(function (v) {
-      var o = document.createElement("option");
-      o.value = v; o.textContent = v;
-      sel.appendChild(o);
-    });
-    sel.value = remembered(sel.dataset.job, pick);
   }
 
   // ── 설정 기억 (수집 길이, 무제한 여부, 학습 옵션) ────────────────
@@ -600,6 +641,87 @@
     var dur = unlimited ? 0 : (parseFloat((jobEl("duration") || {}).value) || 30);
     postJob("/api/collect", { state: collectPick, duration: dur },
             collectPick + (unlimited ? " 수집 (중지할 때까지)" : " " + dur + "초 수집"));
+  }
+
+  // 학습: 과제(2종/3종)와 방식(픽셀/특징/둘다)을 고른다. 데이터가 없는 과제는
+  // loadJobOptions에서 버튼 자체를 잠가 놓으므로 여기서는 고른 값만 기억하면 된다.
+  var trainTaskPick = null, trainModePick = null;
+
+  function selectTrainTask(t) {
+    trainTaskPick = t;
+    if (t) remember("task", t);
+    $$("[data-job-task]").forEach(function (b) { setActive(b, b.dataset.jobTask === t); });
+    renderTrainHint();
+  }
+
+  function selectTrainMode(m) {
+    trainModePick = m;
+    remember("mode", m);
+    $$("[data-job-mode-btn]").forEach(function (b) { setActive(b, b.dataset.jobModeBtn === m); });
+  }
+
+  function renderTrainHint() {
+    var hint = jobEl("train-hint"), btn = jobEl("train");
+    if (!hint || !btn) return;
+    if (!trainTaskPick) {
+      hint.textContent = "변환된 데이터가 없어요. 2 · 변환을 먼저 하세요";
+      btn.disabled = true;
+      btn.style.opacity = "0.45";
+      return;
+    }
+    hint.textContent = "'" + trainTaskPick + "' 과제로 학습합니다";
+    if (!jobRunning) { btn.disabled = false; btn.style.opacity = ""; }
+  }
+
+  function startTrain() {
+    if (!trainTaskPick) return;
+    postJob("/api/train", { task: trainTaskPick, mode: trainModePick || "둘다" },
+            trainTaskPick + " 학습");
+  }
+
+  // 최근 학습 결과: 과제/방식/정확도를 최신순으로 보여준다.
+  function loadTrainHistory() {
+    if (demo) return;
+    var box = jobEl("train-history");
+    if (!box) return;
+    fetch("/api/train/history", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var hist = d.history || [];
+        if (!hist.length) {
+          box.innerHTML = '<p class="text-[11px] text-subtle">아직 학습 기록이 없어요</p>';
+          return;
+        }
+        box.innerHTML = "";
+        hist.forEach(function (h) {
+          var row = document.createElement("div");
+          row.className = "flex flex-wrap items-center gap-2 rounded-xl bg-muted px-3 py-1.5 text-[11px] font-medium text-secondary-foreground";
+          var acc = h.accuracy != null ? Math.round(h.accuracy * 1000) / 10 + "%" : "—";
+          var when = h.trained_at ? new Date(h.trained_at * 1000).toLocaleString("ko-KR",
+                       { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+          var name = document.createElement("span");
+          name.className = "font-bold";
+          name.textContent = h.task || "";
+          var detail = document.createElement("span");
+          detail.className = "text-subtle";
+          detail.textContent = (h.mode || "") + " · " + (h.best_name || "") +
+                                " · train " + (h.train_n != null ? h.train_n : "?") +
+                                " test " + (h.test_n != null ? h.test_n : "?");
+          var spacer = document.createElement("span");
+          spacer.style.flex = "1";
+          var accSpan = document.createElement("span");
+          accSpan.className = "font-bold";
+          accSpan.style.color = (h.accuracy != null && h.accuracy >= 0.7) ? "var(--primary)" : "var(--destructive)";
+          accSpan.textContent = acc;
+          var whenSpan = document.createElement("span");
+          whenSpan.className = "text-subtle";
+          whenSpan.textContent = when;
+          row.appendChild(name); row.appendChild(detail); row.appendChild(spacer);
+          row.appendChild(accSpan); row.appendChild(whenSpan);
+          box.appendChild(row);
+        });
+      })
+      .catch(function () {});
   }
 
   function renderJob(j) {
@@ -1124,10 +1246,13 @@
       return;
     }
     if (e.target.closest('[data-job="train"]') && !jobEl("train").disabled) {
-      postJob("/api/train", { task: jobEl("task").value, mode: jobEl("mode").value },
-              jobEl("task").value + " 학습");
+      startTrain();
       return;
     }
+    var tsel = e.target.closest("[data-job-task]");
+    if (tsel && !tsel.disabled) { selectTrainTask(tsel.dataset.jobTask); return; }
+    var msel = e.target.closest("[data-job-mode-btn]");
+    if (msel) { selectTrainMode(msel.dataset.jobModeBtn); return; }
     var atab = e.target.closest("[data-admin-tab]");
     if (atab) { showAdminTab(atab.dataset.adminTab); return; }
     var abtn = e.target.closest('[data-auth="button"]');
@@ -1219,9 +1344,6 @@
     if (e.target.matches('[data-job="duration"]')) {
       remember("duration", e.target.value);
       renderCollectHint();
-    }
-    if (e.target.matches('[data-job="task"]') || e.target.matches('[data-job="mode"]')) {
-      remember(e.target.dataset.job, e.target.value);
     }
   });
 
