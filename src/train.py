@@ -242,10 +242,15 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
         "svm__C": [0.1, 1, 10],
         "svm__gamma": ["scale", "auto"],
     }
-    svm_grid = GridSearchCV(svm_pipe, svm_param_grid, cv=cv_folds, n_jobs=-1)
+    n_svm = np.prod([len(v) for v in svm_param_grid.values()])
+    print(f"[train] ({tag}) SVM GridSearchCV 시작: 후보 {n_svm}개 x {cv_folds}겹 = {n_svm*cv_folds}회 학습…")
+    # verbose=1: 학습기가 fold 하나 끝날 때마다 한 줄씩 찍는다. 이게 없으면 GridSearchCV가
+    # 몇 분씩 아무 출력 없이 도는 동안 웹 로그가 멈춘 것처럼 보인다.
+    svm_grid = GridSearchCV(svm_pipe, svm_param_grid, cv=cv_folds, n_jobs=-1, verbose=1)
     svm_grid.fit(X_train, y_train)
     svm_best = svm_grid.best_estimator_
     y_pred_svm = svm_best.predict(X_test)
+    print(f"[train] ({tag}) SVM 완료 -> 최적 파라미터 {svm_grid.best_params_}")
 
     results["SVM"] = {
         "model": svm_best,
@@ -262,10 +267,13 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
         "rf__n_estimators": [100, 200],
         "rf__max_depth": [None, 10, 20],
     }
-    rf_grid = GridSearchCV(rf_pipe, rf_param_grid, cv=cv_folds, n_jobs=-1)
+    n_rf = np.prod([len(v) for v in rf_param_grid.values()])
+    print(f"[train] ({tag}) RandomForest GridSearchCV 시작: 후보 {n_rf}개 x {cv_folds}겹 = {n_rf*cv_folds}회 학습…")
+    rf_grid = GridSearchCV(rf_pipe, rf_param_grid, cv=cv_folds, n_jobs=-1, verbose=1)
     rf_grid.fit(X_train, y_train)
     rf_best = rf_grid.best_estimator_
     y_pred_rf = rf_best.predict(X_test)
+    print(f"[train] ({tag}) RandomForest 완료 -> 최적 파라미터 {rf_grid.best_params_}")
 
     results["RandomForest"] = {
         "model": rf_best,
