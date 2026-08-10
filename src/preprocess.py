@@ -52,6 +52,19 @@ MIN_STD_V = 0.0005  # 필터 후 표준편차가 이보다 작으면 신호가 �
 DROPOUT_FRAC = 0.5   # 창 중앙값의 이 비율보다 낮으면 강하로 본다
 DROPOUT_MAX = 0.15   # 전체의 이 비율을 넘게 걸리면 신호 자체가 이상한 것이므로 손대지 않는다
 
+# "자극"은 정상/수분부족과 달리 지속 상태가 아니라 순간 이벤트다(파일 상단 주석 참고).
+# 그런데 5분을 수집해도 실제로 반응이 담긴 구간은 짧고, 나머지 대부분은 조용한 baseline이다.
+# 파일 하나를 통째로 "자극"이라 라벨링하면 그 조용한 구간까지 전부 "자극"으로 잘못 학습되어,
+# 모델이 사실상 "자극 = 아무 신호"라고 배우고 실사용에서 계속 자극만 예측하게 된다.
+# -> 자극 파일에서는 그 파일 안에서 상대적으로 튀는 창만 남기고 나머지 조용한 창은 버린다.
+#    정상/수분부족은 지속 상태라 이 필터를 적용하지 않는다.
+# std가 아니라 peak-to-peak(최대-최소)으로 판단한다: 반응 스파이크는 보통 창(2초) 안에서
+# 아주 짧게(수십 ms) 튀므로, std는 나머지 조용한 구간에 묻혀 거의 안 움직이지만 p2p는
+# 그 짧은 스파이크 하나만으로도 확 뛴다.
+EVENT_ONLY_STATE = "자극"
+EVENT_P2P_MULT = 2.0
+EVENT_MIN_WINDOWS = 10  # 이 미만이면 파일 내 편차가 별로 없다는 뜻이라 거르지 않는다
+
 
 def repair_dropouts(raw_win):
     """fast-restore 로 인한 순간적인 0V 강하를 양옆 값으로 보간해 없앤다.
@@ -175,6 +188,7 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     count = 0
     skipped_rail = 0
     skipped_flat = 0
+    skipped_quiet = 0
     repaired_samples = 0
     repaired_windows = 0
     feature_rows = []
@@ -184,6 +198,9 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     # 필터 과도응답까지 포함해 학습/추론 특징이 일치한다. (전체 신호를 한 번에 필터링한 뒤
     # 잘라내면 윈도우 경계의 과도응답이 서로 달라 train/serve skew가 생긴다 — 특히 통계/주파수
     # 특징 14개는 이 차이에 민감하다.)
+    # 1차 패스: 레일/보정/필터까지 끝낸 창과 그 std를 모아 둔다. '자극'의 이벤트 문턱값은
+    # 이 파일 안의 std 분포를 봐야 정할 수 있어서(파일마다 baseline이 다름) 미리 다 훑는다.
+    prepared = []
     for start in range(0, len(raw_signal) - win_len + 1, step_len):
         raw_win = raw_signal[start:start + win_len]
 
@@ -205,10 +222,28 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
                 repaired_windows += 1
 
         segment = bandpass_filter(raw_win, fs, low=low, high=high, notch_freq=notch_freq)
+        std = float(np.std(segment))
 
-        if quality and float(np.std(segment)) < min_std:
+        if quality and std < min_std:
             # 필터 후에도 거의 평평하면 신호가 없는 것(선 빠짐/전원만 잡힘).
             skipped_flat += 1
+            continue
+
+        p2p = float(segment.max() - segment.min())
+        prepared.append((start, segment, p2p))
+
+    # 2차 패스: '자극' 파일은 이 파일 안에서 상대적으로 튀는 창만 남긴다(위 EVENT_ONLY_STATE 설명).
+    event_thresh = None
+    if quality and cls == EVENT_ONLY_STATE and len(prepared) >= EVENT_MIN_WINDOWS:
+        p2ps = np.array([p[2] for p in prepared])
+        baseline = float(np.median(p2ps))
+        thresh = baseline * EVENT_P2P_MULT
+        if np.any(p2ps > thresh):   # 전부 baseline 근처면(계속 자극 중) 거르지 않는다
+            event_thresh = thresh
+
+    for start, segment, p2p in prepared:
+        if event_thresh is not None and p2p <= event_thresh:
+            skipped_quiet += 1
             continue
 
         f, t, Sxx = spectrogram(segment, fs=fs, nperseg=min(128, len(segment)),
@@ -224,11 +259,14 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
 
         count += 1
 
+    if event_thresh is not None:
+        print(f"    [이벤트 선별] '{cls}'는 순간 이벤트라 조용한 창은 뺌 — "
+              f"{skipped_quiet}창 제외, {count}창만 사용 (문턱값 p2p>{event_thresh:.4f}V)")
     if repaired_windows:
         print(f"    [보정] fast-restore 강하 제거 — {repaired_windows}창에서 {repaired_samples}샘플 보간")
     if quality and not hw_like:
         print("    [품질] 0V 중심 신호라 레일 포화 검사는 건너뜁니다(시뮬레이션 데이터).")
-    total_win = count + skipped_rail + skipped_flat
+    total_win = count + skipped_rail + skipped_flat + skipped_quiet
     print(f"  {fname} -> 클래스 '{cls}': {count}개 스펙트로그램 이미지 생성"
           + (f"  (전체 {total_win}창 중 {100.0*count/total_win:.0f}% 사용)" if total_win else ""))
     if skipped_rail or skipped_flat:
@@ -238,6 +276,9 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             print("    ⚠️  쓸 수 있는 구간이 하나도 없습니다. 전극 접촉을 확인하고 다시 수집하세요.")
         elif count < 10:
             print(f"    ⚠️  쓸 수 있는 창이 {count}개뿐입니다. 더 길게 수집하는 것이 좋습니다.")
+    if event_thresh is not None and count < EVENT_MIN_WINDOWS:
+        print(f"    ⚠️  이벤트 창이 {count}개뿐입니다. 수집할 때 더 자주(10~15초 간격) "
+              "잎을 건드려 반응 구간을 늘려주세요.")
     return count, feature_rows, notch_freq
 
 
