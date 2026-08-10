@@ -416,10 +416,35 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                     "정상-자극": ["정상", "자극"],
                     "전체": ["정상", "수분부족", "자극"]}
 
-    def _reload():
-        info = clf.reload_model()
-        _job_say(f"↻ 새 모델 적용: {info['name']} / 클래스 {info['classes']}")
-        print(f"[web] 모델 교체 -> {info['name']} {info['classes']}")
+    def _reload_after_train(run_start):
+        """학습 하나가 여러 파일을 만들 수 있어(과제=전체/방식=둘다 등), 방금 이 실행이
+        새로 남긴 기록 중 정확도가 가장 높은 모델을 골라 실행 중인 분류기에 반영한다.
+        (예전엔 항상 서버 시작 때 쓰던 파일을 그대로 다시 불러와, 다른 과제로
+        학습해도 화면의 '현재 모델'이 안 바뀌는 문제가 있었다.)"""
+        import json
+        hist_path = os.path.join(root_dir, "models", "train_history.json")
+        try:
+            with open(hist_path, encoding="utf-8") as f:
+                hist = json.load(f)
+        except Exception:
+            hist = []
+        fresh = [h for h in hist if h.get("trained_at", 0) >= run_start and h.get("model_file")]
+        if not fresh:
+            _job_say("⚠️ 학습 기록을 찾지 못해 모델을 갈아끼우지 못했습니다")
+            return
+        best = max(fresh, key=lambda h: h.get("accuracy", 0))
+        full = os.path.join(root_dir, "models", best["model_file"])
+        if not os.path.isfile(full):
+            _job_say(f"⚠️ 모델 파일이 없어 적용하지 못했습니다: {best['model_file']}")
+            return
+        try:
+            info = clf.reload_model(model_path=full)
+        except Exception as e:
+            _job_say(f"⚠️ 새 모델 적용 실패: {e}")
+            return
+        _job_say(f"↻ 새 모델 적용: {info['name']} ({best['task']}/{best['mode']}, "
+                f"Accuracy={best['accuracy']:.4f}) / 클래스 {info['classes']}")
+        print(f"[web] 모델 교체 -> {info['name']} {info['classes']} ({full})")
 
     @app.route("/api/job")
     def api_job():
@@ -548,10 +573,30 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
         label = f"{task} / {mode} 학습"
         steps = [(label, [sys.executable, "train.py", "--task", task, "--mode", mode])]
-        started = _run_steps("train", label, steps, src_dir, on_done=_reload)
+        run_start = time.time()
+        started = _run_steps("train", label, steps, src_dir,
+                             on_done=lambda: _reload_after_train(run_start))
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
         return jsonify({"ok": True, "job": _job_snapshot()})
+
+    @app.route("/api/model/activate", methods=["POST"])
+    @require_admin
+    def api_model_activate():
+        """자료 탭에서 예전에 학습해 둔 모델을 골라 지금 쓰는 모델로 바로 바꾼다."""
+        body = request.get_json(silent=True) or {}
+        full = _safe_path(body.get("path", ""))
+        if not full or not os.path.isfile(full) or not full.lower().endswith(".joblib"):
+            return jsonify({"ok": False, "error": "모델 파일을 찾을 수 없습니다"}), 404
+        with _job_lock:
+            if _job["running"]:
+                return jsonify({"ok": False, "error": "작업이 도는 중에는 모델을 바꿀 수 없습니다"}), 409
+        try:
+            info = clf.reload_model(model_path=full)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"모델을 불러오지 못했습니다: {e}"}), 400
+        print(f"[web] 수동으로 모델 교체 -> {info['name']} {info['classes']} ({full})")
+        return jsonify({"ok": True, **info})
 
     # ---- 학습 자료 보기 / 내려받기 / 지우기 -------------------------------
     # 브라우저에서 다룰 수 있는 폴더는 아래 둘로 제한한다. 요청 경로는 반드시

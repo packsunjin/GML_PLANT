@@ -1112,6 +1112,10 @@
             (isTrash ? hhmm(f.mtime * 1000) + " 삭제 · 원래 위치 " + f.from
                      : hhmm(f.mtime * 1000)) + '</span>' +
         '</div>' +
+        // 모델 파일이면서 지금 쓰는 게 아니면, 이걸로 바로 갈아끼울 수 있는 버튼을 붙인다.
+        (!isTrash && grp.kind === "model" && !inUse ?
+          '<button type="button" data-model-activate="' + f.path + '" ' +
+          'class="shrink-0 rounded-lg bg-primary px-2.5 py-1 text-[10px] font-bold text-primary-foreground">사용하기</button>' : '') +
         // 휴지통 파일은 내려받기 경로가 없다(복원한 뒤에 받으면 된다).
         (isTrash ? '' :
           '<a href="' + dlUrl(f.path) + '" download ' +
@@ -1214,6 +1218,22 @@
     });
   }
 
+  // 자료 탭에서 예전에 학습해 둔 모델을 골라 지금 쓰는 모델로 바로 바꾼다.
+  function activateModel(path) {
+    var hint = fEl("hint");
+    hint.textContent = "모델 적용하는 중…";
+    fetch("/api/model/activate", { method: "POST", headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ path: path }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (handleAuthError(d)) { hint.textContent = "🔒 관리자 로그인이 필요합니다"; return; }
+        if (!d.ok) { hint.textContent = "❌ " + (d.error || "모델을 바꾸지 못했습니다"); return; }
+        hint.textContent = "✅ 모델 적용됨: " + d.name + " · 클래스 " + d.classes.join("/");
+        loadFiles();
+      })
+      .catch(function () { hint.textContent = "❌ 요청을 보내지 못했습니다"; });
+  }
+
   // ── 조작 ─────────────────────────────────────────────────────────
   document.addEventListener("click", function (e) {
     var mode = e.target.closest("[data-mode-set]");
@@ -1296,6 +1316,8 @@
     if (sst) { specState = sst.dataset.specState || null; renderFiles(); return; }
     if (e.target.closest('[data-files="delete"]')) { deleteChecked(); return; }
     if (e.target.closest('[data-files="restore"]')) { restoreChecked(); return; }
+    var actBtn = e.target.closest("[data-model-activate]");
+    if (actBtn) { activateModel(actBtn.dataset.modelActivate); return; }
     var openImg = e.target.closest("[data-files-open]");
     if (openImg) { previewFile(openImg.dataset.filesOpen); return; }
     if (e.target.closest('[data-files="preview-close"]')) { previewFile(null); return; }
