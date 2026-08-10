@@ -310,6 +310,7 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
 
 
 def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
+    t0 = time.time()
     tag_prefix = f"{MODE_KO[mode]}·{task}"
     counts = {c: int(np.sum(y == i)) for i, c in enumerate(classes)}
     dist = ", ".join(f"{c}={n}" for c, n in counts.items())
@@ -344,7 +345,8 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     joblib.dump(results["SVM"]["model"], os.path.join(models_dir, f"svm_model{file_suffix}.joblib"))
     joblib.dump(results["RandomForest"]["model"], os.path.join(models_dir, f"rf_model{file_suffix}.joblib"))
 
-    print(f"\n[train] ({tag}) 최적 모델: {best_name} (Accuracy={best_acc:.4f}) -> {best_path}")
+    duration_sec = time.time() - t0
+    print(f"\n[train] ({tag}) 최적 모델: {best_name} (Accuracy={best_acc:.4f}, {duration_sec:.1f}초) -> {best_path}")
     if best_acc >= 0.70:
         print(f"[train] ({tag}) ✅ 검증 요구사항 충족: Accuracy 70% 이상 달성")
     else:
@@ -356,6 +358,7 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
         "precision": best_res["precision"], "recall": best_res["recall"],
         "classes": classes, "counts": counts,
         "train_n": len(y_train), "test_n": len(y_test),
+        "duration_sec": round(duration_sec, 1),
         "model_file": os.path.basename(best_path),
     })
 

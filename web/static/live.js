@@ -706,7 +706,8 @@
           detail.className = "text-subtle";
           detail.textContent = (h.mode || "") + " · " + (h.best_name || "") +
                                 " · train " + (h.train_n != null ? h.train_n : "?") +
-                                " test " + (h.test_n != null ? h.test_n : "?");
+                                " test " + (h.test_n != null ? h.test_n : "?") +
+                                (h.duration_sec != null ? " · " + Math.round(h.duration_sec) + "초 걸림" : "");
           var spacer = document.createElement("span");
           spacer.style.flex = "1";
           var accSpan = document.createElement("span");
