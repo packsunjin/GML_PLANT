@@ -162,28 +162,41 @@ def _payload(result, recent, clf):
 
 
 def _worker(clf, source):
-    """백그라운드: 실시간으로 step()을 돌리며 최근 5초 버퍼와 최신 결과를 갱신한다."""
+    """백그라운드: 실시간으로 step()을 돌리며 최근 5초 버퍼와 최신 결과를 갱신한다.
+
+    이 루프는 데몬 스레드라, 안에서 예외가 한 번이라도 새면 스레드 자체가 조용히
+    죽는다. 그러면 /data가 마지막 값(또는 시작 때의 ready=False)에 영원히 멈추고,
+    화면은 아무 에러도 없이 그냥 '대기 중'만 계속 떠 있는 것처럼 보인다(모델을
+    잘못 갈아끼우거나 센서가 순간적으로 이상값을 준 경우 등). 그래서 한 번 실패해도
+    루프 자체는 절대 죽지 않게 매 반복을 감싸고, 마지막 에러를 화면에서 볼 수 있게
+    _latest에 같이 담아 보낸다."""
     recent = np.zeros(int(5 * clf.sample_rate))
     while True:
-        # 수집 작업 중에는 센서를 양보하고 쉰다. 다시 시작할 때 pace()가 목표 시각을
-        # 리셋하므로(1초 이상 밀리면 t0 재설정) 밀린 만큼 폭주하지 않는다.
-        while _pause.is_set():
-            time.sleep(0.2)
-        result = clf.step()
-        if result is not None:
-            n_new = min(clf.predict_every, len(result["filtered_signal"]), len(recent))
-            recent = np.roll(recent, -n_new)
-            recent[-n_new:] = result["filtered_signal"][-n_new:]
-            payload = _payload(result, recent, clf)
-            # 라벨을 매번 다시 읽는다. /api/mode 로 시뮬레이션 상태를 바꾸면
-            # 배지 문구도 바로 따라가야 하기 때문이다.
-            src_kind, src_label = clf.input_source()
-            payload["source_kind"] = src_kind   # hardware / sim / csv
-            payload["source"] = src_label       # 사람이 읽는 라벨
+        try:
+            # 수집 작업 중에는 센서를 양보하고 쉰다. 다시 시작할 때 pace()가 목표 시각을
+            # 리셋하므로(1초 이상 밀리면 t0 재설정) 밀린 만큼 폭주하지 않는다.
+            while _pause.is_set():
+                time.sleep(0.2)
+            result = clf.step()
+            if result is not None:
+                n_new = min(clf.predict_every, len(result["filtered_signal"]), len(recent))
+                recent = np.roll(recent, -n_new)
+                recent[-n_new:] = result["filtered_signal"][-n_new:]
+                payload = _payload(result, recent, clf)
+                # 라벨을 매번 다시 읽는다. /api/mode 로 시뮬레이션 상태를 바꾸면
+                # 배지 문구도 바로 따라가야 하기 때문이다.
+                src_kind, src_label = clf.input_source()
+                payload["source_kind"] = src_kind   # hardware / sim / csv
+                payload["source"] = src_label       # 사람이 읽는 라벨
+                with _lock:
+                    _latest.clear()
+                    _latest.update(payload)
+            clf.pace()
+        except Exception as e:
+            print(f"[web] ⚠️ 실시간 루프 오류 (계속 시도함): {type(e).__name__}: {e}")
             with _lock:
-                _latest.clear()
-                _latest.update(payload)
-        clf.pace()
+                _latest["worker_error"] = f"{type(e).__name__}: {e}"
+            time.sleep(0.5)
 
 
 def _web_dir():

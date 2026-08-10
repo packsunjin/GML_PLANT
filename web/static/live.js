@@ -47,6 +47,8 @@
   var stateSince = Date.now();
   var changes = [];              // {ts, state, proba}
   var lastSeen = 0;
+  var pageLoad = Date.now();     // lastSeen이 한 번도 안 찍혔을 때(첫 판정 전 실패)의 기준 시각
+  var lastWorkerError = null;    // 실시간 루프가 보낸 마지막 에러 메시지(있으면 일반 문구보다 우선)
 
   // ── 유틸 ─────────────────────────────────────────────────────────
   function since(ms) {
@@ -196,7 +198,17 @@
 
   // ── 적용 ─────────────────────────────────────────────────────────
   function apply(d) {
-    if (!d || !d.ready) return;
+    if (!d || !d.ready) {
+      // 실시간 루프가 죽지는 않았지만 매 반복에서 계속 실패하는 중이면(예: 방금
+      // 갈아끼운 모델이 안 맞음) 서버가 이유를 같이 보낸다. 그냥 '대기 중'만 뜨는 것보다
+      // 훨씬 도움이 되므로 바로 보여준다.
+      if (!demo && d && d.worker_error) {
+        lastWorkerError = d.worker_error;
+        setText("source", "⚠️ " + d.worker_error);
+      }
+      return;
+    }
+    lastWorkerError = null;
     lastSeen = Date.now();
 
     // 실측 샘플레이트. 명목의 90% 미만이면 주파수축이 어긋나므로 눈에 띄게 표시한다.
@@ -1381,8 +1393,10 @@
   // 지속 시간·연결 상태는 데이터가 안 와도 계속 갱신
   setInterval(function () {
     if (lastState) setText("duration", since(stateSince));
-    if (!demo && lastSeen && Date.now() - lastSeen > 4000) {
-      setText("source", "신호 끊김 — 재시도 중");
+    // lastSeen은 ready:true를 한 번도 못 받으면 0으로 남으므로, 그 경우 페이지를 연
+    // 시각을 기준으로 삼는다(안 그러면 시작부터 실패해도 이 경고가 영영 안 뜬다).
+    if (!demo && Date.now() - (lastSeen || pageLoad) > 4000) {
+      setText("source", lastWorkerError ? "⚠️ " + lastWorkerError : "신호 끊김 — 재시도 중");
     }
     if (changes.length) renderLog();
   }, 1000);
