@@ -201,6 +201,64 @@ rm -rf ~/.cache/matplotlib   # (그래프/폰트가 바뀌었을 때) matplotlib
 > `sensor_control.py`가 자동으로 **SIMULATION 모드**로 전환되어 실제 신호와 유사한 합성 신호를 생성합니다.
 > 따라서 하드웨어 없이도 전체 파이프라인(수집→전처리→학습→실시간 추론)을 그대로 검증할 수 있습니다.
 
+## 하드웨어 연결 구조 (한눈에 보기)
+
+아래 부품들이 어떻게 서로 물려 있는지 전체 그림입니다. 각 배선의 자세한 핀 번호는
+바로 아래 섹션들(I2C 배선, DHT22 배선, 토양수분 배선)에 따로 있으니, 여기서는
+"뭐가 뭐랑 연결되는지" 큰 그림만 먼저 보세요.
+
+```mermaid
+graph LR
+    subgraph plant["식물"]
+        RA["RA 전극<br/>(잎/줄기)"]
+        LA["LA 전극<br/>(잎/줄기)"]
+        RL["RL 전극<br/>(흙에 삽입 — 기준 전극)"]
+    end
+
+    RA --> AD8232
+    LA --> AD8232
+    RL --> AD8232
+
+    subgraph AD8232["AD8232 생체전위 증폭기"]
+        AD_OUT["OUTPUT"]
+    end
+
+    AD_OUT -->|"아날로그 전압<br/>0~3.3V"| ADS_A0
+
+    subgraph ADS1115["ADS1115 (16bit ADC, I2C)"]
+        ADS_A0["A0"]
+        ADS_A1["A1"]
+    end
+
+    MOIST["토양수분 센서<br/>(+/−/OUT 3핀)"] -->|"OUT"| ADS_A1
+
+    subgraph PI["라즈베리파이 5"]
+        I2C["I2C1<br/>(SDA=물리3, SCL=물리5)"]
+        GPIO4["GPIO4<br/>(물리 7번)"]
+    end
+
+    ADS1115 <-->|"I2C (SDA/SCL)"| I2C
+    DHT["DHT22<br/>온습도 센서"] -->|"DATA"| GPIO4
+
+    style plant fill:#eaf5e6,stroke:#2f7d45
+    style AD8232 fill:#fff4e0,stroke:#b8860b
+    style ADS1115 fill:#e6f0fb,stroke:#2f6fd0
+    style PI fill:#f6f6f6,stroke:#666
+```
+
+**핵심만 요약하면:**
+
+| 신호 | 경로 |
+|---|---|
+| 식물 전위(자극/정상/수분부족 판단용) | RA/LA/RL 전극 → **AD8232**(증폭) → OUTPUT → **ADS1115 A0** → I2C → 파이 |
+| 토양수분(%) | 3핀 아날로그 센서 OUT → **ADS1115 A1** → I2C → 파이 (ADS1115의 남는 채널 재사용, 별도 ADC 불필요) |
+| 온·습도(°C, %) | **DHT22** DATA → 파이 **GPIO4(물리 7번)** 직결 (I2C 아님, ADS1115 안 거침) |
+| 전원 | ADS1115·AD8232 VCC → 파이 **3V3(물리 1번)**, GND는 전부 공통 |
+
+- AD8232는 ADS1115를 거쳐야만 파이가 읽을 수 있습니다(AD8232 자체엔 디지털 출력이 없음).
+- DHT22는 반대로 **ADS1115를 거치면 안 됩니다** — 디지털 신호라 GPIO에 직접 꽂아야 합니다.
+- RA/LA는 잎이나 줄기 표면, **RL은 반드시 흙(습한 부분)에** 꽂아야 기준 전위가 잡힙니다 — RL이 안 꽂혀 있으면 AD8232 출력이 전원 레일에 붙어버립니다(포화).
+
 ## 하드웨어 모드 준비 (라즈베리파이 I2C 활성화)
 
 실제 AD8232+ADS1115로 신호를 수집하려면 라즈베리파이에서 **I2C 버스를 먼저 켜야** 합니다.
