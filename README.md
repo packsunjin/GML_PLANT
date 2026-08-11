@@ -209,40 +209,18 @@ rm -rf ~/.cache/matplotlib   # (그래프/폰트가 바뀌었을 때) matplotlib
 
 ```mermaid
 graph LR
-    subgraph plant["식물"]
-        RA["RA 전극<br/>(잎/줄기)"]
-        LA["LA 전극<br/>(잎/줄기)"]
-        RL["RL 전극<br/>(흙에 삽입 — 기준 전극)"]
-    end
+    RA["RA 전극 (잎/줄기)"] --> AD8232["AD8232<br/>생체전위 증폭기"]
+    LA["LA 전극 (잎/줄기)"] --> AD8232
+    RL["RL 전극 (흙에 삽입 — 기준)"] --> AD8232
+    AD8232 -->|"OUTPUT 0~3.3V"| A0["ADS1115<br/>A0"]
+    MOIST["토양수분 센서 (3핀)"] -->|"OUT"| A1["ADS1115<br/>A1"]
+    A0 -->|"I2C SDA/SCL"| PI["라즈베리파이 5"]
+    A1 -->|"I2C SDA/SCL"| PI
+    DHT["DHT22 온습도센서"] -->|"DATA GPIO4"| PI
 
-    RA --> AD8232
-    LA --> AD8232
-    RL --> AD8232
-
-    subgraph AD8232["AD8232 생체전위 증폭기"]
-        AD_OUT["OUTPUT"]
-    end
-
-    AD_OUT -->|"아날로그 전압<br/>0~3.3V"| ADS_A0
-
-    subgraph ADS1115["ADS1115 (16bit ADC, I2C)"]
-        ADS_A0["A0"]
-        ADS_A1["A1"]
-    end
-
-    MOIST["토양수분 센서<br/>(+/−/OUT 3핀)"] -->|"OUT"| ADS_A1
-
-    subgraph PI["라즈베리파이 5"]
-        I2C["I2C1<br/>(SDA=물리3, SCL=물리5)"]
-        GPIO4["GPIO4<br/>(물리 7번)"]
-    end
-
-    ADS1115 <-->|"I2C (SDA/SCL)"| I2C
-    DHT["DHT22<br/>온습도 센서"] -->|"DATA"| GPIO4
-
-    style plant fill:#eaf5e6,stroke:#2f7d45
     style AD8232 fill:#fff4e0,stroke:#b8860b
-    style ADS1115 fill:#e6f0fb,stroke:#2f6fd0
+    style A0 fill:#e6f0fb,stroke:#2f6fd0
+    style A1 fill:#e6f0fb,stroke:#2f6fd0
     style PI fill:#f6f6f6,stroke:#666
 ```
 
