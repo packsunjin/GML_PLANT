@@ -1065,13 +1065,17 @@ def main():
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--ui", default="초록말", choices=["초록말", "기본"],
                         help="초록말=web/ 디자인 화면, 기본=예전 내장 화면")
+    parser.add_argument("--predict_hz", type=float, default=5.0,
+                        help="초당 분류(스펙트로그램+모델 추론) 횟수. 기본 5. 파이가 못 따라가서 "
+                             "actual_rate가 낮게 나오면(화면에 빨간 Hz) 이 값을 2~3으로 낮춰보세요 "
+                             "— 샘플 수집 속도(250Hz)는 그대로 두고 분류 빈도만 줄어듭니다.")
     args = parser.parse_args()
 
     if not os.path.exists(args.model):
         print(f"[web] 모델 파일이 없습니다: {args.model}  (먼저 train.py 실행)")
         return
     run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, host=args.host,
-            port=args.port, ui=args.ui)
+            port=args.port, ui=args.ui, refresh_hz=args.predict_hz)
 
 
 if __name__ == "__main__":

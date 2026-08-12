@@ -36,6 +36,10 @@ def main():
     parser.add_argument("--port", type=int, default=5000, help="웹 대시보드 포트 (--web일 때)")
     parser.add_argument("--ui", default="초록말", choices=["초록말", "기본"],
                          help="웹 화면 종류 (--web일 때). 초록말=web/ 디자인 화면, 기본=예전 내장 화면")
+    parser.add_argument("--predict_hz", type=float, default=5.0,
+                         help="초당 분류(스펙트로그램+모델 추론) 횟수 (--web일 때). 기본 5. 화면의 "
+                              "실측 Hz가 빨갛게(목표 250Hz보다 많이 낮게) 나오면 2~3으로 낮춰보세요 "
+                              "— 센서 샘플링 속도는 그대로 두고 분류 빈도만 줄어듭니다.")
     args = parser.parse_args()
 
     if not os.path.exists(args.model):
@@ -45,7 +49,8 @@ def main():
 
     if args.web:
         from web_dashboard import run_web
-        run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, port=args.port, ui=args.ui)
+        run_web(args.model, sim_csv=args.sim_csv, sim_state=args.sim_state, port=args.port, ui=args.ui,
+                 refresh_hz=args.predict_hz)
     elif args.no_gui:
         run_headless(args.model, args.sim_csv, sim_state=args.sim_state)
     else:
