@@ -32,3 +32,29 @@ main .max-w-6xl { max-width: min(1560px, 100%); }
   [data-narrow-only] { display: block; }
   [data-wide-only] { display: none; }
 }
+
+/* ── 평범한 디자인으로 정리 ──────────────────────────────────────
+   Lovable가 만든 원본은 큰 둥근 모서리 + 부드러운 그림자 + 알약 모양
+   버튼 위주였다. 그런 "디자인된" 느낌 대신 각지고 테두리만 있는
+   평범한 카드/버튼으로 바꾼다. rounded-full(원형 점·게이지 캡)만
+   그대로 두고 나머지 모서리 반경은 다 줄인다. */
+.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-4xl,
+.rounded-lg, .rounded-md {
+  border-radius: 4px;
+}
+
+/* 그림자 대신 얇은 테두리로 카드를 구분한다 */
+.shadow-soft { box-shadow: none; }
+section.shadow-soft, div.shadow-soft {
+  border: 1px solid var(--border);
+}
+
+/* 버튼처럼 쓰이는 요소(배경만 있고 테두리가 없던 것들)에 테두리를 준다 —
+   그림자 없이도 눌리는 영역이 눈에 보이게 */
+button.bg-muted, button.bg-primary,
+a.bg-muted, a.bg-primary,
+label.bg-muted {
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+button.bg-primary, a.bg-primary { border-color: var(--primary); }
