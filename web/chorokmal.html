@@ -33,8 +33,6 @@
       </span>
       <span class="rounded-2xl border border-border bg-card px-3.5 py-2 text-xs font-bold tabular-nums text-secondary-foreground shadow-soft"
             data-live="rate" title="실제 초당 샘플 수. 명목 250Hz보다 크게 낮으면 정확도가 떨어집니다.">— Hz</span>
-      <span class="rounded-2xl border border-border bg-card px-3.5 py-2 text-xs font-bold tabular-nums text-secondary-foreground shadow-soft"
-            data-live="latency">— ms</span>
     </div>
   </header>
 
@@ -250,23 +248,6 @@
       <div class="flex flex-col items-center">
 
       <div class="flex w-full items-center justify-center gap-4">
-        <!-- 왼쪽: 온도 -->
-        <div class="flex flex-1 justify-center" data-wide-only>
-          <div style="width:100%;max-width:180px">
-            <div class="flex items-baseline justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">온도</span>
-              <span class="text-lg font-black tabular-nums text-foreground" data-live="temp">—</span>
-            </div>
-            <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-              <span data-live="temp-band"
-                    style="position:absolute;top:0;bottom:0;left:32%;width:24%;border-radius:999px;background:color-mix(in srgb, var(--warning) 34%, transparent)"></span>
-              <span data-live="temp-dot"
-                    style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
-            </div>
-            <p class="mt-2 text-[11px] font-medium text-subtle" data-live="temp-range">적정 18–24°C</p>
-          </div>
-        </div>
-
         <div class="relative flex shrink-0 items-center justify-center" data-state-scope
              style="width:min(300px,72vw);aspect-ratio:1;--state:var(--primary);--state-deep:var(--primary-hover);--state-soft:var(--primary-soft)">
           <svg viewBox="0 0 36 36" class="h-full w-full -rotate-90">
@@ -291,71 +272,11 @@
             <span class="mt-0.5 text-[11px] font-medium text-subtle" data-live="duration">—</span>
           </div>
         </div>
-
-        <!-- 오른쪽: 습도 -->
-        <div class="flex flex-1 justify-center" data-wide-only>
-          <div style="width:100%;max-width:180px">
-            <div class="flex items-baseline justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">습도</span>
-              <span class="text-lg font-black tabular-nums text-foreground" data-live="humidity">—</span>
-            </div>
-            <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-              <span data-live="hum-band"
-                    style="position:absolute;top:0;bottom:0;left:45%;width:25%;border-radius:999px;background:color-mix(in srgb, var(--water) 28%, transparent)"></span>
-              <span data-live="hum-dot"
-                    style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
-            </div>
-            <p class="mt-2 text-[11px] font-medium text-subtle" data-live="hum-range">적정 45–70%</p>
-          </div>
-        </div>
       </div>
-
-      <!-- 좁은 화면: 온·습도 -->
-      <div class="mt-6 w-full space-y-4" data-narrow-only style="max-width:420px">
-        <div>
-          <div class="flex items-baseline justify-between">
-            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">온도</span>
-            <span class="text-lg font-black tabular-nums text-foreground" data-live="temp-m">—</span>
-          </div>
-          <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-            <span style="position:absolute;top:0;bottom:0;left:32%;width:24%;border-radius:999px;background:color-mix(in srgb, var(--warning) 34%, transparent)"></span>
-            <span data-live="temp-dot-m"
-                  style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
-          </div>
-          <p class="mt-2 text-[11px] font-medium text-subtle">적정 18–24°C</p>
-        </div>
-        <div>
-          <div class="flex items-baseline justify-between">
-            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">습도</span>
-            <span class="text-lg font-black tabular-nums text-foreground" data-live="humidity-m">—</span>
-          </div>
-          <div style="position:relative;height:10px;border-radius:999px;background:var(--muted);margin-top:8px">
-            <span style="position:absolute;top:0;bottom:0;left:45%;width:25%;border-radius:999px;background:color-mix(in srgb, var(--water) 28%, transparent)"></span>
-            <span data-live="hum-dot-m"
-                  style="position:absolute;top:50%;left:50%;width:15px;height:15px;margin-top:-7.5px;margin-left:-7.5px;border-radius:50%;background:var(--border);border:3px solid var(--card);transition:left .4s"></span>
-          </div>
-          <p class="mt-2 text-[11px] font-medium text-subtle">적정 45–70%</p>
-        </div>
-      </div>
-
-        <div class="mt-6 grid w-full grid-cols-3 gap-2 border-t border-border pt-5">
-          <div class="text-center">
-            <p class="text-[11px] font-medium text-subtle">최근 1분 안정도</p>
-            <p class="mt-0.5 text-lg font-black tabular-nums text-foreground" data-live="stability">—</p>
-          </div>
-          <div class="border-l border-border text-center">
-            <p class="text-[11px] font-medium text-subtle">상태 변화</p>
-            <p class="mt-0.5 text-lg font-black tabular-nums text-foreground" data-live="changes">—</p>
-          </div>
-          <div class="border-l border-border text-center">
-            <p class="text-[11px] font-medium text-subtle">신호 품질</p>
-            <p class="mt-0.5 text-lg font-black tabular-nums text-foreground" data-live="quality">—</p>
-          </div>
-        </div>
       </div>
     </section>
 
-    <!-- 확률 + 확신도 추이 -->
+    <!-- 확률 -->
     <section class="flex flex-col gap-5 lg:col-span-5">
       <div class="rounded-4xl border border-border bg-card p-6 shadow-soft">
         <div class="flex items-center justify-between">
@@ -391,38 +312,17 @@
           </div>
         </div>
       </div>
-
-      <div class="rounded-4xl border border-border bg-card p-6 shadow-soft">
-        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Confidence trend</span>
-        <h3 class="text-base font-bold text-foreground">확신도 추이 <span class="text-xs font-medium text-subtle">최근 1분</span></h3>
-        <canvas data-live="trend" width="560" height="120" class="mt-3 w-full" style="height:96px"></canvas>
-      </div>
-    </section>
-
-    <!-- 스펙트로그램 -->
-    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft lg:col-span-6">
-      <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Spectrogram</span>
-      <h3 class="text-base font-bold text-foreground">스펙트로그램</h3>
-      <div class="mt-3 overflow-hidden rounded-3xl bg-signal-bg p-3">
-        <canvas data-live="spec" width="440" height="220" class="w-full rounded-2xl"
-                style="height:220px;image-rendering:pixelated"></canvas>
-        <p class="mt-2 font-mono text-[10px] text-signal/70">0–45 Hz · 밝을수록 강함</p>
-      </div>
     </section>
 
     <!-- 전위신호 -->
-    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft lg:col-span-6">
+    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft" style="grid-column:1/-1">
       <div class="flex items-center justify-between gap-3">
         <div>
           <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">AD8232 biopotential</span>
           <h3 class="text-base font-bold text-foreground">전위신호 · 실시간</h3>
         </div>
-        <div class="flex items-center gap-2">
-          <button type="button" data-act="pause"
-                  class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">일시정지</button>
-          <button type="button" data-graph-open
-                  class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">크게 보기</button>
-        </div>
+        <button type="button" data-act="pause"
+                class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">일시정지</button>
       </div>
       <div class="mt-4 overflow-hidden rounded-3xl bg-signal-bg p-4">
         <canvas data-live="wave" width="1120" height="300" class="w-full" style="height:220px"></canvas>
@@ -433,10 +333,6 @@
       </div>
       <div class="mt-4 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
         <div class="rounded-2xl bg-muted px-3 py-2.5">
-          <p class="text-[10px] font-medium text-subtle">평균 전위</p>
-          <p class="text-sm font-bold tabular-nums text-foreground" data-live="mean">—</p>
-        </div>
-        <div class="rounded-2xl bg-muted px-3 py-2.5">
           <p class="text-[10px] font-medium text-subtle">표준편차</p>
           <p class="text-sm font-bold tabular-nums text-foreground" data-live="std">—</p>
         </div>
@@ -444,38 +340,8 @@
           <p class="text-[10px] font-medium text-subtle">피크-피크</p>
           <p class="text-sm font-bold tabular-nums text-foreground" data-live="p2p">—</p>
         </div>
-        <div class="rounded-2xl bg-muted px-3 py-2.5">
-          <p class="text-[10px] font-medium text-subtle">스파이크</p>
-          <p class="text-sm font-bold tabular-nums text-foreground" data-live="spikes">—</p>
-        </div>
       </div>
     </section>
-
-    <!-- 상태 변화 로그 -->
-    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft" style="grid-column:1/-1">
-      <h3 class="text-base font-bold text-foreground">상태 변화 기록</h3>
-      <div class="mt-3" data-live="log">
-        <p class="py-6 text-center text-xs text-subtle">상태가 바뀌면 여기에 쌓입니다.</p>
-      </div>
-    </section>
-  </div>
-
-  <!-- 그래프 팝업 -->
-  <div id="graphModal" style="display:none;position:fixed;inset:0;z-index:60;align-items:center;justify-content:center;padding:16px;background:color-mix(in srgb, var(--ink) 62%, transparent);backdrop-filter:blur(4px)">
-    <div class="rounded-4xl border border-border bg-card p-6 shadow-soft" style="width:100%;max-width:1000px;max-height:92vh;overflow:auto">
-      <div class="flex items-center justify-between gap-3">
-        <h3 class="text-base font-bold text-foreground">전위신호 · 스펙트로그램</h3>
-        <button type="button" data-graph-close
-                class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">닫기 ✕</button>
-      </div>
-      <div class="mt-4 overflow-hidden rounded-3xl bg-signal-bg p-4">
-        <canvas data-live="wave-big" width="1600" height="440" class="w-full" style="height:320px"></canvas>
-      </div>
-      <div class="mt-4 overflow-hidden rounded-3xl bg-signal-bg p-4">
-        <canvas data-live="spec-big" width="576" height="300" class="w-full rounded-2xl"
-                style="height:280px;image-rendering:pixelated"></canvas>
-      </div>
-    </div>
   </div>
 
 </div>

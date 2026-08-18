@@ -133,11 +133,13 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
 
 
 def _payload(result, recent, clf):
-    """step() 결과 + 최근 5초 버퍼 -> 브라우저로 보낼 JSON 딕셔너리."""
+    """step() 결과 + 최근 5초 버퍼 -> 브라우저로 보낼 JSON 딕셔너리.
+
+    spec/온·습도는 내부적으로 계산되긴 하지만(분류 자체엔 spec이 쓰인다) 화면에
+    더 이상 표시하지 않으므로 여기서는 실어 보내지 않는다(네트워크 절약).
+    """
     sig = np.asarray(recent)[::3]  # 5초 버퍼를 1/3로 다운샘플(네트워크 절약)
-    spec = np.asarray(result["spectrogram_db"], dtype=float)
     filt = result["filtered_signal"]
-    env = sensor_control.read_environment()   # 내부 캐시가 있어 매번 불러도 부담 없음
     return {
         "ready": True,
         "state": result["state"],
@@ -145,15 +147,8 @@ def _payload(result, recent, clf):
         "probs": result["probs"],
         "classes": list(clf.classes),
         "signal": [round(float(v), 5) for v in sig],
-        "spec": [[round(float(x), 1) for x in row] for row in spec],  # (주파수 x 시간)
-        "mean": round(float(np.mean(filt)), 4),
         "std": round(float(np.std(filt)), 4),
         "p2p": round(float(np.max(filt) - np.min(filt)), 4),
-        # 온·습도. AHT20/DHT22가 있으면 그 값, 없으면 습도 자리에 토양수분(A1).
-        # 아무것도 없으면 None -> 화면은 "센서 대기 중"
-        "temp": env["temp"],
-        "humidity": env["humidity"],
-        "env_source": env["source"],
         # 실제로 초당 몇 샘플을 읽고 있는지. 명목(250Hz)보다 많이 낮으면 필터/스펙트로그램이
         # 가정하는 주파수축이 어긋나 정확도가 떨어진다는 신호다.
         "sample_rate": SAMPLE_RATE_HZ,
