@@ -135,10 +135,12 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
 def _payload(result, recent, clf):
     """step() 결과 + 최근 5초 버퍼 -> 브라우저로 보낼 JSON 딕셔너리.
 
-    spec/온·습도는 내부적으로 계산되긴 하지만(분류 자체엔 spec이 쓰인다) 화면에
-    더 이상 표시하지 않으므로 여기서는 실어 보내지 않는다(네트워크 절약).
+    spec(스펙트로그램)은 분류 자체에 쓰이는 값이라 화면에도 그대로 보여준다
+    (픽셀 방식 모델은 이 이미지로 직접 추론하고, 특징 방식도 여기서 특징을 뽑는다).
+    온·습도는 화면에 더 이상 표시하지 않으므로 여기서는 싣지 않는다(네트워크 절약).
     """
     sig = np.asarray(recent)[::3]  # 5초 버퍼를 1/3로 다운샘플(네트워크 절약)
+    spec = np.asarray(result["spectrogram_db"], dtype=float)
     filt = result["filtered_signal"]
     return {
         "ready": True,
@@ -147,6 +149,7 @@ def _payload(result, recent, clf):
         "probs": result["probs"],
         "classes": list(clf.classes),
         "signal": [round(float(v), 5) for v in sig],
+        "spec": [[round(float(x), 1) for x in row] for row in spec],  # (주파수 x 시간)
         "std": round(float(np.std(filt)), 4),
         "p2p": round(float(np.max(filt) - np.min(filt)), 4),
         # 실제로 초당 몇 샘플을 읽고 있는지. 명목(250Hz)보다 많이 낮으면 필터/스펙트로그램이

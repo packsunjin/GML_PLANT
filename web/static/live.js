@@ -96,6 +96,42 @@
     });
   }
 
+  // ── 그리기: 스펙트로그램 ─────────────────────────────────────────
+  // 픽셀 방식 모델은 이 이미지로 직접 분류하고, 특징 방식도 여기서 특징을 뽑는다 —
+  // 장식이 아니라 실제 분류 입력이라 화면에 그대로 보여준다.
+  var VIRIDIS = [[16, 24, 20], [24, 70, 60], [32, 130, 96], [120, 190, 110], [224, 232, 150]];
+  function ramp(t) {
+    t = Math.max(0, Math.min(1, t)) * 4;
+    var k = Math.floor(t), f = t - k, a = VIRIDIS[k], b = VIRIDIS[Math.min(4, k + 1)];
+    return "rgb(" + ((a[0] + (b[0] - a[0]) * f) | 0) + "," +
+                    ((a[1] + (b[1] - a[1]) * f) | 0) + "," +
+                    ((a[2] + (b[2] - a[2]) * f) | 0) + ")";
+  }
+
+  function drawSpec(spec) {
+    if (!spec || !spec.length) return;
+    var rows = spec.length, cols = spec[0].length;
+    var lo = Infinity, hi = -Infinity;
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var v = spec[r][c];
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+    }
+    var span = (hi - lo) || 1e-6;
+    $$('[data-live="spec"]').forEach(function (cv) {
+      var ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
+      var cw = w / cols, ch = h / rows;
+      for (var r2 = 0; r2 < rows; r2++) {
+        for (var c2 = 0; c2 < cols; c2++) {
+          ctx.fillStyle = ramp((spec[r2][c2] - lo) / span);
+          ctx.fillRect(c2 * cw, h - (r2 + 1) * ch, Math.ceil(cw), Math.ceil(ch));
+        }
+      }
+    });
+  }
+
   // ── 적용 ─────────────────────────────────────────────────────────
   function apply(d) {
     if (!d || !d.ready) {
@@ -165,6 +201,7 @@
       if (waveBuf.length > WAVE_MAX) waveBuf = waveBuf.slice(-WAVE_MAX);
       drawWave();
     }
+    if (!paused) drawSpec(d.spec);
 
     // 신호 통계
     var f = function (v, unit) { return v == null ? "—" : v + (unit || ""); };
@@ -194,10 +231,16 @@
       if (state === "자극" && i % 37 === 3) s += 0.085;
       signal.push(s);
     }
+    var spec = [];
+    for (var r = 0; r < 26; r++) {
+      var row = [];
+      for (var c = 0; c < 22; c++) row.push(-18 - r * 2.1 + Math.sin(c / 3 + t) * 3 + Math.random() * 4);
+      spec.push(row);
+    }
     var arr = signal.slice();
     var mean = arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
     var std = Math.sqrt(arr.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / arr.length);
-    return { ready: true, state: state, proba: top, probs: probs, signal: signal,
+    return { ready: true, state: state, proba: top, probs: probs, signal: signal, spec: spec,
              std: +std.toFixed(4),
              p2p: +(Math.max.apply(null, arr) - Math.min.apply(null, arr)).toFixed(4),
              sample_rate: 250, actual_rate: 250,
