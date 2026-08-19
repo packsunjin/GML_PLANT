@@ -4,347 +4,173 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>초록말 · 실시간 식물 상태</title>
-<link rel="stylesheet" href="/static/app.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <link rel="stylesheet" href="/static/ui.css">
 </head>
-<body class="bg-background text-foreground">
+<body>
 
-<div class="mx-auto w-full max-w-6xl space-y-5 p-4 md:p-8">
+<h1>초록말 · 실시간 식물 상태</h1>
+<p>
+  <span data-live="source">연결 확인 중</span> ·
+  <span data-live="rate" title="실제 초당 샘플 수. 명목 250Hz보다 크게 낮으면 정확도가 떨어집니다.">— Hz</span>
+</p>
 
-  <!-- 헤더 -->
-  <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <div class="flex items-center gap-3">
-      <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary shadow-soft">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#eaf5e6" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path>
-          <path d="M2 21c0-3 1.85-5.36 5.08-6"></path>
-        </svg>
-      </span>
-      <div>
-        <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-subtle">Plant translator</p>
-        <h1 class="text-xl font-extrabold tracking-tight text-foreground md:text-2xl">실시간 식물 상태</h1>
-      </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="flex items-center gap-2 rounded-2xl border border-border bg-card px-3.5 py-2 text-xs font-bold text-secondary-foreground shadow-soft">
-        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-signal"></span><span data-live="source">연결 확인 중</span>
-      </span>
-      <span class="rounded-2xl border border-border bg-card px-3.5 py-2 text-xs font-bold tabular-nums text-secondary-foreground shadow-soft"
-            data-live="rate" title="실제 초당 샘플 수. 명목 250Hz보다 크게 낮으면 정확도가 떨어집니다.">— Hz</span>
-    </div>
-  </header>
+<hr>
 
-  <!-- 모드 전환 (시뮬레이션일 때만 활성) -->
-  <section class="flex flex-wrap items-center gap-2 rounded-3xl border border-border bg-card px-4 py-3 shadow-soft">
-    <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">모드</span>
-    <div class="flex flex-wrap gap-1.5" data-mode="buttons">
-      <button type="button" data-mode-set="정상"
-              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">정상</button>
-      <button type="button" data-mode-set="수분부족"
-              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">수분부족</button>
-      <button type="button" data-mode-set="자극"
-              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">자극</button>
-      <button type="button" data-mode-set="순환"
-              class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">순환</button>
-    </div>
-    <span class="text-[11px] font-medium text-subtle" data-mode="hint">확인 중…</span>
-    <span style="flex:1"></span>
-    <span data-job="badge" style="display:none"
-          class="rounded-xl bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground">작업 중…</span>
-    <button type="button" data-job="stop"
-            class="rounded-xl px-3 py-1.5 text-[11px] font-bold transition"
-            style="display:none;background:var(--destructive);color:#fff">■ 중지</button>
-    <button type="button" data-auth="button"
-            class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">🔒 관리자</button>
-  </section>
+<h2>모드</h2>
+<p>
+  <button type="button" data-mode-set="정상">정상</button>
+  <button type="button" data-mode-set="수분부족">수분부족</button>
+  <button type="button" data-mode-set="자극">자극</button>
+  <button type="button" data-mode-set="순환">순환</button>
+</p>
+<p data-mode="hint">확인 중…</p>
+<p>
+  <span data-job="badge" hidden>작업 중…</span>
+  <button type="button" data-job="stop" hidden>■ 중지</button>
+  <button type="button" data-auth="button">🔒 관리자</button>
+</p>
 
-  <!-- 관리자 로그인 -->
-  <div data-auth="modal" style="display:none;position:fixed;inset:0;z-index:70;
-       background:rgba(15,25,18,.55);align-items:center;justify-content:center;padding:24px">
-    <form data-auth="form" class="rounded-3xl bg-card p-6 shadow-soft" style="width:min(360px,92vw)">
-      <p class="text-sm font-bold text-foreground" data-auth="title">관리자 로그인</p>
-      <p class="mt-1 text-[11px] text-subtle" data-auth="desc">
-        수집 · 변환 · 학습 · 삭제는 관리자만 할 수 있어요.
-      </p>
-      <input type="password" data-auth="pw" autocomplete="current-password" placeholder="비밀번호"
-             class="mt-4 w-full rounded-xl border border-border bg-muted px-3 py-2 text-sm font-bold text-secondary-foreground">
-      <p class="mt-2 text-[11px] font-medium" data-auth="msg" style="min-height:1em"></p>
-      <div class="mt-3 flex gap-2">
-        <button type="submit" data-auth="submit"
-                class="flex-1 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition">확인</button>
-        <button type="button" data-auth="cancel"
-                class="rounded-xl bg-muted px-3 py-2 text-xs font-bold text-secondary-foreground transition hover:bg-border">닫기</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- 관리자 패널 (로그인해야 보임). 안에서 탭으로 나뉜다. -->
-  <section data-admin="panel" style="display:none"
-           class="flex flex-col gap-4 rounded-3xl border border-border bg-card px-5 py-4 shadow-soft">
-    <div class="flex flex-wrap items-center gap-2">
-      <div class="flex flex-wrap gap-1.5">
-        <button type="button" data-admin-tab="collect"
-                class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">1 · 수집</button>
-        <button type="button" data-admin-tab="prep"
-                class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">2 · 변환</button>
-        <button type="button" data-admin-tab="train"
-                class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">3 · 학습</button>
-        <button type="button" data-admin-tab="files"
-                class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">자료</button>
-        <button type="button" data-admin-tab="sensor"
-                class="rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">센서</button>
-      </div>
-      <span style="flex:1"></span>
-      <span class="text-[11px] font-medium text-subtle" data-admin="summary"></span>
-    </div>
-
-    <!-- 1 · 수집 -->
-    <div data-admin-pane="collect" class="flex flex-col gap-2.5">
-      <p class="text-[11px] text-subtle">측정할 상태를 고르고 <b>측정 시작</b>을 누르세요. 이미 모은 상태는 덮어써요.</p>
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="text-[11px] font-medium text-subtle">상태</span>
-        <div class="flex flex-wrap gap-1.5" data-job="collect-buttons"></div>
-        <label class="flex items-center gap-1.5 text-[11px] font-medium text-subtle">
-          길이
-          <input type="number" data-job="duration" value="30" min="0" max="600" step="5"
-                 class="w-16 rounded-lg border border-border bg-muted px-2 py-1 text-right text-xs font-bold text-secondary-foreground">
-          초
-        </label>
-        <label class="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-subtle">
-          <input type="checkbox" data-job="unlimited"> 중지할 때까지
-        </label>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button type="button" data-job="collect-start"
-                class="rounded-xl bg-primary px-4 py-1.5 text-xs font-bold text-primary-foreground transition">▶ 측정 시작</button>
-        <span class="text-[11px] font-medium text-subtle" data-job="collect-hint">상태를 먼저 골라주세요</span>
-      </div>
-    </div>
-
-    <!-- 2 · 변환 -->
-    <div data-admin-pane="prep" style="display:none" class="flex flex-col gap-2.5">
-      <p class="text-[11px] text-subtle">모은 신호를 스펙트로그램 이미지로 바꿉니다. 상태별로 따로 할 수 있어요.</p>
-      <div class="flex flex-wrap gap-1.5" data-job="prep-buttons"></div>
-    </div>
-
-    <!-- 3 · 학습 -->
-    <div data-admin-pane="train" style="display:none" class="flex flex-col gap-3">
-      <p class="text-[11px] text-subtle">데이터가 갖춰진 과제만 고를 수 있어요. 학습이 끝나면 새 모델이 바로 적용됩니다.</p>
-
-      <!-- 상태별 변환 현황 -->
-      <div class="flex flex-wrap gap-1.5" data-job="train-status"></div>
-
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="text-[11px] font-medium text-subtle">과제</span>
-        <div class="flex flex-wrap gap-1.5" data-job="task-buttons"></div>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="text-[11px] font-medium text-subtle">방식</span>
-        <div class="flex flex-wrap gap-1.5" data-job="mode-buttons"></div>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button type="button" data-job="train"
-                class="rounded-xl bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground transition">▶ 학습 시작</button>
-        <span class="text-[11px] font-medium text-subtle" data-job="train-hint">과제를 먼저 골라주세요</span>
-      </div>
-
-      <!-- 최근 학습 결과 -->
-      <div class="flex flex-col gap-1.5 border-t border-border pt-2.5">
-        <p class="text-[11px] font-bold text-secondary-foreground">최근 학습 결과</p>
-        <div data-job="train-history" class="flex flex-col gap-1">
-          <p class="text-[11px] text-subtle">아직 학습 기록이 없어요</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 자료 -->
-    <div data-admin-pane="files" style="display:none" class="flex flex-col gap-2.5">
-      <div class="flex flex-wrap items-center gap-2">
-        <div class="flex flex-wrap gap-1.5" data-files="tabs"></div>
-        <span style="flex:1"></span>
-        <button type="button" data-files="refresh"
-                class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border">새로고침</button>
-      </div>
-      <!-- 스펙트로그램 탭에서만 나오는 상태별 필터 -->
-      <div class="flex flex-wrap gap-1.5" data-files="subtabs" style="display:none"></div>
-      <div class="flex flex-wrap items-center gap-2">
-        <label class="flex cursor-pointer items-center gap-1.5 rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground">
-          <input type="checkbox" data-files="all"> 모두 선택
-        </label>
-        <span class="text-[11px] font-medium text-subtle" data-files="count">0개 선택</span>
-        <span style="flex:1"></span>
-        <!-- 일반 탭에서는 휴지통으로, 휴지통 탭에서는 복원/완전삭제 버튼이 나온다 -->
-        <button type="button" data-files="restore" style="display:none"
-                class="rounded-xl bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground transition">되돌리기</button>
-        <button type="button" data-files="delete"
-                class="rounded-xl px-3 py-1.5 text-[11px] font-bold transition"
-                style="background:var(--destructive);color:#fff">휴지통으로</button>
-      </div>
-      <p class="text-[11px] font-medium text-subtle" data-files="note"></p>
-      <div data-files="list" style="max-height:320px;overflow:auto"
-           class="rounded-2xl bg-muted px-3 py-2"></div>
-      <p class="text-[11px] font-medium text-subtle" data-files="hint"></p>
-    </div>
-
-    <!-- 센서 -->
-    <div data-admin-pane="sensor" style="display:none" class="flex flex-col gap-2.5">
-      <p class="text-[11px] text-subtle">온·습도가 안 잡히면 진단부터. 토양수분은 여기서 바로 보정할 수 있어요.</p>
-      <div class="flex flex-wrap items-center gap-2">
-        <button type="button" data-job="sensors"
-                class="rounded-xl bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground transition">진단하기</button>
-        <button type="button" data-cal="wet"
-                class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border"
-                title="센서를 물(또는 젖은 흙)에 담근 상태에서 누르세요">지금이 젖음(100%)</button>
-        <button type="button" data-cal="dry"
-                class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground transition hover:bg-border"
-                title="센서를 공기 중(마른 상태)에 둔 채 누르세요">지금이 마름(0%)</button>
-        <span class="text-[11px] font-medium text-subtle" data-job="sensor-hint">온·습도가 안 잡히면 눌러보세요</span>
-      </div>
-      <pre data-job="sensor-log" style="display:none;white-space:pre-wrap;word-break:break-all"
-           class="rounded-2xl bg-muted px-4 py-3 text-[11px] leading-relaxed text-secondary-foreground"></pre>
-    </div>
-
-    <!-- 실행 상태 + 로그 (어느 탭에서든 같이 보임) -->
-    <div class="flex flex-col gap-2 border-t border-border pt-3">
-      <p class="text-[11px] font-medium text-subtle" data-job="hint">준비됐어요.</p>
-      <pre data-job="log"
-           style="display:none;max-height:240px;overflow:auto;white-space:pre-wrap;word-break:break-all"
-           class="rounded-2xl bg-muted px-4 py-3 text-[11px] leading-relaxed text-secondary-foreground"></pre>
-    </div>
-  </section>
-
-  <!-- 이미지 미리보기 -->
-  <div data-files="preview" style="display:none;position:fixed;inset:0;z-index:60;
-       background:rgba(15,25,18,.55);align-items:center;justify-content:center;padding:24px">
-    <div class="rounded-3xl bg-card p-4 shadow-soft" style="max-width:min(760px,92vw)">
-      <div class="mb-3 flex items-center gap-3">
-        <span class="text-sm font-bold text-foreground" data-files="preview-name"></span>
-        <span style="flex:1"></span>
-        <a data-files="preview-dl" href="#" download
-           class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground">내려받기</a>
-        <button type="button" data-files="preview-close"
-                class="rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground">닫기</button>
-      </div>
-      <!-- 스펙트로그램 원본이 224px라 그대로 두면 너무 작다. 폭에 맞춰 키우고
-           확대 시 뭉개지지 않도록 픽셀 보간을 끈다. -->
-      <img data-files="preview-img" alt="" style="width:100%;max-height:70vh;object-fit:contain;
-           display:block;image-rendering:pixelated;border-radius:16px">
-    </div>
-  </div>
-
-  <!-- 경고 배너 (정상이 아닐 때만) -->
-  <section data-live="alert-banner" style="display:none"
-           class="flex items-center gap-3 rounded-3xl border px-5 py-4">
-    <span class="text-lg" data-live="alert-icon">⚡</span>
-    <p class="text-sm font-medium text-muted-foreground" data-live="alert-text"></p>
-  </section>
-
-  <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
-
-    <!-- 상태 원 -->
-    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft md:p-8 lg:col-span-7">
-      <div class="flex flex-col items-center">
-
-      <div class="flex w-full items-center justify-center gap-4">
-        <div class="relative flex shrink-0 items-center justify-center" data-state-scope
-             style="width:min(300px,72vw);aspect-ratio:1;--state:var(--primary);--state-deep:var(--primary-hover);--state-soft:var(--primary-soft)">
-          <svg viewBox="0 0 36 36" class="h-full w-full -rotate-90">
-            <defs>
-              <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="var(--state)"></stop>
-                <stop offset="100%" stop-color="var(--state-deep)"></stop>
-              </linearGradient>
-            </defs>
-            <circle cx="18" cy="18" r="12.9" fill="var(--state-soft)"></circle>
-            <circle cx="18" cy="18" r="14.4" fill="none" stroke="url(#ringGrad)" stroke-width="3"></circle>
-            <circle cx="18" cy="18" r="17.3" fill="none" stroke="var(--border)" stroke-width="0.8"></circle>
-            <circle cx="18" cy="18" r="17.3" fill="none" stroke="var(--state-deep)" data-live="ring"
-                    stroke-width="0.8" stroke-linecap="round" stroke-opacity="0.42"
-                    stroke-dasharray="0 108.7"></circle>
-          </svg>
-          <div class="absolute flex flex-col items-center">
-            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">분류 결과</span>
-            <span class="mt-2 font-black tracking-tight text-foreground" data-live="state"
-                  style="font-size:clamp(26px,4.4vw,42px);white-space:nowrap">대기 중</span>
-            <span class="mt-1.5 text-sm font-bold tabular-nums" data-live="conf" style="color:var(--state-deep)">확신도 —</span>
-            <span class="mt-0.5 text-[11px] font-medium text-subtle" data-live="duration">—</span>
-          </div>
-        </div>
-      </div>
-      </div>
-    </section>
-
-    <!-- 확률 -->
-    <section class="flex flex-col gap-5 lg:col-span-5">
-      <div class="rounded-4xl border border-border bg-card p-6 shadow-soft">
-        <div class="flex items-center justify-between">
-          <div>
-            <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Class probability</span>
-            <h3 class="text-base font-bold text-foreground">상태별 확률</h3>
-          </div>
-        </div>
-        <div class="mt-4 space-y-3" data-live="probs">
-          <div data-cls="정상">
-            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-              <span>정상</span><span class="tabular-nums text-foreground" data-val>—</span>
-            </div>
-            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--primary);transition:width .3s"></div>
-            </div>
-          </div>
-          <div data-cls="수분부족">
-            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-              <span>수분부족</span><span class="tabular-nums text-foreground" data-val>—</span>
-            </div>
-            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--water);transition:width .3s"></div>
-            </div>
-          </div>
-          <div data-cls="자극">
-            <div class="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-              <span>자극</span><span class="tabular-nums text-foreground" data-val>—</span>
-            </div>
-            <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div class="h-full rounded-full" data-bar style="width:0%;background:var(--warning);transition:width .3s"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 전위신호 -->
-    <section class="rounded-4xl border border-border bg-card p-6 shadow-soft" style="grid-column:1/-1">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">AD8232 biopotential</span>
-          <h3 class="text-base font-bold text-foreground">전위신호 · 실시간</h3>
-        </div>
-        <button type="button" data-act="pause"
-                class="rounded-xl bg-muted px-3 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border">일시정지</button>
-      </div>
-      <div class="mt-4 overflow-hidden rounded-3xl bg-signal-bg p-4">
-        <canvas data-live="wave" width="1120" height="300" class="w-full" style="height:220px"></canvas>
-        <div class="mt-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] text-signal/70">
-          <span data-live="wave-meta">250 SPS · BAND 0.5–45 Hz</span>
-          <span data-live="wave-peak">PEAK —</span>
-        </div>
-      </div>
-      <div class="mt-4 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
-        <div class="rounded-2xl bg-muted px-3 py-2.5">
-          <p class="text-[10px] font-medium text-subtle">표준편차</p>
-          <p class="text-sm font-bold tabular-nums text-foreground" data-live="std">—</p>
-        </div>
-        <div class="rounded-2xl bg-muted px-3 py-2.5">
-          <p class="text-[10px] font-medium text-subtle">피크-피크</p>
-          <p class="text-sm font-bold tabular-nums text-foreground" data-live="p2p">—</p>
-        </div>
-      </div>
-    </section>
-  </div>
-
+<!-- 관리자 로그인 (인라인, 평소엔 숨김) -->
+<div data-auth="modal" hidden>
+  <form data-auth="form">
+    <p><b data-auth="title">관리자 로그인</b></p>
+    <p data-auth="desc">수집 · 변환 · 학습 · 삭제는 관리자만 할 수 있어요.</p>
+    <p>
+      <input type="password" data-auth="pw" autocomplete="current-password" placeholder="비밀번호">
+      <button type="submit" data-auth="submit">확인</button>
+      <button type="button" data-auth="cancel">닫기</button>
+    </p>
+    <p data-auth="msg"></p>
+  </form>
 </div>
+
+<!-- 관리자 패널 (로그인해야 보임). 안에서 탭으로 나뉜다. -->
+<section data-admin="panel" style="display:none">
+  <hr>
+  <h2>관리자</h2>
+  <p>
+    <button type="button" data-admin-tab="collect">1 · 수집</button>
+    <button type="button" data-admin-tab="prep">2 · 변환</button>
+    <button type="button" data-admin-tab="train">3 · 학습</button>
+    <button type="button" data-admin-tab="files">자료</button>
+    <button type="button" data-admin-tab="sensor">센서</button>
+  </p>
+  <p data-admin="summary"></p>
+
+  <!-- 1 · 수집 -->
+  <div data-admin-pane="collect">
+    <p>측정할 상태를 고르고 <b>측정 시작</b>을 누르세요. 이미 모은 상태는 덮어써요.</p>
+    <p>
+      상태:
+      <span data-job="collect-buttons"></span>
+    </p>
+    <p>
+      <label>길이 <input type="number" data-job="duration" value="30" min="0" max="600" step="5" size="4"> 초</label>
+      <label><input type="checkbox" data-job="unlimited"> 중지할 때까지</label>
+    </p>
+    <p>
+      <button type="button" data-job="collect-start">▶ 측정 시작</button>
+      <span data-job="collect-hint">상태를 먼저 골라주세요</span>
+    </p>
+  </div>
+
+  <!-- 2 · 변환 -->
+  <div data-admin-pane="prep" style="display:none">
+    <p>모은 신호를 스펙트로그램 이미지로 바꿉니다. 상태별로 따로 할 수 있어요.</p>
+    <p data-job="prep-buttons"></p>
+  </div>
+
+  <!-- 3 · 학습 -->
+  <div data-admin-pane="train" style="display:none">
+    <p>데이터가 갖춰진 과제만 고를 수 있어요. 학습이 끝나면 새 모델이 바로 적용됩니다.</p>
+    <p data-job="train-status"></p>
+    <p>과제: <span data-job="task-buttons"></span></p>
+    <p>방식: <span data-job="mode-buttons"></span></p>
+    <p>
+      <button type="button" data-job="train">▶ 학습 시작</button>
+      <span data-job="train-hint">과제를 먼저 골라주세요</span>
+    </p>
+    <hr>
+    <p><b>최근 학습 결과</b></p>
+    <div data-job="train-history"><p>아직 학습 기록이 없어요</p></div>
+  </div>
+
+  <!-- 자료 -->
+  <div data-admin-pane="files" style="display:none">
+    <p data-files="tabs"></p>
+    <button type="button" data-files="refresh">새로고침</button>
+    <!-- 스펙트로그램 탭에서만 나오는 상태별 필터 -->
+    <p data-files="subtabs" style="display:none"></p>
+    <p>
+      <label><input type="checkbox" data-files="all"> 모두 선택</label>
+      <span data-files="count">0개 선택</span>
+      <!-- 일반 탭에서는 휴지통으로, 휴지통 탭에서는 복원/완전삭제 버튼이 나온다 -->
+      <button type="button" data-files="restore" style="display:none">되돌리기</button>
+      <button type="button" data-files="delete">휴지통으로</button>
+    </p>
+    <p data-files="note"></p>
+    <div data-files="list" style="max-height:320px;overflow:auto"></div>
+    <p data-files="hint"></p>
+
+    <!-- 이미지 미리보기 (인라인, 평소엔 숨김) -->
+    <div data-files="preview" hidden>
+      <p>
+        <b data-files="preview-name"></b>
+        <a data-files="preview-dl" href="#" download>내려받기</a>
+        <button type="button" data-files="preview-close">닫기</button>
+      </p>
+      <img data-files="preview-img" alt="" style="max-width:100%;image-rendering:pixelated">
+    </div>
+  </div>
+
+  <!-- 센서 -->
+  <div data-admin-pane="sensor" style="display:none">
+    <p>온·습도가 안 잡히면 진단부터. 토양수분은 여기서 바로 보정할 수 있어요.</p>
+    <p>
+      <button type="button" data-job="sensors">진단하기</button>
+      <button type="button" data-cal="wet" title="센서를 물(또는 젖은 흙)에 담근 상태에서 누르세요">지금이 젖음(100%)</button>
+      <button type="button" data-cal="dry" title="센서를 공기 중(마른 상태)에 둔 채 누르세요">지금이 마름(0%)</button>
+      <span data-job="sensor-hint">온·습도가 안 잡히면 눌러보세요</span>
+    </p>
+    <pre data-job="sensor-log" style="display:none"></pre>
+  </div>
+
+  <!-- 실행 상태 + 로그 (어느 탭에서든 같이 보임) -->
+  <hr>
+  <p data-job="hint">준비됐어요.</p>
+  <pre data-job="log" style="display:none;max-height:240px;overflow:auto"></pre>
+</section>
+
+<hr>
+
+<!-- 경고 (정상이 아닐 때만) -->
+<p data-live="alert-banner" hidden>
+  <span data-live="alert-icon">⚡</span>
+  <span data-live="alert-text"></span>
+</p>
+
+<h2>분류 결과</h2>
+<p>
+  상태: <b data-live="state">대기 중</b> ·
+  <span data-live="conf">확신도 —</span> ·
+  <span data-live="duration">—</span>
+</p>
+
+<h3>상태별 확률</h3>
+<p data-cls="정상">정상 <progress data-bar value="0" max="100"></progress> <span data-val>—</span></p>
+<p data-cls="수분부족">수분부족 <progress data-bar value="0" max="100"></progress> <span data-val>—</span></p>
+<p data-cls="자극">자극 <progress data-bar value="0" max="100"></progress> <span data-val>—</span></p>
+
+<h3>전위신호 · 실시간 <small>(AD8232 biopotential)</small></h3>
+<button type="button" data-act="pause">일시정지</button>
+<p>
+  <canvas data-live="wave" width="1120" height="300" style="width:100%;height:220px"></canvas>
+</p>
+<p>
+  <span data-live="wave-meta">250 SPS · BAND 0.5–45 Hz</span> ·
+  <span data-live="wave-peak">PEAK —</span>
+</p>
+<p>표준편차: <span data-live="std">—</span> · 피크-피크: <span data-live="p2p">—</span></p>
 
 <script src="/static/live.js"></script>
 </body>

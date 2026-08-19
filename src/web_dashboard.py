@@ -361,7 +361,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     def _asset_version():
         stamps = []
-        for name in ("live.js", "ui.css", "app.css"):
+        for name in ("live.js", "ui.css"):
             p = os.path.join(web_dir, "static", name) if web_dir else None
             if p and os.path.isfile(p):
                 stamps.append(int(os.path.getmtime(p)))
@@ -374,7 +374,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         with open(os.path.join(web_dir, "chorokmal.html"), encoding="utf-8") as f:
             html = f.read()
         v = _asset_version()
-        for name in ("live.js", "ui.css", "app.css"):
+        for name in ("live.js", "ui.css"):
             html = html.replace(f'"/static/{name}"', f'"/static/{name}?v={v}"')
         resp = app.make_response(html)
         resp.headers["Content-Type"] = "text/html; charset=utf-8"

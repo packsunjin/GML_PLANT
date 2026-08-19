@@ -1,60 +1,31 @@
-/* 초록말 대시보드 보정 스타일
-   (Lovable 빌드의 컴파일된 Tailwind에 없는 규칙만 여기서 채웁니다) */
-
-:root {
-  /* 수분 관련 상태색 — 원본 팔레트에 파랑 계열이 없어 여기서 정의 */
-  --water: oklch(56% .135 247);
-  --water-deep: oklch(45% .13 250);
-  --water-soft: oklch(95% .03 247);
-  --water-soft-border: oklch(88% .055 247);
-}
+/* 초록말 대시보드 — 순수 텍스트 나열 화면.
+   디자인 시스템(app.css) 없이 브라우저 기본 글꼴/버튼/입력창을 그대로 쓴다.
+   여기 있는 규칙은 최소한의 가독성 보정뿐이다. */
 
 body {
-  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
-               'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+  font-family: system-ui, -apple-system, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  max-width: 640px;
+  margin: 24px auto;
+  padding: 0 16px;
+  line-height: 1.7;
 }
 
-/* 화면 전환 */
-.screen { display: none; }
-.screen.is-on { display: block; }
-[data-go], [data-missing] { cursor: pointer; }
+h1 { font-size: 1.3em; }
+h2 { font-size: 1.1em; margin-top: 1.4em; }
+h3 { font-size: 1em; margin-top: 1.2em; }
 
-/* 선택된 탭이 hover 시 배경이 씻겨 흰 글씨만 남는 것 방지 */
-aside nav [data-go].bg-primary:hover { background-color: var(--primary-hover); }
-nav.fixed [data-go]:hover { color: var(--primary); }
+button { margin: 2px 6px 2px 0; }
+input[type="password"], input[type="number"] { font: inherit; }
 
-/* 원본은 콘텐츠를 max-w-6xl로 묶어 넓은 화면에서 좌우가 비어 보입니다 */
-main .max-w-6xl { max-width: min(1560px, 100%); }
-
-/* 빌드된 Tailwind에 sm:hidden이 없어, 좁은 화면 대체 표시는 여기서 처리 */
-[data-narrow-only] { display: none; }
-@media (max-width: 767px) {
-  [data-narrow-only] { display: block; }
-  [data-wide-only] { display: none; }
+pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #f2f2f2;
+  padding: 8px;
+  font-size: 12px;
 }
 
-/* ── 평범한 디자인으로 정리 ──────────────────────────────────────
-   Lovable가 만든 원본은 큰 둥근 모서리 + 부드러운 그림자 + 알약 모양
-   버튼 위주였다. 그런 "디자인된" 느낌 대신 각지고 테두리만 있는
-   평범한 카드/버튼으로 바꾼다. rounded-full(원형 점·게이지 캡)만
-   그대로 두고 나머지 모서리 반경은 다 줄인다. */
-.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-4xl,
-.rounded-lg, .rounded-md {
-  border-radius: 4px;
-}
+/* 지금 골라진 버튼(모드/탭/과제 등) 표시 — 색 대신 굵게+밑줄만 사용 */
+button[aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
 
-/* 그림자 대신 얇은 테두리로 카드를 구분한다 */
-.shadow-soft { box-shadow: none; }
-section.shadow-soft, div.shadow-soft {
-  border: 1px solid var(--border);
-}
-
-/* 버튼처럼 쓰이는 요소(배경만 있고 테두리가 없던 것들)에 테두리를 준다 —
-   그림자 없이도 눌리는 영역이 눈에 보이게 */
-button.bg-muted, button.bg-primary,
-a.bg-muted, a.bg-primary,
-label.bg-muted {
-  border: 1px solid var(--border);
-  box-shadow: none;
-}
-button.bg-primary, a.bg-primary { border-color: var(--primary); }
+canvas { max-width: 100%; }

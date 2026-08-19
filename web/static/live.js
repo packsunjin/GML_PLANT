@@ -7,34 +7,22 @@
   "use strict";
 
   var POLL_MS = 500;
-  var RING_LEN = 108.7;          // r=17.3 원의 둘레
   var WAVE_MAX = 1500;           // 파형 롤링 버퍼 길이
 
   var STATE = {
-    "정상":     { c: "var(--primary)", d: "var(--primary-hover)", s: "var(--primary-soft)",
-                  hex: "#2f7d45", alert: null },
-    "수분부족": { c: "var(--water)", d: "var(--water-deep)", s: "var(--water-soft)",
-                  hex: "#2f6fd0",
-                  alert: { icon: "💧", text: "수분부족 신호가 이어지고 있어요. 겉흙이 말랐다면 물을 주세요.",
-                           bg: "var(--water-soft)", border: "var(--water-soft-border)" } },
-    "자극":     { c: "var(--warning)", d: "var(--warning-foreground)", s: "var(--warning-soft)",
-                  hex: "#b8860b",
-                  alert: { icon: "⚡", text: "잎에 닿는 자극이 감지됐어요. 순간적인 반응이라 곧 회복됩니다.",
-                           bg: "var(--warning-soft)", border: "var(--warning-soft-border)" } }
+    "정상":     { alert: null },
+    "수분부족": { alert: { icon: "💧", text: "수분부족 신호가 이어지고 있어요. 겉흙이 말랐다면 물을 주세요." } },
+    "자극":     { alert: { icon: "⚡", text: "잎에 닿는 자극이 감지됐어요. 순간적인 반응이라 곧 회복됩니다." } }
   };
 
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var live = function (n) { return $('[data-live="' + n + '"]'); };
 
-  // 활성/비활성 버튼 색. bg-primary만 켜고 bg-muted/text-secondary-foreground를 그대로 두면
-  // 초록 배경 위에 초록 글자가 남아 글씨가 안 보인다. 네 클래스를 항상 같이 뒤집는다.
+  // 지금 선택된 버튼 표시: 색 대신 aria-pressed(굵게+밑줄, ui.css에서 정의)만 사용
   function setActive(btn, on) {
     if (!btn) return;
-    btn.classList.toggle("bg-primary", on);
-    btn.classList.toggle("text-primary-foreground", on);
-    btn.classList.toggle("bg-muted", !on);
-    btn.classList.toggle("text-secondary-foreground", !on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
   }
   var setText = function (n, v) { var el = live(n); if (el) el.textContent = v; };
 
@@ -128,21 +116,14 @@
     if (rateEl) {
       var nominal = d.sample_rate || 250;
       if (typeof d.actual_rate === "number" && isFinite(d.actual_rate)) {
-        rateEl.textContent = d.actual_rate.toFixed(0) + " Hz";
-        rateEl.style.color = d.actual_rate < nominal * 0.9 ? "var(--destructive)" : "";
+        var low = d.actual_rate < nominal * 0.9;
+        rateEl.textContent = (low ? "⚠ " : "") + d.actual_rate.toFixed(0) + " Hz";
       } else {
         rateEl.textContent = "— Hz";
-        rateEl.style.color = "";
       }
     }
 
     var st = STATE[d.state] || STATE["정상"];
-    var scope = $("[data-state-scope]");
-    if (scope) {
-      scope.style.setProperty("--state", st.c);
-      scope.style.setProperty("--state-deep", st.d);
-      scope.style.setProperty("--state-soft", st.s);
-    }
 
     if (d.state !== lastState) {
       lastState = d.state;
@@ -154,19 +135,13 @@
     setText("conf", conf == null ? "확신도 —" : "확신도 " + conf.toFixed(1) + "%");
     setText("duration", since(stateSince));
 
-    var ring = live("ring");
-    if (ring) {
-      ring.setAttribute("stroke-dasharray",
-        ((conf || 0) / 100 * RING_LEN).toFixed(1) + " " + RING_LEN);
-    }
-
-    // 확률 막대
+    // 확률
     if (d.probs) {
       $$("[data-cls]").forEach(function (row) {
         var p = d.probs[row.dataset.cls];
         var pct = p == null ? 0 : p * 100;
         var bar = $("[data-bar]", row), val = $("[data-val]", row);
-        if (bar) bar.style.width = pct.toFixed(1) + "%";
+        if (bar) bar.value = pct;
         if (val) val.textContent = pct.toFixed(1) + "%";
       });
     }
@@ -175,13 +150,11 @@
     var banner = live("alert-banner");
     if (banner) {
       if (st.alert) {
-        banner.style.display = "flex";
-        banner.style.background = st.alert.bg;
-        banner.style.borderColor = st.alert.border;
+        banner.hidden = false;
         setText("alert-icon", st.alert.icon);
         setText("alert-text", st.alert.text);
       } else {
-        banner.style.display = "none";
+        banner.hidden = true;
       }
     }
 
@@ -360,10 +333,8 @@
             var collected = o.collected.indexOf(s) >= 0;
             var n = (o.converted || {})[s] || 0;
             var span = document.createElement("span");
-            span.className = "rounded-xl bg-muted px-3 py-1.5 text-[11px] font-bold text-secondary-foreground";
-            span.style.opacity = n > 0 ? "" : "0.5";
             span.textContent = s + ": " + (n > 0 ? "✓ 변환됨 " + n + "장"
-                                           : collected ? "수집됨 · 변환 필요" : "미수집");
+                                           : collected ? "수집됨 · 변환 필요" : "미수집") + "  ·  ";
             statusBox.appendChild(span);
           });
         }
@@ -531,38 +502,26 @@
       .then(function (d) {
         var hist = d.history || [];
         if (!hist.length) {
-          box.innerHTML = '<p class="text-[11px] text-subtle">아직 학습 기록이 없어요</p>';
+          box.innerHTML = "<p>아직 학습 기록이 없어요</p>";
           return;
         }
         box.innerHTML = "";
+        var ul = document.createElement("ul");
         hist.forEach(function (h) {
-          var row = document.createElement("div");
-          row.className = "flex flex-wrap items-center gap-2 rounded-xl bg-muted px-3 py-1.5 text-[11px] font-medium text-secondary-foreground";
           var acc = h.accuracy != null ? Math.round(h.accuracy * 1000) / 10 + "%" : "—";
+          var ok = h.accuracy != null && h.accuracy >= 0.7;
           var when = h.trained_at ? new Date(h.trained_at * 1000).toLocaleString("ko-KR",
                        { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
-          var name = document.createElement("span");
-          name.className = "font-bold";
-          name.textContent = h.task || "";
-          var detail = document.createElement("span");
-          detail.className = "text-subtle";
-          detail.textContent = (h.mode || "") + " · " + (h.best_name || "") +
-                                " · train " + (h.train_n != null ? h.train_n : "?") +
-                                " test " + (h.test_n != null ? h.test_n : "?") +
-                                (h.duration_sec != null ? " · " + Math.round(h.duration_sec) + "초 걸림" : "");
-          var spacer = document.createElement("span");
-          spacer.style.flex = "1";
-          var accSpan = document.createElement("span");
-          accSpan.className = "font-bold";
-          accSpan.style.color = (h.accuracy != null && h.accuracy >= 0.7) ? "var(--primary)" : "var(--destructive)";
-          accSpan.textContent = acc;
-          var whenSpan = document.createElement("span");
-          whenSpan.className = "text-subtle";
-          whenSpan.textContent = when;
-          row.appendChild(name); row.appendChild(detail); row.appendChild(spacer);
-          row.appendChild(accSpan); row.appendChild(whenSpan);
-          box.appendChild(row);
+          var li = document.createElement("li");
+          li.textContent = (h.task || "") + " — " + (h.mode || "") + " · " + (h.best_name || "") +
+                            " · train " + (h.train_n != null ? h.train_n : "?") +
+                            " test " + (h.test_n != null ? h.test_n : "?") +
+                            (h.duration_sec != null ? " · " + Math.round(h.duration_sec) + "초 걸림" : "") +
+                            " · 정확도 " + (ok ? "" : "⚠ ") + acc +
+                            (when ? " · " + when : "");
+          ul.appendChild(li);
         });
+        box.appendChild(ul);
       })
       .catch(function () {});
   }
@@ -713,7 +672,7 @@
     }
     // 관리자 기능은 로그인해야 화면에 나타난다(잠긴 버튼을 보여주지 않는다).
     var panel = $('[data-admin="panel"]');
-    if (panel) panel.style.display = auth.authed ? "flex" : "none";
+    if (panel) panel.style.display = auth.authed ? "block" : "none";
     if (auth.authed) {
       if (!adminTab) showAdminTab(localStorage.getItem("gml.tab") || "collect");
       loadJobOptions();
@@ -728,7 +687,7 @@
       setActive(b, b.dataset.adminTab === name);
     });
     $$("[data-admin-pane]").forEach(function (p) {
-      p.style.display = p.dataset.adminPane === name ? "flex" : "none";
+      p.style.display = p.dataset.adminPane === name ? "block" : "none";
     });
     if (name === "files") loadFiles();
   }
@@ -749,7 +708,7 @@
       : "처음이라 비밀번호를 정해야 해요. 4자 이상으로 정해주세요.";
     aEl("pw").value = "";
     aEl("msg").textContent = "";
-    m.style.display = "flex";
+    m.hidden = false;
     setTimeout(function () { aEl("pw").focus(); }, 50);
   }
 
@@ -757,25 +716,22 @@
     e.preventDefault();
     var pw = aEl("pw").value, msg = aEl("msg");
     var url = auth.configured ? "/api/auth/login" : "/api/auth/setup";
-    msg.style.color = "var(--subtle)";
     msg.textContent = "확인 중…";
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
                  body: JSON.stringify({ password: pw }) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok) {
-          msg.style.color = "var(--destructive)";
-          msg.textContent = d.error || "실패했습니다";
+          msg.textContent = "❌ " + (d.error || "실패했습니다");
           return;
         }
         auth = { configured: d.configured, authed: d.authed };
-        aEl("modal").style.display = "none";
+        aEl("modal").hidden = true;
         renderAuth();
         loadJobOptions();
       })
       .catch(function () {
-        msg.style.color = "var(--destructive)";
-        msg.textContent = "요청을 보내지 못했습니다";
+        msg.textContent = "❌ 요청을 보내지 못했습니다";
       });
   }
 
@@ -870,7 +826,7 @@
       if (grp.states) {
         var keys = Object.keys(grp.states);
         if (specState !== null && keys.indexOf(specState) < 0) specState = null;
-        sub.style.display = "flex";
+        sub.style.display = "block";
         sub.innerHTML = "";
         [["", "전체 " + grp.total]].concat(keys.map(function (k) {
           return [k, k + " " + grp.states[k]];
@@ -878,7 +834,6 @@
           var b = document.createElement("button");
           b.type = "button";
           b.dataset.specState = pair[0];
-          b.className = "rounded-xl px-3 py-1.5 text-[11px] font-bold transition";
           b.textContent = pair[1];
           setActive(b, (specState || "") === pair[0]);
           sub.appendChild(b);
@@ -1009,11 +964,11 @@
   function previewFile(path) {
     var box = fEl("preview");
     if (!box) return;
-    if (!path) { box.style.display = "none"; return; }
+    if (!path) { box.hidden = true; return; }
     fEl("preview-img").src = dlUrl(path, 1);
     fEl("preview-name").textContent = path;
     fEl("preview-dl").href = dlUrl(path);
-    box.style.display = "flex";
+    box.hidden = false;
   }
 
   function picked() {
@@ -1129,9 +1084,7 @@
       } else { openAuth(); }
       return;
     }
-    if (e.target.closest('[data-auth="cancel"]')) { aEl("modal").style.display = "none"; return; }
-    var am = aEl("modal");
-    if (am && am.style.display === "flex" && e.target === am) { am.style.display = "none"; return; }
+    if (e.target.closest('[data-auth="cancel"]')) { aEl("modal").hidden = true; return; }
     if (e.target.closest('[data-job="sensors"]')) { loadSensors(); return; }
     var cal = e.target.closest("[data-cal]");
     if (cal) {
@@ -1164,8 +1117,6 @@
     var openImg = e.target.closest("[data-files-open]");
     if (openImg) { previewFile(openImg.dataset.filesOpen); return; }
     if (e.target.closest('[data-files="preview-close"]')) { previewFile(null); return; }
-    var pv = $('[data-files="preview"]');
-    if (pv && pv.style.display === "flex" && e.target === pv) { previewFile(null); return; }
 
     var pause = e.target.closest('[data-act="pause"]');
     if (pause) {
@@ -1181,7 +1132,7 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       var am = aEl("modal");
-      if (am) am.style.display = "none";
+      if (am) am.hidden = true;
     }
   });
 
