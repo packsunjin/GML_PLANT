@@ -632,9 +632,6 @@
         L.push("온도            : " + (s.temp == null ? "— (온·습도 센서 필요)" : s.temp + " °C"));
         L.push("습도            : " + (s.humidity == null ? "—" : s.humidity + " %") +
                                       (s.humidity_source ? "  (" + s.humidity_source + ")" : ""));
-        L.push("토양수분 전압   : " + (s.moisture_volts == null ? "—" : s.moisture_volts + " V") +
-                                      (s.moisture_error ? "  ← " + s.moisture_error : ""));
-        L.push("보정값          : 젖음 " + s.calibration.wet_v + "V / 마름 " + s.calibration.dry_v + "V");
         if (s.env_method) L.push("읽는 방식        : " +
           (s.env_method === "_IIODht" ? "커널 드라이버 (" + s.iio_device + ")" : "파이썬 (" + s.env_method + ")"));
         if (!s.env_sensor) {
@@ -1129,23 +1126,6 @@
     }
     if (e.target.closest('[data-auth="cancel"]')) { aEl("modal").hidden = true; return; }
     if (e.target.closest('[data-job="sensors"]')) { loadSensors(); return; }
-    var cal = e.target.closest("[data-cal]");
-    if (cal) {
-      var hint = jobEl("sensor-hint");
-      hint.textContent = "보정 중…";
-      fetch("/api/sensors/calibrate", { method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ mark: cal.dataset.cal }) })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (!d.ok) { hint.textContent = "❌ " + (d.error || "보정 실패"); return; }
-          hint.textContent = "✅ " + (d.marked === "wet" ? "젖음" : "마름") +
-                             " = " + d.volts + "V 로 저장했어요";
-          loadSensors();
-        })
-        .catch(function () { hint.textContent = "❌ 보정 요청 실패"; });
-      return;
-    }
 
     // ── 학습 자료 ──
     if (e.target.closest('[data-files="refresh"]')) { loadFiles(); return; }

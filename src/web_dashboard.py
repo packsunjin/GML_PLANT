@@ -76,10 +76,6 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
         ok = True
         if pause_live:
             _pause.set()
-            # 실시간 루프뿐 아니라 이 프로세스의 보조 채널(A1) 읽기도 막아야 한다.
-            # 온·습도 스레드는 DHT 읽기가 실패하면 대체값으로 A1(토양수분)을 읽는데,
-            # 그 순간 ADS1115 의 mux 가 전환되어 수집 중인 A0 스트림이 오염된다.
-            sensor_control.SUSPEND_AUX = True
             time.sleep(0.3)   # 실시간 루프가 대기 상태로 들어갈 여유
         try:
             for name, cmd in steps:
@@ -114,7 +110,6 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
             _job_proc["proc"] = None
             if pause_live:
                 _pause.clear()
-                sensor_control.SUSPEND_AUX = False
             stopped = bool(_job.get("stopping"))
             # 중지된 학습은 모델이 반쯤 저장됐을 수 있으므로 새 모델을 적용하지 않는다.
             if ok and not stopped and on_done is not None:
@@ -465,35 +460,6 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     def api_sensors():
         """센서 진단. 왜 온·습도가 안 잡히는지 브라우저에서 바로 확인한다."""
         return jsonify(sensor_control.sensor_status())
-
-    @app.route("/api/sensors/calibrate", methods=["POST"])
-    @require_admin
-    def api_sensors_calibrate():
-        """토양수분 보정. {"mark":"wet"} 또는 {"mark":"dry"} 를 보내면 지금 전압을
-        그 기준으로 잡는다. wet_v/dry_v를 직접 넣어도 된다."""
-        body = request.get_json(silent=True) or {}
-        mark = body.get("mark")
-        if mark in ("wet", "dry"):
-            _, volts, _why = sensor_control.read_moisture(raw=True)
-            if volts is None:
-                return jsonify({"ok": False, "error": "지금 전압을 읽지 못했습니다"}), 409
-            cal = sensor_control.set_moisture_calibration(
-                wet_v=volts if mark == "wet" else None,
-                dry_v=volts if mark == "dry" else None)
-            print(f"[web] 토양수분 보정: {mark} = {volts:.3f}V")
-            return jsonify({"ok": True, "marked": mark, "volts": round(volts, 3), **cal})
-
-        try:
-            wet = body.get("wet_v")
-            dry = body.get("dry_v")
-            if wet is None and dry is None:
-                return jsonify({"ok": False, "error": "mark 또는 wet_v/dry_v가 필요합니다"}), 400
-            cal = sensor_control.set_moisture_calibration(
-                wet_v=None if wet is None else float(wet),
-                dry_v=None if dry is None else float(dry))
-        except (TypeError, ValueError):
-            return jsonify({"ok": False, "error": "보정값이 숫자가 아닙니다"}), 400
-        return jsonify({"ok": True, **cal})
 
     @app.route("/api/job/stop", methods=["POST"])
     @require_admin

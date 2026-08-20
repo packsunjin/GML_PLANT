@@ -60,25 +60,19 @@ try:
     # 채널 0(A0) 지정. 라이브러리 버전에 따라 ADS.P0가 없을 수 있어(P0는 곧 정수 0) 안전하게 폴백한다.
     _CH0 = getattr(ADS, "P0", 0)
     chan = AnalogIn(ads, _CH0)  # AD8232 출력 -> A0
-    # 아날로그 습도(토양 수분) 센서 -> A1. 안 꽂혀 있어도 읽기는 되므로(값이 뜸)
-    # 실제 사용 여부는 read_moisture()의 범위 검사로 판단한다.
-    _CH1 = getattr(ADS, "P1", 1)
-    moisture_chan = AnalogIn(ads, _CH1)
     HARDWARE_AVAILABLE = True
 except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSError(I2C 없음) 등
     HARDWARE_AVAILABLE = False
-    moisture_chan = None
     _HW_ERR = str(e)
 
 
 # ----------------------------------------------------------------------
 # 온·습도 센서
 # ----------------------------------------------------------------------
-# 세 가지를 모두 지원하고, 붙어 있는 것을 자동으로 골라 쓴다.
+# 둘 다 지원하고, 붙어 있는 것을 자동으로 골라 쓴다.
 #   1) AHT20 / AHT21 (I2C 0x38)  -> 온도 + 공기습도. 권장.
 #   2) DHT22 / DHT11 (GPIO 1선)  -> 온도 + 공기습도.
-#   3) 아날로그 토양수분 (+/-/OUT 3핀, ADS1115 A1) -> 흙 수분만. 온도는 못 잼.
-# 세 개 다 없으면 값이 None이고, 화면에는 "센서 대기 중"으로 나온다.
+# 둘 다 없으면 값이 None이고, 화면에는 "센서 대기 중"으로 나온다.
 ENV_SENSOR = None       # "AHT20" / "DHT22" / None
 ENV_ERROR = None        # 왜 못 잡았는지 (진단용)
 ENV_LAST_ERROR = None   # 마지막 읽기 실패 사유 (센서는 잡혔는데 값이 안 올 때)
@@ -174,80 +168,13 @@ if ENV_SENSOR is None:
                      else f"adafruit_dht 실패({_e2})")
 
 
-# 아날로그 습도(토양 수분) 센서 보정값 -- 실제 센서로 한 번 재보고 맞추세요.
-# 물에 담갔을 때(가장 젖음)와 공기 중(가장 마름)의 전압을 넣으면 됩니다.
-MOISTURE_WET_V = 1.20   # 젖음 = 100%
-MOISTURE_DRY_V = 2.60   # 마름 = 0%
-
-# 웹에서 보정하면 이 파일에 저장해 두고, 다음 실행에서 다시 읽어 쓴다.
-_CALIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "..", "data", "moisture_calibration.json")
-try:
-    import json as _json
-    with open(_CALIB_PATH, encoding="utf-8") as _cf:
-        _c = _json.load(_cf)
-        MOISTURE_WET_V = float(_c.get("wet_v", MOISTURE_WET_V))
-        MOISTURE_DRY_V = float(_c.get("dry_v", MOISTURE_DRY_V))
-except Exception:
-    pass
-
 # 온·습도는 매 요청마다 읽으면(특히 DHT22는 2초 간격 제한) 실패하므로 잠깐 캐시한다.
 _env_cache = {"t": 0.0, "temp": None, "humidity": None}
 ENV_CACHE_SEC = 2.0
 _env_thread = None
 
-
-# ADS1115는 채널이 하나뿐인 ADC를 mux로 돌려쓴다. A0(전위)를 250Hz로 읽는 도중에
-# 누가 A1(토양수분)을 읽으면 mux가 전환되면서 A0 스트림에 엉뚱한 값(주로 0V)이 섞인다.
-# 실제로 이 때문에 168ms마다 2샘플씩 정확히 0V로 떨어지는 인공 신호가 기록된 적이 있다.
-# -> 버스 접근을 락으로 직렬화하고, 고속 수집 중에는 보조 채널을 아예 건드리지 않는다.
+# I2C 버스 접근을 직렬화한다(수집 루프와 진단/온습도 스레드가 동시에 건드리지 않도록).
 _ads_lock = threading.Lock()
-SUSPEND_AUX = False     # True면 read_moisture()가 버스를 만지지 않는다
-
-
-def read_moisture(raw=False):
-    """A1에 연결된 아날로그 토양수분 센서를 0~100%로 환산해 돌려준다.
-
-    raw=True면 (퍼센트, 전압, 사유) 튜플을 돌려준다(보정/진단용).
-
-    **읽히기만 하면 값을 돌려준다.** 예전에는 보정 범위를 벗어나면 None을 돌려줘서
-    화면에 "센서 대기 중"만 뜨고 센서가 아예 안 잡히는 것처럼 보였다. 이제는
-    0~100%로 자르고, 보정이 안 맞는다는 사실만 사유로 함께 알려준다.
-    """
-    def out(pct, volts=None, why=None):
-        return (pct, volts, why) if raw else pct
-
-    if not HARDWARE_AVAILABLE:
-        return out(None, None, "I2C 하드웨어 없음 (시뮬레이션 모드)")
-    if moisture_chan is None:
-        return out(None, None, "ADS1115 A1 채널을 열지 못함")
-    if SUSPEND_AUX:
-        # 고속 수집 중. A1을 읽으면 A0 스트림이 오염되므로 건너뛴다.
-        return out(None, None, "수집 중에는 토양수분을 읽지 않습니다")
-    try:
-        with _ads_lock:
-            volts = moisture_chan.voltage
-    except Exception as e:
-        return out(None, None, f"읽기 실패: {e}")
-
-    # 정말로 못 믿을 값(선이 빠져 0V 근처거나 기준전압을 넘김)만 버린다.
-    if volts <= 0.03:
-        return out(None, volts, "전압이 0V 근처 — OUT 선이 빠졌거나 센서 전원 미연결")
-    if volts >= 3.31:
-        return out(None, volts, "전압이 3.3V 초과 — 5V에 꽂혔는지 확인하세요(3V3에 연결)")
-
-    span = MOISTURE_DRY_V - MOISTURE_WET_V
-    if abs(span) < 0.05:
-        return out(None, volts, "보정값 두 개가 거의 같습니다 — MOISTURE_WET_V/DRY_V를 다시 넣으세요")
-
-    # 젖을수록 전압이 낮은 센서 기준(대부분의 정전용량식). 반대면 두 상수를 바꿔 넣으세요.
-    pct = (MOISTURE_DRY_V - volts) / span * 100.0
-    why = None
-    if pct < -5 or pct > 105:
-        lo, hi = sorted((MOISTURE_WET_V, MOISTURE_DRY_V))
-        why = (f"보정 범위({lo:.2f}~{hi:.2f}V) 밖이라 0/100%로 붙습니다 — "
-               f"지금 전압 {volts:.2f}V 로 보정값을 맞춰주세요")
-    return out(round(max(0.0, min(100.0, pct)), 1), volts, why)
 
 
 def _env_refresh_once():
@@ -272,9 +199,6 @@ def _env_refresh_once():
         if temp is None:
             # 이번 판만 실패한 것일 수 있으므로 이전 값을 유지한다(화면이 깜빡이지 않게).
             temp, humidity = _env_cache["temp"], _env_cache["humidity"]
-
-    if humidity is None:
-        humidity = read_moisture()   # 온·습도 센서가 없으면 토양수분으로 대체
 
     _env_cache.update({"t": time.time(), "temp": temp, "humidity": humidity})
 
@@ -305,33 +229,11 @@ def read_environment():
     DHT22는 한 번 읽는 데 재시도까지 몇 초가 걸릴 수 있는데, 이걸 실시간 분류 루프
     안에서 하면 샘플레이트가 무너지기 때문이다.
 
-    AHT20/DHT22가 있으면 그걸로 온도+공기습도를 읽고, 없으면 온도는 None이고
-    습도 자리에 아날로그 토양수분을 넣는다(무엇을 쟀는지는 source로 구분).
+    AHT20/DHT22가 없으면 temp/humidity 모두 None이다.
     """
     start_env_thread()
-    if _env_cache["t"] == 0.0 and _env_dev is None:
-        # 온·습도 센서가 아예 없으면 토양수분만 즉시 읽어도 부담이 없다.
-        _env_cache["humidity"] = read_moisture()
     return {"temp": _env_cache["temp"], "humidity": _env_cache["humidity"],
-            "source": ENV_SENSOR or ("토양수분(A1)" if HARDWARE_AVAILABLE else None)}
-
-
-def set_moisture_calibration(wet_v=None, dry_v=None):
-    """토양수분 보정값을 실행 중에 바꾸고 파일로 남긴다(다음 실행에도 적용).
-    코드를 고치지 않고 웹에서 보정할 수 있게 하기 위한 것."""
-    global MOISTURE_WET_V, MOISTURE_DRY_V
-    if wet_v is not None:
-        MOISTURE_WET_V = float(wet_v)
-    if dry_v is not None:
-        MOISTURE_DRY_V = float(dry_v)
-    try:
-        import json
-        with open(_CALIB_PATH, "w", encoding="utf-8") as f:
-            json.dump({"wet_v": MOISTURE_WET_V, "dry_v": MOISTURE_DRY_V}, f)
-    except Exception as e:
-        print(f"[sensor_control] 보정값 저장 실패: {e}")
-    _env_cache["t"] = 0.0   # 다음 읽기에서 새 보정값이 바로 반영되도록 캐시 무효화
-    return {"wet_v": MOISTURE_WET_V, "dry_v": MOISTURE_DRY_V}
+            "source": ENV_SENSOR}
 
 
 def sensor_status(wait_first=3.0):
@@ -340,7 +242,6 @@ def sensor_status(wait_first=3.0):
     온·습도는 백그라운드 스레드가 채우므로, 방금 시작한 직후에는 캐시가 비어 있어
     센서가 멀쩡한데도 None 으로 보인다. 진단 호출에서는 첫 값이 들어올 때까지
     잠깐(기본 3초) 기다린다. 실시간 루프는 이 함수를 쓰지 않으므로 영향이 없다."""
-    pct, volts, why = read_moisture(raw=True)
     start_env_thread()
     if _env_dev is not None and wait_first > 0:
         deadline = time.time() + wait_first
@@ -361,10 +262,6 @@ def sensor_status(wait_first=3.0):
         "temp": env["temp"],
         "humidity": env["humidity"],
         "humidity_source": env["source"],
-        "moisture_percent": pct,
-        "moisture_volts": round(volts, 3) if volts is not None else None,
-        "moisture_error": why,
-        "calibration": {"wet_v": MOISTURE_WET_V, "dry_v": MOISTURE_DRY_V},
         "dht_pin": DHT_PIN_NAME,
     }
 
@@ -496,7 +393,6 @@ def _report_artifacts(values, fs):
         print("    전극 임피던스가 너무 높을 때 나타납니다 — 접촉을 개선하세요:")
         print("    · 동봉된 심전도 패드는 사람 피부용이라 잎에는 거의 안 통합니다.")
         print("    · 알루미늄 포일로 잎자루를 감싸고 그 위에 클립을 무세요.")
-        print("    · 포일과 식물 사이에 소금물 적신 휴지를 끼우면 훨씬 좋아집니다.")
         print(f"    · 접촉이 좋아질수록 이 비율({100*frac:.1f}%)이 떨어집니다. 0에 가까우면 성공입니다.")
     else:
         print("    한 샘플만 튀는 모양입니다 = ADC 읽기/채널 혼선으로 보입니다.")
@@ -566,10 +462,6 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     start = time.time()
     next_report = progress_sec
 
-    global SUSPEND_AUX
-    if HARDWARE_AVAILABLE:
-        SUSPEND_AUX = True   # 수집 동안 A1(토양수분) 읽기 중단
-
     def report(i, elapsed=None):
         # 경과 시간은 실제 시계 기준으로 보여준다. 하드웨어가 느리면 '샘플 수'와
         # '실제 초'가 어긋나는데, 그걸 숨기면 원인을 못 찾는다.
@@ -619,8 +511,6 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     except KeyboardInterrupt:
         stopped = True
         print(f"[sensor_control] ⏹ 중지 요청 — 지금까지 모은 {len(rows)} 샘플을 저장합니다.")
-    finally:
-        SUSPEND_AUX = False
 
     if not rows:
         print("[sensor_control] 모은 데이터가 없어 저장하지 않습니다.")

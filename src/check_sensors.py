@@ -91,7 +91,7 @@ def main():
         st = sc.sensor_status()
         for k in ("i2c", "i2c_error", "adc", "env_sensor", "env_method", "iio_device",
                   "env_error", "env_read_error", "temp", "humidity", "humidity_source",
-                  "moisture_percent", "moisture_volts", "moisture_error", "dht_pin"):
+                  "dht_pin"):
             print(f"  {k:18s}: {st.get(k)}")
 
         line("AD8232 전극 상태 (10초 측정)")
@@ -134,8 +134,8 @@ def main():
             else:
                 print("  ❌ 강하가 많습니다. 원인이 둘 중 하나일 수 있습니다:")
                 print("     [먼저 확인] 지금 web_dashboard.py(웹 대시보드)가 백그라운드에서")
-                print("       같이 돌고 있나요? 그럼 그 프로세스의 온·습도 스레드가 A1을 읽으면서")
-                print("       ADS1115 채널이 섞여 이 숫자가 부풀려질 수 있습니다 —")
+                print("       같이 돌고 있나요? 그럼 그 프로세스도 같은 I2C 버스를 쓰므로")
+                print("       두 프로세스가 동시에 접근해 이 숫자가 부풀려질 수 있습니다 —")
                 print("       대시보드를 끄고 이 스크립트만 단독으로 다시 돌려보세요.")
                 print("     [그래도 높으면] 전극 접촉 문제입니다. 개선해보세요:")
                 print("     · 패드 밑 줄기에 물 한 방울 (젤이 마르면 저항이 확 올라갑니다)")
