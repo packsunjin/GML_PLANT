@@ -29,6 +29,11 @@
   // 화면 상태
   var paused = false;
   var waveBuf = [];              // 파형 롤링 버퍼
+  // 파형 세로축의 최소 범위(V). 이보다 조용하면 축을 더 좁히지 않는다.
+  // 바탕잡음 표준편차가 약 0.006V이므로 0.2V면 조용할 때 화면의 10% 안쪽에 머문다.
+  var WAVE_MIN_SPAN = 0.2;
+  // 스펙트로그램 밝기의 최소 dB 범위. 같은 이유로 조용한 창이 과장되지 않게 한다.
+  var SPEC_MIN_SPAN = 20;
   var lastState = null;
   var stateSince = Date.now();
   var lastSeen = 0;
@@ -74,7 +79,16 @@
         if (waveBuf[i] < lo) lo = waveBuf[i];
         if (waveBuf[i] > hi) hi = waveBuf[i];
       }
+      // 세로축에 최소 범위를 둔다. 매 프레임 min/max로만 맞추면 바탕잡음
+      // (실측 표준편차 약 0.006V)까지 화면을 꽉 채워, 아무 일도 없을 때조차
+      // 큰 신호가 잡히는 것처럼 보인다. 실제로 이보다 크게 흔들릴 때만 축이 넓어진다.
+      var mid = (hi + lo) / 2;
+      if (hi - lo < WAVE_MIN_SPAN) {
+        lo = mid - WAVE_MIN_SPAN / 2;
+        hi = mid + WAVE_MIN_SPAN / 2;
+      }
       var span = (hi - lo) || 1e-6;
+      setText("wave-scale", "세로축 ±" + (span / 2).toFixed(3) + " V");
       var step = w / (waveBuf.length - 1);
 
       ctx.beginPath();
@@ -119,6 +133,9 @@
         if (v > hi) hi = v;
       }
     }
+    // 파형과 같은 이유로 밝기에도 최소 범위를 둔다. 창마다 min–max로 정규화하면
+    // 조용한 창도 밝은 무늬가 가득 차 실제로 뭔가 잡힌 것처럼 보인다.
+    if (hi - lo < SPEC_MIN_SPAN) lo = hi - SPEC_MIN_SPAN;
     var span = (hi - lo) || 1e-6;
     $$('[data-live="spec"]').forEach(function (cv) {
       var ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
