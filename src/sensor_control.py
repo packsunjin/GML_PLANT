@@ -399,6 +399,56 @@ def _report_artifacts(values, fs):
     _report_i2c_users()
 
 
+# 문헌이 보고한 토마토 활동전위 진폭(약 21mV, Volkov et al. 2018)을 기준 삼는다.
+# 바탕잡음의 이 배수를 넘는 튐은 식물 전위로 설명하기 어렵다.
+SPIKE_SIGMA = 20.0
+
+
+def _report_motion_artifacts(values, fs):
+    """배선·전극이 물리적으로 흔들려 생긴 튐을 찾아 알려준다.
+
+    잎을 건드릴 때 리드선도 같이 흔들리면 접촉 저항이 순간적으로 변해 큰 스파이크가
+    생기는데, 파형만 봐서는 식물 반응과 구분되지 않는다. 더 나쁜 것은 preprocess 의
+    이벤트 선별이 '피크투피크가 큰 창'을 자극으로 고른다는 점이다 — 즉 이 아티팩트가
+    섞이면 걸러지기는커녕 **그것만 골라서 학습된다.** 그래서 수집 직후에 잡아 준다.
+
+    판정 기준은 바탕잡음 대비 배수다. 문헌의 식물 활동전위는 바탕잡음의 몇 배 수준인
+    반면, 배선을 흔들어 생기는 튐은 수십~수백 배에 이르러 크기만으로도 구분된다."""
+    if not HARDWARE_AVAILABLE or len(values) < int(fs) * 3:
+        return
+    v = np.asarray(values, dtype=float)
+
+    # 중앙값 기준 편차(MAD)로 바탕잡음을 잰다. 평균/표준편차를 쓰면 튐 자체가
+    # 기준을 부풀려 정작 그 튐을 못 잡는다.
+    med = float(np.median(v))
+    mad = float(np.median(np.abs(v - med)))
+    sigma = mad * 1.4826           # MAD를 정규분포 표준편차로 환산
+    if sigma <= 0:
+        return
+
+    dev = np.abs(v - med)
+    spikes = dev > SPIKE_SIGMA * sigma
+    if not spikes.any():
+        return
+
+    worst = float(dev.max() / sigma)
+    # 튐이 몇 번 있었는지 — 연속된 샘플은 한 번으로 센다
+    bursts = int(np.count_nonzero(np.diff(spikes.astype(np.int8)) == 1)) + int(spikes[0])
+    span = len(v) / fs
+
+    print(f"[sensor_control] ⚠️  바탕잡음의 {SPIKE_SIGMA:.0f}배를 넘는 튐이 "
+          f"{bursts}회 발견됐습니다 (최대 {worst:.0f}배, {span:.0f}초 동안).")
+    print(f"    바탕잡음 표준편차 {1000*sigma:.1f} mV 기준으로 최대 {1000*float(dev.max()):.0f} mV 까지 튀었습니다.")
+    print("    이 정도 크기는 식물 전위로 설명하기 어렵습니다 — 문헌의 토마토 활동전위는")
+    print("    약 21 mV 수준입니다. 배선·전극이 흔들려 생긴 접촉 잡음일 가능성이 큽니다.")
+    print("    ▸ 확인법: 식물은 그대로 두고 리드선만 흔들어 다시 재보세요.")
+    print("      그때도 같은 튐이 나오면 식물 신호가 아닙니다.")
+    print("    ▸ 이 상태로 학습하면 안 됩니다. preprocess 의 이벤트 선별은 '큰 창'을")
+    print("      자극으로 고르므로, 이 튐이 오히려 학습 데이터로 선택됩니다.")
+    print("    ▸ 대책: 리드선을 고정해 움직이지 않게 하고, 자극은 전극에서 먼 부위에")
+    print("      비전도성 도구로 주세요.")
+
+
 def _report_i2c_users():
     """I2C 장치를 열고 있는 다른 프로세스를 찾아 알려준다.
 
@@ -522,6 +572,7 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
         writer.writerows(rows)
 
     _report_artifacts([r[1] for r in rows], sample_rate_hz)
+    _report_motion_artifacts([r[1] for r in rows], sample_rate_hz)
 
     span = float(rows[-1][0]) if rows else 0.0
     actual = (len(rows) / span) if span > 0 else float(sample_rate_hz)
