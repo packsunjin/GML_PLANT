@@ -643,43 +643,25 @@
         var L = [];
         L.push("I2C 버스        : " + (s.i2c ? "OK" : "없음 — " + (s.i2c_error || "확인 불가")));
         L.push("ADC(ADS1115)    : " + (s.adc || "없음"));
-        L.push("온·습도 센서    : " + (s.env_sensor || "없음 — " + (s.env_error || "확인 불가")) +
-                                      (s.env_sensor === "DHT22" ? "  (GPIO " + s.dht_pin + ")" : ""));
-        if (s.env_read_error) L.push("  └ 읽기 실패    : " + s.env_read_error);
-        L.push("온도            : " + (s.temp == null ? "— (온·습도 센서 필요)" : s.temp + " °C"));
-        L.push("습도            : " + (s.humidity == null ? "—" : s.humidity + " %") +
-                                      (s.humidity_source ? "  (" + s.humidity_source + ")" : ""));
-        if (s.env_method) L.push("읽는 방식        : " +
-          (s.env_method === "_IIODht" ? "커널 드라이버 (" + s.iio_device + ")" : "파이썬 (" + s.env_method + ")"));
-        if (!s.env_sensor) {
+        L.push("기준점          : " + (s.baseline == null ? "—" : s.baseline + " V"));
+        if (s.baseline_verdict) L.push("판정            : " + s.baseline_verdict);
+        if (s.baseline != null && s.baseline_verdict !== "정상 범위") {
           L.push("");
-          L.push("※ DHT22 는 라즈베리파이 5에서 커널 드라이버로 읽는 게 확실합니다.");
-          L.push("   (파이 5는 GPIO가 RP1 칩 뒤에 있어 파이썬 비트뱅잉 타이밍이 잘 안 맞습니다)");
+          L.push("※ 증폭기 출력이 전원 레일에 붙어 있습니다.");
+          L.push("   이 상태에서는 입력이 변해도 출력이 움직이지 않아,");
+          L.push("   수집해도 쓸 수 없는 데이터가 됩니다.");
           L.push("");
-          L.push("   1) sudo nano /boot/firmware/config.txt   ← 맨 아래에 한 줄 추가");
-          L.push("        dtoverlay=dht11,gpiopin=4");
-          L.push("   2) sudo reboot");
-          L.push("   3) 다시 '진단하기' → '읽는 방식: 커널 드라이버' 로 뜨면 성공");
-          L.push("");
-          L.push("   ※ 오버레이 이름은 dht11 이지만 DHT22 도 이걸로 동작합니다.");
-          L.push("   ※ DATA 는 파이 GPIO4(물리 7번). ADS1115 에 꽂으면 안 됩니다.");
-          L.push("   ※ 자세한 진단:  cd ~/project/src && python3 check_sensors.py");
-        } else if (s.env_sensor === "DHT22" && s.temp == null) {
-          L.push("");
-          L.push("※ 커널 드라이버는 올라왔는데 센서가 응답하지 않습니다(timed out).");
-          L.push("   = 오버레이/장치는 정상, 배선이나 센서 쪽 문제입니다.");
-          L.push("");
-          L.push("   1) config.txt 의 gpiopin= 번호와 실제로 꽂은 핀이 같나요?");
-          L.push("      dtoverlay=dht11,gpiopin=4  →  DATA 는 GPIO4 = 물리 7번");
-          L.push("   2) VCC 는 3V3(물리 1번), GND 는 공통(물리 6번) 인가요?");
-          L.push("   3) 맨 센서(4핀)면 DATA–VCC 사이에 10kΩ 풀업 저항이 필요합니다.");
-          L.push("   4) 첫 몇 번은 원래 실패합니다. 계속 재시도 중이니 10초쯤 두고 보세요.");
-          L.push("   5) 그래도 안 되면:  cd ~/project/src && python3 check_sensors.py");
+          L.push("   1) RA·LA·RL 세 전극이 모두 닿아 있는지 확인하세요.");
+          L.push("   2) RL(기준) 전극의 접촉을 먼저 의심하세요 — 기준 전위를");
+          L.push("      못 잡으면 출력이 레일로 밀립니다.");
+          L.push("   3) AD8232 와 ADS1115 의 GND 가 공통인지 확인하세요.");
+          L.push("   4) 자세한 진단:  cd ~/project/src && python3 check_sensors.py");
         }
         box.style.display = "block";
         box.textContent = L.join("\n");
-        hint.textContent = s.env_sensor ? "✅ " + s.env_sensor + " 인식됨"
-                                        : (s.i2c ? "⚠️ 온·습도 센서가 안 잡혔습니다" : "⚠️ I2C가 꺼져 있습니다");
+        hint.textContent = !s.i2c ? "⚠️ I2C가 꺼져 있습니다"
+                          : (s.baseline_verdict === "정상 범위" ? "✅ 기준점 정상"
+                                                               : "⚠️ " + (s.baseline_verdict || "확인 필요"));
       })
       .catch(function () { hint.textContent = "❌ 진단 요청 실패"; });
   }

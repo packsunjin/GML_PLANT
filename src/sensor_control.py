@@ -28,6 +28,11 @@ import numpy as np
 # ----------------------------------------------------------------------
 # 하드웨어 접근 시도 (실패 시 시뮬레이션 모드로 자동 전환)
 # ----------------------------------------------------------------------
+# 출력이 이 범위를 벗어나면 증폭기가 전원 레일에 포화된 것으로 본다
+# (preprocess.py 의 품질 게이트와 같은 기준).
+RAIL_HIGH_V = 3.0
+RAIL_LOW_V = 0.3
+
 HARDWARE_AVAILABLE = False
 try:
     import board
@@ -66,204 +71,48 @@ except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSErr
     _HW_ERR = str(e)
 
 
-# ----------------------------------------------------------------------
-# 온·습도 센서
-# ----------------------------------------------------------------------
-# 둘 다 지원하고, 붙어 있는 것을 자동으로 골라 쓴다.
-#   1) AHT20 / AHT21 (I2C 0x38)  -> 온도 + 공기습도. 권장.
-#   2) DHT22 / DHT11 (GPIO 1선)  -> 온도 + 공기습도.
-# 둘 다 없으면 값이 None이고, 화면에는 "센서 대기 중"으로 나온다.
-ENV_SENSOR = None       # "AHT20" / "DHT22" / None
-ENV_ERROR = None        # 왜 못 잡았는지 (진단용)
-ENV_LAST_ERROR = None   # 마지막 읽기 실패 사유 (센서는 잡혔는데 값이 안 올 때)
-_env_dev = None
-_env_kind = None        # "i2c" / "dht"
-
-# DHT22의 DATA 핀을 꽂은 GPIO. **ADS1115가 아니라 파이 GPIO에 직접 꽂아야 한다.**
-# 기본 D4 = 물리 7번 핀. 다른 곳에 꽂았으면 GML_DHT_PIN=D17 처럼 지정한다.
-DHT_PIN_NAME = os.environ.get("GML_DHT_PIN", "D4")
-# DHT22는 읽기 실패가 잦은 센서다(체크섬 오류). 한 번 읽을 때 이만큼 재시도한다.
-DHT_RETRIES = 3
-
-try:
-    import adafruit_ahtx0                                    # noqa: E402
-    if HARDWARE_AVAILABLE:
-        _env_dev = adafruit_ahtx0.AHTx0(i2c)
-        _env_dev.temperature      # 실제로 읽혀야 인정한다(주소만 열리는 경우 배제)
-        ENV_SENSOR, _env_kind = "AHT20", "i2c"
-    else:
-        ENV_ERROR = "I2C 버스를 열지 못해 AHT20을 확인할 수 없음"
-except Exception as _e:
-    _env_dev = None
-    ENV_ERROR = f"AHT20 없음({_e})"
-
-class _IIODht:
-    """커널 dht11 오버레이(DHT22도 지원)가 만들어 주는 IIO 장치에서 읽는다.
-
-    라즈베리파이 5는 GPIO가 RP1 칩 뒤에 있어 파이썬 비트뱅잉(adafruit_dht)의
-    타이밍이 잘 맞지 않는다. 커널 드라이버는 그 문제를 겪지 않으므로 이쪽을 먼저 쓴다.
-
-    켜는 법: /boot/firmware/config.txt 에 `dtoverlay=dht11,gpiopin=4` 추가 후 재부팅.
-    """
-
-    def __init__(self, path):
-        self.path = path
-
-    @staticmethod
-    def find():
-        import glob
-        for d in sorted(glob.glob("/sys/bus/iio/devices/iio:device*")):
-            if (os.path.isfile(os.path.join(d, "in_temp_input")) and
-                    os.path.isfile(os.path.join(d, "in_humidityrelative_input"))):
-                return d
-        return None
-
-    def _read(self, name):
-        with open(os.path.join(self.path, name)) as f:
-            return float(f.read().strip()) / 1000.0   # 밀리 단위로 나온다
-
-    @property
-    def temperature(self):
-        return self._read("in_temp_input")
-
-    @property
-    def relative_humidity(self):
-        return self._read("in_humidityrelative_input")
-
-
-if ENV_SENSOR is None:
-    _iio = _IIODht.find()
-    if _iio:
-        # 장치 노드가 있으면 센서를 인정한다. dht11 커널 드라이버는 첫 읽기가
-        # 자주 -ETIMEDOUT 으로 실패하고(2초 간격 제한도 있다), 몇 번 더 시도하면
-        # 붙는 경우가 많다. 여기서 실패했다고 없는 센서로 처리하면 안 된다.
-        _env_dev = _IIODht(_iio)
-        ENV_SENSOR, _env_kind = "DHT22", "dht"
-        ENV_ERROR = None
-        try:
-            _env_dev.temperature
-        except Exception as _e3:
-            # 값은 백그라운드 스레드가 계속 다시 읽는다. 사유만 남겨 진단에 띄운다.
-            ENV_LAST_ERROR = f"{_e3} (첫 읽기 실패 — 재시도 중)"
-    else:
-        ENV_ERROR = ((ENV_ERROR + "; ") if ENV_ERROR else "") + \
-            "커널 DHT 드라이버 없음(config.txt 에 dtoverlay=dht11,gpiopin=" + \
-            DHT_PIN_NAME.lstrip("D") + " 추가 후 재부팅하면 잡힙니다)"
-
-if ENV_SENSOR is None:
-    # 커널 드라이버가 없으면 파이썬 비트뱅잉으로 시도한다(파이 4 이하에서는 잘 동작).
-    try:
-        import adafruit_dht                                  # noqa: E402
-        import board as _board                               # noqa: E402
-        pin = getattr(_board, DHT_PIN_NAME)
-        try:
-            _env_dev = adafruit_dht.DHT22(pin, use_pulseio=False)
-        except TypeError:
-            _env_dev = adafruit_dht.DHT22(pin)   # 옛 버전은 이 인자가 없다
-        ENV_SENSOR, _env_kind = "DHT22", "dht"
-        ENV_ERROR = None
-    except Exception as _e2:
-        _env_dev = None
-        ENV_ERROR = (f"{ENV_ERROR}; adafruit_dht 실패({_e2})" if ENV_ERROR
-                     else f"adafruit_dht 실패({_e2})")
-
-
-# 온·습도는 매 요청마다 읽으면(특히 DHT22는 2초 간격 제한) 실패하므로 잠깐 캐시한다.
-_env_cache = {"t": 0.0, "temp": None, "humidity": None}
-ENV_CACHE_SEC = 2.0
-_env_thread = None
-
-# I2C 버스 접근을 직렬화한다(수집 루프와 진단/온습도 스레드가 동시에 건드리지 않도록).
+# I2C 버스 접근을 직렬화한다(수집 루프와 진단이 동시에 건드리지 않도록).
 _ads_lock = threading.Lock()
 
 
-def _env_refresh_once():
-    """센서를 실제로 한 번 읽어 캐시를 갱신한다. **오래 걸릴 수 있다**(DHT22 재시도).
-    그래서 실시간 루프에서 직접 부르지 않고 백그라운드 스레드에서만 부른다."""
-    global ENV_LAST_ERROR
-    temp = humidity = None
-    if _env_dev is not None:
-        # DHT22는 체크섬 오류로 자주 실패한다(정상 동작 중에도 30% 안팎). 몇 번 다시 읽는다.
-        tries = DHT_RETRIES if _env_kind == "dht" else 1
-        for i in range(tries):
-            try:
-                t = float(_env_dev.temperature)
-                h = float(_env_dev.relative_humidity)
-                temp, humidity = round(t, 1), round(h, 1)
-                ENV_LAST_ERROR = None
-                break
-            except Exception as e:
-                ENV_LAST_ERROR = str(e) or e.__class__.__name__
-                if i + 1 < tries:
-                    time.sleep(2.1)   # DHT22는 최소 2초 간격을 지켜야 한다
-        if temp is None:
-            # 이번 판만 실패한 것일 수 있으므로 이전 값을 유지한다(화면이 깜빡이지 않게).
-            temp, humidity = _env_cache["temp"], _env_cache["humidity"]
+def sensor_status():
+    """측정계가 정상 상태인지 화면에서 바로 볼 수 있게 진단 정보를 모은다.
 
-    _env_cache.update({"t": time.time(), "temp": temp, "humidity": humidity})
-
-
-def _env_loop():
-    while True:
-        try:
-            _env_refresh_once()
-        except Exception:
-            pass
-        time.sleep(ENV_CACHE_SEC)
-
-
-def start_env_thread():
-    """온·습도 갱신을 백그라운드로 돌린다. 여러 번 불러도 한 번만 시작한다."""
-    global _env_thread
-    if _env_thread is not None and _env_thread.is_alive():
-        return _env_thread
-    _env_thread = threading.Thread(target=_env_loop, daemon=True)
-    _env_thread.start()
-    return _env_thread
-
-
-def read_environment():
-    """온도(°C)와 습도(%)를 돌려준다. -> {"temp": .., "humidity": .., "source": ..}
-
-    **바로 돌아온다.** 실제 읽기는 백그라운드 스레드가 하고 여기서는 캐시만 본다.
-    DHT22는 한 번 읽는 데 재시도까지 몇 초가 걸릴 수 있는데, 이걸 실시간 분류 루프
-    안에서 하면 샘플레이트가 무너지기 때문이다.
-
-    AHT20/DHT22가 없으면 temp/humidity 모두 None이다.
-    """
-    start_env_thread()
-    return {"temp": _env_cache["temp"], "humidity": _env_cache["humidity"],
-            "source": ENV_SENSOR}
-
-
-def sensor_status(wait_first=3.0):
-    """센서가 왜 안 잡히는지 화면에서 바로 볼 수 있게 진단 정보를 모은다.
-
-    온·습도는 백그라운드 스레드가 채우므로, 방금 시작한 직후에는 캐시가 비어 있어
-    센서가 멀쩡한데도 None 으로 보인다. 진단 호출에서는 첫 값이 들어올 때까지
-    잠깐(기본 3초) 기다린다. 실시간 루프는 이 함수를 쓰지 않으므로 영향이 없다."""
-    start_env_thread()
-    if _env_dev is not None and wait_first > 0:
-        deadline = time.time() + wait_first
-        while _env_cache["t"] == 0.0 and time.time() < deadline:
-            time.sleep(0.1)
-    env = read_environment()
-    return {
+    확인하는 것은 두 가지다 — I2C로 ADC가 잡히는지, 그리고 증폭기 출력의 기준점이
+    전원 레일에 붙지 않고 중간 범위에 있는지. 기준점이 레일에 붙어 있으면 입력이
+    변해도 출력이 움직이지 않으므로 그 상태로 수집한 데이터는 쓸 수 없다."""
+    info = {
         "i2c": HARDWARE_AVAILABLE,
         "i2c_error": None if HARDWARE_AVAILABLE else globals().get("_HW_ERR"),
         "adc": "ADS1115" if HARDWARE_AVAILABLE else None,
-        "env_sensor": ENV_SENSOR,
-        "env_error": ENV_ERROR if ENV_SENSOR is None else None,
-        # 센서는 잡혔는데 값이 안 올 때의 마지막 실패 사유 (DHT22 배선/핀 진단용)
-        "env_read_error": ENV_LAST_ERROR,
-        # 어떤 방법으로 읽고 있는지 (커널 드라이버 / 파이썬 비트뱅잉)
-        "env_method": (type(_env_dev).__name__ if _env_dev is not None else None),
-        "iio_device": _IIODht.find(),
-        "temp": env["temp"],
-        "humidity": env["humidity"],
-        "humidity_source": env["source"],
-        "dht_pin": DHT_PIN_NAME,
+        "baseline": None,
+        "baseline_verdict": None,
     }
+    if not HARDWARE_AVAILABLE:
+        return info
+
+    # 기준점을 1초만 재서 평균을 낸다(레일에 붙어 있는지 보는 것이 목적).
+    vs = []
+    t0 = time.time()
+    while time.time() - t0 < 1.0:
+        try:
+            vs.append(read_sample_hardware())
+        except Exception as e:
+            info["i2c_error"] = str(e)
+            return info
+        time.sleep(0.004)
+    if not vs:
+        return info
+
+    avg = sum(vs) / len(vs)
+    info["baseline"] = round(avg, 3)
+    if avg > RAIL_HIGH_V:
+        info["baseline_verdict"] = "상단 레일 포화 — 전극 연결을 확인하세요"
+    elif avg < RAIL_LOW_V:
+        info["baseline_verdict"] = "하단 레일 포화 — 전극 연결을 확인하세요"
+    else:
+        info["baseline_verdict"] = "정상 범위"
+    return info
 
 
 # 상태별 저장 파일명(한글). 수집된 원시 CSV는 이 이름으로 data/raw/ 아래에 저장된다.

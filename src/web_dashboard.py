@@ -132,7 +132,7 @@ def _payload(result, recent, clf):
 
     spec(스펙트로그램)은 분류 자체에 쓰이는 값이라 화면에도 그대로 보여준다
     (픽셀 방식 모델은 이 이미지로 직접 추론하고, 특징 방식도 여기서 특징을 뽑는다).
-    온·습도는 화면에 더 이상 표시하지 않으므로 여기서는 싣지 않는다(네트워크 절약).
+    분류에 쓰지 않는 값은 싣지 않는다(네트워크 절약).
     """
     sig = np.asarray(recent)[::3]  # 5초 버퍼를 1/3로 다운샘플(네트워크 절약)
     spec = np.asarray(result["spectrogram_db"], dtype=float)
@@ -458,7 +458,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     @app.route("/api/sensors")
     def api_sensors():
-        """센서 진단. 왜 온·습도가 안 잡히는지 브라우저에서 바로 확인한다."""
+        """측정계 진단. I2C 인식 여부와 증폭기 기준점의 레일 포화를 브라우저에서 확인한다."""
         return jsonify(sensor_control.sensor_status())
 
     @app.route("/api/job/stop", methods=["POST"])
