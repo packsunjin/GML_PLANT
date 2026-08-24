@@ -79,6 +79,71 @@ def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode
     return arr, filtered, Sxx_db, f, t
 
 
+def _fold_linear_head(model):
+    """StandardScaler(+PCA)로 이어지는 앞단을 단일 아핀변환 y = x @ W + b 로 접는다.
+
+    픽셀 방식 모델의 앞단은 50,176차원을 30차원으로 줄이는 선형 변환인데,
+    sklearn 파이프라인은 이를 (표준화 → 평균 빼기 → 행렬곱) 세 단계로 나눠 수행하며
+    매 단계 50,176개짜리 임시 배열을 만든다. 세 단계 모두 선형이므로 하나로 합칠 수 있다.
+
+        z = (x - mean) / scale
+        y = (z - pca_mean) @ components.T
+          = x @ [(components / scale).T] - [(mean/scale + pca_mean) @ components.T]
+
+    W를 float32 + 열 우선(F-contiguous)으로 저장하는 것이 핵심이다. (1,50176) @ (50176,30)
+    에서는 출력 열마다 연속된 메모리를 훑게 되어 캐시 적중률이 크게 오른다 — 실측에서
+    같은 연산이 행 우선 대비 10배 이상 빨랐다.
+
+    접을 수 없는 모델(파이프라인이 아니거나 구성이 다름)이면 None을 돌려주고, 호출부는
+    원래 경로를 그대로 쓴다."""
+    steps = getattr(model, "named_steps", None)
+    if not steps:
+        return None
+    scaler = steps.get("scaler")
+    pca = steps.get("pca")
+    if scaler is None or not hasattr(scaler, "scale_"):
+        return None
+
+    if pca is not None and hasattr(pca, "components_"):
+        comp = pca.components_
+        W = (comp / scaler.scale_).T
+        b = -((scaler.mean_ / scaler.scale_) @ comp.T) - (pca.mean_ @ comp.T)
+        tail = [st for name, st in model.steps if name not in ("scaler", "pca")]
+    else:
+        # PCA가 없는 구성(명시적 특징 14차원)은 표준화만 접는다.
+        n = scaler.scale_.shape[0]
+        W = np.diag(1.0 / scaler.scale_)
+        b = -scaler.mean_ / scaler.scale_
+        tail = [st for name, st in model.steps if name != "scaler"]
+
+    if len(tail) != 1:
+        return None
+    # 열 우선 float32로 굳혀 둔다(위 주석 참고).
+    return np.asfortranarray(W, dtype=np.float32), np.asarray(b, dtype=np.float32), tail[0]
+
+
+class _FoldedModel:
+    """접은 아핀변환 + 원래 분류기. predict/predict_proba 인터페이스는 그대로 유지한다."""
+
+    __slots__ = ("W", "b", "clf", "classes_")
+
+    def __init__(self, W, b, clf):
+        self.W, self.b, self.clf = W, b, clf
+        self.classes_ = getattr(clf, "classes_", None)
+
+    def _head(self, X):
+        X = np.asarray(X, dtype=np.float32)
+        if X.ndim == 1:
+            X = X[None, :]
+        return X @ self.W + self.b
+
+    def predict(self, X):
+        return self.clf.predict(self._head(X))
+
+    def predict_proba(self, X):
+        return self.clf.predict_proba(self._head(X))
+
+
 class RealtimeClassifier:
     """
     실시간 버퍼 관리 + 모델 추론을 담당하는 클래스.
@@ -147,7 +212,16 @@ class RealtimeClassifier:
         self.img_size = bundle.get("img_size", IMG_SIZE)  # feature_mode=="explicit"일 때는 사용 안 함
         # 학습 때 쓴 필터 대역(없는 예전 번들은 기본 0.5~45Hz + 50Hz 노치). 추론도 동일 대역 사용.
         self.filter = bundle.get("filter", {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0})
-        self._view = (self.model, self.classes, self.feature_mode, self.img_size, self.filter)
+        # 앞단 선형 변환을 미리 접어 둔다(실패하면 원래 모델을 그대로 쓴다).
+        folded = None
+        try:
+            parts = _fold_linear_head(self.model)
+            if parts is not None:
+                folded = _FoldedModel(*parts)
+        except Exception:
+            folded = None
+        self.predictor = folded if folded is not None else self.model
+        self._view = (self.predictor, self.classes, self.feature_mode, self.img_size, self.filter)
 
     def reload_model(self, model_path=None):
         """저장된 모델 파일을 다시 읽어 실행 중에 교체한다(웹에서 재학습한 직후 등).

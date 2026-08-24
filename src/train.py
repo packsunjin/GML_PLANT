@@ -45,6 +45,11 @@ from font_utils import setup_korean_font
 _KOREAN_FONT = setup_korean_font()
 
 from sklearn.model_selection import GridSearchCV
+from joblib import Memory
+import shutil
+import tempfile
+
+_CACHE_DIR = None
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix, ConfusionMatrixDisplay
@@ -71,6 +76,25 @@ ALL_TASKS = "전체"
 # preprocess.py가 사용한 필터 대역. 모델 번들에 저장해 inference가 동일 필터를 쓰게 한다.
 DEFAULT_FILTER = {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0}
 FILTER_META = dict(DEFAULT_FILTER)
+
+
+
+def _pipeline_cache_dir():
+    """GridSearchCV가 파이프라인 앞단(표준화·PCA)을 재사용하도록 둘 캐시 폴더.
+
+    학습이 끝나면 지운다(다음 학습은 데이터가 달라 어차피 못 쓴다). 임시 폴더를 쓰므로
+    저장소나 data/ 를 더럽히지 않는다."""
+    global _CACHE_DIR
+    if _CACHE_DIR is None:
+        _CACHE_DIR = tempfile.mkdtemp(prefix="gml_train_cache_")
+    return _CACHE_DIR
+
+
+def _clear_pipeline_cache():
+    global _CACHE_DIR
+    if _CACHE_DIR is not None:
+        shutil.rmtree(_CACHE_DIR, ignore_errors=True)
+        _CACHE_DIR = None
 
 
 def load_filter_meta(features_csv):
@@ -236,7 +260,13 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
         pca_step = []
 
     # ---- SVM (Linear vs RBF) via GridSearchCV ----
-    svm_pipe = Pipeline([("scaler", StandardScaler())] + pca_step + [("svm", SVC(probability=True))])
+    # 전처리 단계(표준화·PCA)는 분류기 하이퍼파라미터와 무관한데도, 캐시가 없으면
+    # GridSearchCV가 후보를 바꿀 때마다 처음부터 다시 계산한다. 픽셀 방식은 이 앞단이
+    # 50,176차원 PCA라 전체 학습 시간의 대부분을 차지한다(후보 12개 x 5겹이면 PCA를
+    # 60번 계산). memory= 를 주면 같은 폴드의 앞단 결과를 재사용해 5번만 계산한다.
+    cache = Memory(location=_pipeline_cache_dir(), verbose=0)
+    svm_pipe = Pipeline([("scaler", StandardScaler())] + pca_step + [("svm", SVC(probability=True))],
+                        memory=cache)
     svm_param_grid = {
         "svm__kernel": ["linear", "rbf"],
         "svm__C": [0.1, 1, 10],
@@ -262,7 +292,8 @@ def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pix
     }
 
     # ---- Random Forest via GridSearchCV ----
-    rf_pipe = Pipeline([("scaler", StandardScaler())] + pca_step + [("rf", RandomForestClassifier(random_state=42))])
+    rf_pipe = Pipeline([("scaler", StandardScaler())] + pca_step + [("rf", RandomForestClassifier(random_state=42))],
+                       memory=cache)
     rf_param_grid = {
         "rf__n_estimators": [100, 200],
         "rf__max_depth": [None, 10, 20],
@@ -408,8 +439,12 @@ def main():
     tasks = list(TASKS) if args.task == ALL_TASKS else [args.task]
 
     summary = {}
-    for task in tasks:
-        summary.update(run_task(task, mode, args))
+    try:
+        for task in tasks:
+            summary.update(run_task(task, mode, args))
+    finally:
+        # 앞단 캐시는 이번 학습에서만 쓸모가 있다(데이터가 바뀌면 무효).
+        _clear_pipeline_cache()
 
     if len(summary) > 1:
         print("\n=== 전체 비교 (과제 x 방식) ===")
