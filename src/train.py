@@ -74,8 +74,15 @@ DEFAULT_TASK = "3종"
 ALL_TASKS = "전체"
 
 # preprocess.py가 사용한 필터 대역. 모델 번들에 저장해 inference가 동일 필터를 쓰게 한다.
-DEFAULT_FILTER = {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0}
+# preprocess.py의 기본값과 같아야 한다(선행연구 기준 0.5~20Hz, 한국 전원 60Hz).
+DEFAULT_FILTER = {"lowcut": 0.5, "highcut": 20.0, "notch_freq": 60.0, "notch_q": 30.0}
 FILTER_META = dict(DEFAULT_FILTER)
+
+# 창 길이도 학습·추론이 반드시 같아야 한다. 예전에는 이 값이 모델에 저장되지 않아
+# inference.py가 자기 상수(2초)를 쓰는 바람에, preprocess의 창을 바꾸면 학습과 추론이
+# 조용히 어긋났다. 이제 메타에서 읽어 모델 번들에 함께 저장한다.
+DEFAULT_WINDOW = {"sample_rate": 250.0, "window_sec": 10.0, "step_sec": 2.0}
+WINDOW_META = dict(DEFAULT_WINDOW)
 
 
 
@@ -97,17 +104,34 @@ def _clear_pipeline_cache():
         _CACHE_DIR = None
 
 
-def load_filter_meta(features_csv):
-    """preprocess.py가 남긴 preprocess_meta.json에서 필터 대역을 읽는다(없으면 기본값)."""
+def _load_meta(features_csv):
+    """preprocess.py가 남긴 preprocess_meta.json을 읽는다(없거나 깨졌으면 빈 dict)."""
     p = os.path.join(os.path.dirname(features_csv) or ".", "preprocess_meta.json")
     if os.path.exists(p):
         try:
             with open(p, encoding="utf-8") as f:
-                m = json.load(f)
-            return {k: float(m.get(k, DEFAULT_FILTER[k])) for k in DEFAULT_FILTER}
+                return json.load(f)
         except Exception:
             pass
-    return dict(DEFAULT_FILTER)
+    return {}
+
+
+def load_filter_meta(features_csv):
+    """preprocess.py가 남긴 메타에서 필터 대역을 읽는다(없으면 기본값)."""
+    m = _load_meta(features_csv)
+    try:
+        return {k: float(m.get(k, DEFAULT_FILTER[k])) for k in DEFAULT_FILTER}
+    except Exception:
+        return dict(DEFAULT_FILTER)
+
+
+def load_window_meta(features_csv):
+    """전처리에 쓴 창 길이/샘플레이트를 읽는다. 추론이 같은 창을 쓰도록 모델에 저장한다."""
+    m = _load_meta(features_csv)
+    try:
+        return {k: float(m.get(k, DEFAULT_WINDOW[k])) for k in DEFAULT_WINDOW}
+    except Exception:
+        return dict(DEFAULT_WINDOW)
 
 
 HISTORY_CAP = 50
@@ -365,7 +389,10 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     os.makedirs(models_dir, exist_ok=True)
 
     bundle = {"model": best_model, "classes": classes, "name": best_name,
-              "feature_mode": feature_mode, "filter": FILTER_META}
+              "feature_mode": feature_mode, "filter": FILTER_META,
+              # 추론이 같은 길이의 창으로 잘라야 특징이 일치한다.
+              "window_sec": WINDOW_META["window_sec"],
+              "sample_rate": WINDOW_META["sample_rate"]}
     if mode == "pixel":
         bundle["img_size"] = IMG_SIZE
     else:
@@ -430,10 +457,13 @@ def main():
                          help="3종(기본) / 정상-수분부족 / 정상-자극 / 전체. 정상은 항상 포함")
     args = parser.parse_args()
 
-    global FILTER_META
+    global FILTER_META, WINDOW_META
     FILTER_META = load_filter_meta(args.features_csv)
+    WINDOW_META = load_window_meta(args.features_csv)
     print(f"[train] 필터 대역: 대역통과 {FILTER_META['lowcut']}~{FILTER_META['highcut']}Hz, "
           f"노치 {FILTER_META['notch_freq']}Hz (모델에 저장 -> 추론과 자동 일치)")
+    print(f"[train] 분석 창: {WINDOW_META['window_sec']}초 @ {WINDOW_META['sample_rate']:.0f}Hz "
+          f"(모델에 저장 -> 추론과 자동 일치)")
 
     mode = MODE_CHOICES[args.mode]  # 내부 처리용(pixel/features/both)
     tasks = list(TASKS) if args.task == ALL_TASKS else [args.task]

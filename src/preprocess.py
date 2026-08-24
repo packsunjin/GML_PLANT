@@ -24,9 +24,10 @@ import os
 
 import numpy as np
 import pandas as pd
-from scipy.signal import butter, filtfilt, iirnotch, spectrogram
+from scipy.signal import butter, filtfilt, iirnotch
 
-from spectro_render import render_rgb_image
+from spectro_render import render_rgb_image, compute_spectrogram
+from sensor_control import AD8232_HPF_HZ, AD8232_LPF_HZ
 from feature_extraction import extract_features, FEATURE_NAMES
 
 # 원시 파일명 -> 상태(클래스) 매핑. 3가지 상태를 각각 별도 클래스로 저장한다.
@@ -84,18 +85,31 @@ def repair_dropouts(raw_win):
     return n_bad, fixed
 
 SAMPLE_RATE_HZ = 250.0  # sensor_control.py 기본 샘플링과 일치
-WINDOW_SEC = 2.0        # 스펙트로그램 1장을 만들 신호 구간 길이
-STEP_SEC = 1.0          # 슬라이딩 윈도우 이동 간격 (오버랩으로 이미지 수 확보)
+
+# 분석 창 길이와 대역은 "무엇을 잡으려는 신호인가"와 "이 하드웨어가 무엇을 통과시키는가"
+# 두 가지가 겹치는 곳으로 정해야 한다.
+#
+#  · 선행연구(식물 전기신호 분류): 창 8~15초, 대역 0.1~20Hz
+#  · AD8232가 실제로 통과시키는 대역: 0.5~40Hz (아날로그 필터가 회로에 박혀 있음)
+#
+# 겹치는 구간이 0.5~20Hz다. 0.1Hz까지 살리고 싶어도 AD8232의 0.5Hz 고역통과가
+# 이미 지워 버렸으므로 소프트웨어에서 하한을 낮춰 봐야 되살아나지 않는다.
+# 반대로 상한을 40Hz 가까이 올리면 식물 신호가 거의 없는 대역의 잡음만 더 들어온다.
+# 심전도 기준(2초 창, 0.5~45Hz)을 그대로 쓰면 한 창 안에 반응이 다 들어오지 않는다.
+WINDOW_SEC = 10.0       # 스펙트로그램 1장을 만들 신호 구간 길이 (선행연구 8~15초)
+STEP_SEC = 2.0          # 슬라이딩 윈도우 이동 간격 (창의 1/5씩 겹쳐 표본 수 확보)
 IMG_SIZE = 224
 
 
-def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4, notch_freq=50.0, notch_q=30.0):
-    """Butterworth 대역통과필터(0.5Hz~45Hz)로 저주파 드리프트/고주파 잡음을 줄이고,
-    이어서 50Hz IIR 노치필터로 전원 노이즈를 추가로 감쇠시킨다.
+def bandpass_filter(signal, fs, low=0.5, high=20.0, order=4, notch_freq=60.0, notch_q=30.0):
+    """Butterworth 대역통과필터(기본 0.5~20Hz)로 저주파 드리프트/고주파 잡음을 줄이고,
+    이어서 IIR 노치필터로 전원 노이즈를 추가로 감쇠시킨다.
 
-    대역통과 상한이 45Hz라 50Hz는 통과대역 밖이지만, order=4 Butterworth의 감쇠만으로는
-    50Hz 성분이 30% 안팎 남는다. 노치를 더하면 절반 수준(~18%)까지 더 줄어든다. 다만
-    윈도우가 2초로 짧아 필터 과도응답 때문에 완전히 0이 되지는 않는다.
+    상한이 20Hz인 이유: 식물 전기신호를 다룬 선행연구들이 신호를 0.1~20Hz로 제한한다.
+    그 위에는 식물 신호가 사실상 없고 잡음만 들어온다.
+    노치 기본값이 60Hz인 이유: 한국 상용 전원이 60Hz다(유럽·일본 동부는 50Hz).
+    상한 20Hz면 60Hz는 통과대역에서 한참 벗어나지만, 대역통과만으로 완전히 0이 되지는
+    않으므로 노치를 함께 건다. 실제 값은 process_file()이 신호에서 재서 자동 보정한다.
     (inference.py의 bandpass_filter와 동일한 필터 체인을 사용해야 학습/추론이 일치한다)"""
     nyq = 0.5 * fs
     b, a = butter(order, [low / nyq, high / nyq], btype="band")
@@ -117,7 +131,7 @@ def make_spectrogram_image(Sxx_db, out_path, img_size=IMG_SIZE):
 
 
 def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, step_sec=STEP_SEC,
-                 low=0.5, high=45.0, notch_freq=50.0,
+                 low=0.5, high=20.0, notch_freq=60.0,
                  quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V,
                  repair=True):
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고,
@@ -246,9 +260,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             skipped_quiet += 1
             continue
 
-        f, t, Sxx = spectrogram(segment, fs=fs, nperseg=min(128, len(segment)),
-                                 noverlap=64 if len(segment) > 128 else 0)
-        Sxx_db = 10 * np.log10(Sxx + 1e-12)
+        # inference.py와 같은 함수(spectro_render.compute_spectrogram)를 쓴다.
+        Sxx_db, f, t = compute_spectrogram(segment, fs, high=high)
 
         img_name = f"{base_name}_{start:06d}.png"
         img_path = os.path.join(out_dir, img_name)
@@ -288,11 +301,14 @@ def main():
     parser.add_argument("--out_dir", default="../data/spectrogram")
     parser.add_argument("--features_csv", default="../data/features.csv")
     parser.add_argument("--lowcut", type=float, default=0.5,
-                        help="대역통과 하한(Hz). 느린 식물 신호(수분부족 등)를 살리려면 0.05~0.1 처럼 낮추세요")
-    parser.add_argument("--highcut", type=float, default=45.0, help="대역통과 상한(Hz)")
-    parser.add_argument("--notch", type=float, default=50.0,
-                        help="노치 주파수(Hz). 0이면 노치 끔. 신호에서 50/60Hz를 직접 재서 "
-                             "센 쪽으로 자동 보정하므로 보통 그대로 두면 됩니다")
+                        help="대역통과 하한(Hz). AD8232는 0.5Hz 아래를 회로에서 이미 잘라내므로, "
+                             "이 값을 더 낮춰도 하드웨어로 받은 신호에서는 아무것도 되살아나지 않습니다")
+    parser.add_argument("--highcut", type=float, default=20.0,
+                        help="대역통과 상한(Hz). 기본 20Hz — 식물 신호는 이 위에 거의 없다")
+    parser.add_argument("--notch", type=float, default=60.0,
+                        help="노치 주파수(Hz). 기본 60Hz — 한국 상용 전원 주파수. 0이면 노치 끔. "
+                             "신호에서 50/60Hz를 직접 재서 센 쪽으로 자동 보정하므로 "
+                             "보통 그대로 두면 됩니다")
     parser.add_argument("--no-repair", action="store_true",
                         help="fast-restore 강하 보간을 끄고 원신호 그대로 사용한다")
     parser.add_argument("--no-quality", action="store_true",
@@ -301,12 +317,25 @@ def main():
                         help=f"평균이 이 값보다 높은 창은 포화로 보고 버림(기본 {RAIL_HIGH_V}V)")
     parser.add_argument("--min-std", type=float, default=MIN_STD_V,
                         help=f"필터 후 표준편차가 이보다 작으면 신호 없음으로 보고 버림(기본 {MIN_STD_V}V)")
+    parser.add_argument("--window_sec", type=float, default=WINDOW_SEC,
+                        help="분석 창 길이(초). 학습·추론이 같은 값을 써야 한다")
+    parser.add_argument("--step_sec", type=float, default=STEP_SEC,
+                        help="창 이동 간격(초)")
     parser.add_argument("--only", default=None, choices=sorted(set(FILE_TO_STATE.values())),
                         help="이 상태 하나만 변환한다. 나머지 상태의 결과는 그대로 둔다.")
     args = parser.parse_args()
 
     print(f"[preprocess] 원시 데이터: {args.raw_dir}")
     print(f"[preprocess] 출력(스펙트로그램): {args.out_dir}")
+    print(f"[preprocess] 창 {args.window_sec}초 / 스텝 {args.step_sec}초")
+    # AD8232의 아날로그 대역(0.5~40Hz) 밖을 지정하면 소프트웨어 필터는 헛돈다.
+    if args.lowcut < AD8232_HPF_HZ:
+        print(f"[preprocess] ⚠️  하한 {args.lowcut}Hz 는 AD8232의 고역통과({AD8232_HPF_HZ}Hz)보다 낮습니다.")
+        print("    회로에서 이미 지워진 대역이라 하드웨어 데이터에서는 효과가 없습니다"
+              " (시뮬레이션 데이터에는 적용됩니다).")
+    if args.highcut > AD8232_LPF_HZ:
+        print(f"[preprocess] ⚠️  상한 {args.highcut}Hz 는 AD8232의 저역통과({AD8232_LPF_HZ}Hz)보다 높습니다.")
+        print("    그 위에는 회로가 통과시킨 신호가 없습니다.")
     print(f"[preprocess] 필터: 대역통과 {args.lowcut}~{args.highcut}Hz"
           + (f" + 노치 {args.notch}Hz" if args.notch else " (노치 없음)"))
     if args.only:
@@ -334,6 +363,7 @@ def main():
         if fname.endswith(".csv"):
             csv_path = os.path.join(args.raw_dir, fname)
             count, feature_rows, used_notch = process_file(csv_path, args.out_dir,
+                                               window_sec=args.window_sec, step_sec=args.step_sec,
                                                low=args.lowcut, high=args.highcut, notch_freq=args.notch,
                                                quality=not args.no_quality,
                                                rail_high=args.rail_high, min_std=args.min_std,
@@ -359,7 +389,8 @@ def main():
     with open(meta_path, "w", encoding="utf-8") as mf:
         json.dump({"lowcut": args.lowcut, "highcut": args.highcut,
                    "notch_freq": meta_notch, "notch_q": 30.0,
-                   "sample_rate": SAMPLE_RATE_HZ, "window_sec": WINDOW_SEC, "step_sec": STEP_SEC}, mf)
+                   "sample_rate": SAMPLE_RATE_HZ,
+                   "window_sec": args.window_sec, "step_sec": args.step_sec}, mf)
     print(f"[preprocess] 필터 메타 저장 -> {meta_path}")
 
     print(f"[preprocess] 총 {total}개 스펙트로그램 이미지 생성 완료")

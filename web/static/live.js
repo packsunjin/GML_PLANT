@@ -226,6 +226,15 @@
     setText("p2p", f(d.p2p, " V"));
     setText("wave-peak", d.p2p == null ? "PEAK —" : "PEAK " + d.p2p + " V");
 
+    // 대역·창 길이는 모델마다 다르므로 화면에 박아 두지 않고 서버가 준 값을 쓴다.
+    if (d.band) {
+      setText("wave-meta", Math.round(d.sample_rate) + " SPS · BAND " +
+              d.band[0] + "–" + d.band[1] + " Hz" +
+              (d.notch ? " · NOTCH " + Math.round(d.notch) + " Hz" : ""));
+      setText("spec-meta", "가로축: 시간(최근 " + d.window_sec + "초) · 세로축: 주파수 0–" +
+              d.band[1] + " Hz · 밝을수록 강함");
+    }
+
     setText("source", d.source || "입력 소스 확인 중");
   }
 

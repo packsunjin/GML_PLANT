@@ -60,12 +60,14 @@
   <!-- 1 · 수집 -->
   <div data-admin-pane="collect">
     <p>측정할 상태를 고르고 <b>측정 시작</b>을 누르세요. 이미 모은 상태는 덮어써요.</p>
+    <p>분석 창이 10초라, 한 상태당 2분 이상 모아야 학습에 쓸 만한 장수가 나옵니다.
+       시작 버튼을 누르면 전극이 안정될 때까지 20초 기다린 뒤 기록을 시작합니다.</p>
     <p>
       상태:
       <span data-job="collect-buttons"></span>
     </p>
     <p>
-      <label>길이 <input type="number" data-job="duration" value="30" min="0" max="600" step="5" size="4"> 초</label>
+      <label>길이 <input type="number" data-job="duration" value="120" min="0" max="1800" step="10" size="4"> 초</label>
       <label><input type="checkbox" data-job="unlimited"> 중지할 때까지</label>
     </p>
     <p>
@@ -165,7 +167,7 @@
   <canvas data-live="wave" width="1120" height="300" style="width:100%;height:220px"></canvas>
 </p>
 <p>
-  <span data-live="wave-meta">250 SPS · BAND 0.5–45 Hz</span> ·
+  <span data-live="wave-meta">대역 확인 중</span> ·
   <span data-live="wave-peak">PEAK —</span> ·
   <span data-live="wave-scale" title="세로축은 최소 ±0.1V로 고정됩니다. 그보다 크게 흔들릴 때만 넓어져요.">세로축 —</span>
 </p>
@@ -176,7 +178,7 @@
 <p>
   <canvas data-live="spec" width="440" height="220" style="width:100%;max-width:440px;height:220px;background:#111"></canvas>
 </p>
-<p>가로축: 시간(최근 2초) · 세로축: 주파수 0–45 Hz · 밝을수록 강함</p>
+<p data-live="spec-meta">가로축: 시간 · 세로축: 주파수 · 밝을수록 강함</p>
 
 <script src="/static/live.js"></script>
 </body>

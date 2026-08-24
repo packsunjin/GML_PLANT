@@ -33,6 +33,32 @@ import numpy as np
 RAIL_HIGH_V = 3.0
 RAIL_LOW_V = 0.3
 
+# ── AD8232 라는 하드웨어가 정하는 한계 ────────────────────────────────
+# 이 회로는 원래 심전도용이고, 심전도 신호(500µV~5mV)에 맞춰 설계되어 있다.
+# 우리가 재려는 식물 신호는 그 규격 안에 들어오지 않는 부분이 있어서,
+# 무엇이 물리적으로 측정 가능한지를 코드가 알고 있어야 한다.
+#
+#  · 총 이득 1100배 = 계측증폭기 100배 x 2차 저역통과단 11배 (심전도 구성)
+#  · 아날로그 대역 0.5~40Hz (2차 고역통과 0.5Hz + 2차 저역통과 40Hz)
+#
+# 총 이득이 1100배라는 것은, 전극 사이 전압이 약 ±1.2mV만 넘어도 출력이 전원
+# 레일에 부딪혀 잘린다는 뜻이다(3.3V 전원, 중간 기준점 기준).
+# 문헌이 표면 전극으로 보고하는 식물 전위는 수 mV~수십 mV라 이 범위를 넘는다 —
+# 즉 큰 식물 전위는 '작게 보이는' 것이 아니라 아예 잘려서 레일 포화로 나타난다.
+# (1mV 미만의 작은 과도신호만 잘리지 않고 들어온다)
+# 또 0.5Hz 고역통과가 회로에 박혀 있어, 수십 초에 걸친 느린 반응은 모양 전체가
+# 아니라 시작 부분의 빠른 변화만 남는다. 레일 포화가 자주 보이는 이유와,
+# 느린 신호가 안 보이는 이유를 코드가 설명할 수 있어야 한다.
+AD8232_GAIN = 1100.0        # V/V (데이터시트 심전도 구성)
+AD8232_HPF_HZ = 0.5         # 아날로그 고역통과 차단 주파수
+AD8232_LPF_HZ = 40.0        # 아날로그 저역통과 차단 주파수
+
+
+def to_input_mv(v_out):
+    """증폭기 출력(V)을 전극 사이 입력 전압(mV)으로 환산한다.
+    문헌의 식물 전위 값(mV)과 비교하려면 반드시 이 환산을 거쳐야 한다."""
+    return 1000.0 * float(v_out) / AD8232_GAIN
+
 HARDWARE_AVAILABLE = False
 try:
     import board
@@ -112,6 +138,13 @@ def sensor_status():
         info["baseline_verdict"] = "하단 레일 포화 — 전극 연결을 확인하세요"
     else:
         info["baseline_verdict"] = "정상 범위"
+
+    # 지금 기준점에서 레일까지 남은 거리 = 잘리지 않고 잴 수 있는 신호 크기.
+    # 출력 볼트로만 보면 감이 안 오므로 전극 입력 기준(mV)으로 환산해서 같이 준다.
+    headroom_v = min(RAIL_HIGH_V - avg, avg - RAIL_LOW_V)
+    info["headroom_mv"] = round(to_input_mv(headroom_v), 3)
+    info["gain"] = AD8232_GAIN
+    info["analog_band"] = [AD8232_HPF_HZ, AD8232_LPF_HZ]
     return info
 
 
@@ -287,15 +320,58 @@ def _report_motion_artifacts(values, fs):
 
     print(f"[sensor_control] ⚠️  바탕잡음의 {SPIKE_SIGMA:.0f}배를 넘는 튐이 "
           f"{bursts}회 발견됐습니다 (최대 {worst:.0f}배, {span:.0f}초 동안).")
-    print(f"    바탕잡음 표준편차 {1000*sigma:.1f} mV 기준으로 최대 {1000*float(dev.max()):.0f} mV 까지 튀었습니다.")
-    print("    이 정도 크기는 식물 전위로 설명하기 어렵습니다 — 문헌의 토마토 활동전위는")
-    print("    약 21 mV 수준입니다. 배선·전극이 흔들려 생긴 접촉 잡음일 가능성이 큽니다.")
+    # 크기는 반드시 '전극 입력 기준(mV)'으로 환산해서 말해야 한다. 증폭기 출력 볼트를
+    # 그대로 문헌값과 비교하면 1100배만큼 틀린 이야기가 된다.
+    print(f"    바탕잡음 {to_input_mv(sigma):.4f} mV 기준으로 최대 {to_input_mv(dev.max()):.3f} mV "
+          f"까지 튀었습니다 (전극 입력 환산, 출력 {float(dev.max()):.2f}V).")
+    print("    배선·전극이 흔들려 생긴 접촉 잡음일 가능성이 큽니다.")
     print("    ▸ 확인법: 식물은 그대로 두고 리드선만 흔들어 다시 재보세요.")
     print("      그때도 같은 튐이 나오면 식물 신호가 아닙니다.")
     print("    ▸ 이 상태로 학습하면 안 됩니다. preprocess 의 이벤트 선별은 '큰 창'을")
     print("      자극으로 고르므로, 이 튐이 오히려 학습 데이터로 선택됩니다.")
     print("    ▸ 대책: 리드선을 고정해 움직이지 않게 하고, 자극은 전극에서 먼 부위에")
     print("      비전도성 도구로 주세요.")
+
+
+# 전극이 마르면서 생기는 느린 표류의 경보 기준(mV/분).
+# 선행연구는 젖은/겔 전극을 몇 시간 붙여 두면 수십~수백 mV의 표류가 쌓인다고 보고한다.
+# 짧은 수집 한 번에서 이 기울기를 넘으면, 곧 기준점이 전원 레일에 닿아 신호가 잘린다.
+DRIFT_WARN_MV_PER_MIN = 30.0
+
+
+def _report_drift(rows, fs):
+    """수집 구간 전체의 기울기(전극 표류)를 재서 알려준다.
+
+    식물에 붙인 젖은 전극은 시간이 지나면서 마르고, 그 과정에서 전극-식물 임피던스와
+    접촉 전위가 변해 느린 표류가 생긴다. 표류 자체는 대역통과 하한(0.5Hz)이 걷어내지만,
+    표류가 계속되면 증폭기 기준점이 레일 쪽으로 밀려 결국 신호가 통째로 잘린다.
+    수집이 끝난 직후에 알려 줘야 전극을 다시 적시고 재수집할 수 있다."""
+    if not HARDWARE_AVAILABLE or len(rows) < int(fs) * 10:
+        return
+    t = np.asarray([r[0] for r in rows], dtype=float)
+    v = np.asarray([r[1] for r in rows], dtype=float)
+    span_min = (t[-1] - t[0]) / 60.0
+    if span_min <= 0:
+        return
+
+    # 1차 추세선의 기울기 = 분당 표류량 (증폭기 출력 기준)
+    slope = float(np.polyfit(t, v, 1)[0]) * 60.0 * 1000.0   # mV/분
+    total = slope * span_min                                 # 이번 수집 동안의 총 표류
+    print(f"[sensor_control] 기준점 표류: 출력 {slope:+.1f} mV/분 "
+          f"(전극 입력 환산 {to_input_mv(slope/1000.0)*1000:+.4f} mV/분, "
+          f"이번 {span_min*60:.0f}초 동안 출력 {total:+.1f} mV)")
+    if abs(slope) < DRIFT_WARN_MV_PER_MIN:
+        return
+
+    # 지금 값이 레일까지 얼마나 남았는지, 이 속도면 몇 분 뒤에 닿는지 계산해 준다.
+    now = float(v[-1])
+    margin_v = (RAIL_HIGH_V - now) if slope > 0 else (now - RAIL_LOW_V)
+    minutes = margin_v * 1000.0 / abs(slope)
+    print(f"[sensor_control] ⚠️  표류가 큽니다. 이 속도라면 약 {minutes:.0f}분 뒤에 "
+          f"{'상단' if slope > 0 else '하단'} 레일에 닿아 신호가 잘립니다.")
+    print("    전극이 마르는 것이 가장 흔한 원인입니다(젖은 전극일수록 빠릅니다).")
+    print("    ▸ 대책: 전극 접촉면을 다시 적시고, 마르지 않게 덮은 뒤 재수집하세요.")
+    print("    ▸ 긴 수집이 필요하면 중간에 한 번씩 센서 진단으로 기준점을 확인하세요.")
 
 
 def _report_i2c_users():
@@ -332,10 +408,47 @@ def _report_i2c_users():
         print("    (I2C 를 열고 있는 다른 프로세스는 없습니다 — 다른 원인입니다)")
 
 
-def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
+SETTLE_SEC = 20.0  # 전극을 붙인 직후의 안정화 대기(초). 시뮬레이션에서는 건너뛴다.
+
+
+def _settle(settle_sec, sample_rate_hz):
+    """수집 시작 전에 전극이 안정될 때까지 기다린다(하드웨어일 때만).
+
+    전극을 붙이거나 꽂는 행위 자체가 식물에 상처·자극 반응을 일으키고, 접촉 전위도
+    붙인 직후에 가장 크게 흔들린다. 선행연구가 취득 전 안정화 시간을 두는 이유다.
+    이 구간의 값은 저장하지 않고, 기준점이 레일에 붙지 않았는지만 확인해 알려준다."""
+    if not HARDWARE_AVAILABLE or settle_sec <= 0:
+        return
+    print(f"[sensor_control] 전극 안정화 대기 {settle_sec:.0f}초 "
+          f"(붙인 직후의 접촉 전위·상처 반응이 가라앉기를 기다립니다)")
+    end = time.time() + settle_sec
+    vals = []
+    interval = 1.0 / max(1.0, sample_rate_hz)
+    try:
+        while time.time() < end:
+            vals.append(read_sample_hardware())
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("[sensor_control] ⏹ 안정화 대기를 건너뜁니다.")
+        return
+    if not vals:
+        return
+    avg = float(np.mean(vals))
+    head = float(np.mean(vals[:max(1, len(vals) // 5)]))
+    print(f"[sensor_control] 안정화 후 기준점 {avg:.3f}V "
+          f"(대기 시작 무렵 {head:.3f}V -> {avg - head:+.3f}V 이동)")
+    if avg > RAIL_HIGH_V or avg < RAIL_LOW_V:
+        print("[sensor_control] ⚠️  기준점이 전원 레일에 붙어 있습니다. 이대로 모으면")
+        print("    파형이 통째로 잘립니다. 전극 접촉을 고치고 다시 시작하세요.")
+
+
+def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
+            settle_sec=SETTLE_SEC):
     """
     지정한 상태(state)에 대해 duration_sec 동안 sample_rate_hz로 샘플링하여
     out_dir/<상태>.csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
+
+    settle_sec 동안은 전극이 안정되기를 기다렸다가(저장하지 않음) 수집을 시작한다.
 
     duration_sec가 0 이하이면 **중지할 때까지 무제한**으로 모은다.
     중간에 Ctrl+C(또는 SIGTERM)로 끊으면 그때까지 모은 만큼만 저장한다.
@@ -355,6 +468,8 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
     length_str = "무제한 (중지할 때까지)" if unlimited else f"{duration_sec}s (총 {n_samples} 샘플)"
     print(f"[sensor_control] 모드: {mode_str}")
     print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={length_str} -> {out_path}")
+
+    _settle(settle_sec, sample_rate_hz)
 
     rows = []
     stopped = False
@@ -422,6 +537,7 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0):
 
     _report_artifacts([r[1] for r in rows], sample_rate_hz)
     _report_motion_artifacts([r[1] for r in rows], sample_rate_hz)
+    _report_drift(rows, sample_rate_hz)
 
     span = float(rows[-1][0]) if rows else 0.0
     actual = (len(rows) / span) if span > 0 else float(sample_rate_hz)
@@ -450,14 +566,17 @@ def read_single_realtime(state_for_sim="정상", t=None):
 def main():
     parser = argparse.ArgumentParser(description="AD8232+ADS1115 식물 전위 신호 수집")
     parser.add_argument("--state", required=True, choices=list(VALID_STATES))
-    parser.add_argument("--duration", type=float, default=30.0,
-                        help="수집 시간(초), 기본 30초. 0이면 중지할 때까지 무제한")
+    parser.add_argument("--duration", type=float, default=120.0,
+                        help="수집 시간(초), 기본 120초. 0이면 중지할 때까지 무제한. "
+                             "분석 창이 10초라 30초만 모으면 학습 이미지가 열 몇 장뿐이다")
     parser.add_argument("--rate", type=float, default=250.0, help="샘플링 주기(Hz), 100~1000 권장")
     parser.add_argument("--out", default="../data/raw", help="저장 폴더")
+    parser.add_argument("--settle", type=float, default=SETTLE_SEC,
+                        help=f"수집 전 전극 안정화 대기(초), 기본 {SETTLE_SEC:.0f}초. 0이면 대기 없음")
     args = parser.parse_args()
 
     _install_stop_handler()
-    collect(args.state, args.duration, args.rate, args.out)
+    collect(args.state, args.duration, args.rate, args.out, settle_sec=args.settle)
 
 
 if __name__ == "__main__":

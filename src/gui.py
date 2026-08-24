@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 
-from inference import RealtimeClassifier, SAMPLE_RATE_HZ, WINDOW_SEC
+from inference import RealtimeClassifier
 
 # 상태별 표시 색상. matplotlib은 컬러 이모지를 못 그려 두부글자(□)가 되므로, GUI에서는
 # 이모지 대신 이 색상 원으로 상태를 표시한다. (터미널/헤드리스는 이모지가 잘 나오므로 그대로 사용)
@@ -88,7 +88,7 @@ def run_gui(model_path, sim_csv, refresh_hz=5.0, sim_state="정상"):
                 last_result = result
                 # 최근 5초 버퍼 갱신: predict 주기(predict_every 샘플)마다 result가 나오므로,
                 # 그 사이 새로 들어온 샘플 수만큼만(=predict_every) 필터링 신호의 최신 구간을
-                # 밀어넣는다. 필터링 윈도우(2초=window_len) 전체를 매번 밀어넣으면 인접 예측끼리
+                # 밀어넣는다. 필터링 윈도우(window_len) 전체를 매번 밀어넣으면 인접 예측끼리
                 # 대부분 겹쳐서 시계열이 중복 표시되므로 새 구간만 반영한다.
                 n_new = min(clf.predict_every, len(result["filtered_signal"]), len(recent_signal))
                 recent_signal = np.roll(recent_signal, -n_new)

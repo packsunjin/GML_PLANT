@@ -15,14 +15,16 @@ from functools import lru_cache
 
 import numpy as np
 import joblib
-from scipy.signal import butter, filtfilt, iirnotch, spectrogram
+from scipy.signal import butter, filtfilt, iirnotch
 
 from sensor_control import read_single_realtime, HARDWARE_AVAILABLE
-from spectro_render import render_gray_array
+from spectro_render import render_gray_array, compute_spectrogram
 from feature_extraction import extract_features
 
 SAMPLE_RATE_HZ = 250.0
-WINDOW_SEC = 2.0
+# 창 길이 기본값. 실제로는 모델 번들에 저장된 값(학습 때 쓴 창)을 우선한다 —
+# 여기 상수를 그대로 쓰면 preprocess의 창을 바꿨을 때 학습/추론이 조용히 어긋난다.
+WINDOW_SEC = 10.0
 IMG_SIZE = 224
 PREDICT_HZ = 5.0  # 실시간 루프에서 무거운 특징추출+추론을 반복할 최대 빈도
 
@@ -43,9 +45,10 @@ def _design_notch(fs, notch_freq, notch_q):
     return iirnotch(notch_freq, notch_q, fs)
 
 
-def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4, notch_freq=50.0, notch_q=30.0):
-    """preprocess.py의 bandpass_filter와 동일한 대역통과 + 50Hz 노치 체인.
-    학습(preprocess)과 추론(inference)의 필터가 반드시 일치해야 하므로 두 곳을 동일하게 유지한다."""
+def bandpass_filter(signal, fs, low=0.5, high=20.0, order=4, notch_freq=60.0, notch_q=30.0):
+    """preprocess.py의 bandpass_filter와 동일한 대역통과 + 노치 체인(기본 0.5~20Hz, 60Hz 노치).
+    학습(preprocess)과 추론(inference)의 필터가 반드시 일치해야 하므로 두 곳을 동일하게 유지한다.
+    실제 값은 모델 번들의 filter 항목에서 넘어온다(기본값은 안전망일 뿐)."""
     b, a = _design_bandpass(fs, low, high, order)
     filtered = filtfilt(b, a, signal)
     if notch_freq and notch_freq < 0.5 * fs:
@@ -55,7 +58,7 @@ def bandpass_filter(signal, fs, low=0.5, high=45.0, order=4, notch_freq=50.0, no
 
 
 def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode="pixel",
-                      low=0.5, high=45.0, notch_freq=50.0, notch_q=30.0):
+                      low=0.5, high=20.0, notch_freq=60.0, notch_q=30.0):
     """실시간 신호 버퍼 -> 필터링 -> 스펙트로그램 -> 학습 때와 동일한 특징 벡터로 변환.
 
     low/high/notch_freq/notch_q는 학습 때(preprocess.py) 쓴 필터 대역과 반드시 같아야 한다.
@@ -68,9 +71,8 @@ def signal_to_feature(signal, fs=SAMPLE_RATE_HZ, img_size=IMG_SIZE, feature_mode
     - feature_mode="explicit": feature_extraction.extract_features() — 통계/주파수
       특징 14개."""
     filtered = bandpass_filter(signal, fs, low=low, high=high, notch_freq=notch_freq, notch_q=notch_q)
-    f, t, Sxx = spectrogram(filtered, fs=fs, nperseg=min(128, len(filtered)),
-                             noverlap=64 if len(filtered) > 128 else 0)
-    Sxx_db = 10 * np.log10(Sxx + 1e-12)
+    # 스펙트로그램 계산은 preprocess.py와 같은 함수를 쓴다(두 곳이 갈라지면 학습/추론 불일치).
+    Sxx_db, f, t = compute_spectrogram(filtered, fs, high=high)
 
     if feature_mode == "explicit":
         arr = extract_features(filtered, Sxx_db, f, t, fs=fs)
@@ -155,15 +157,18 @@ class RealtimeClassifier:
     SIM_CYCLE_SEC = 8.0
 
     def __init__(self, model_path="../models/best_model.joblib",
-                 sample_rate=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC,
+                 sample_rate=SAMPLE_RATE_HZ, window_sec=None,
                  sim_source_csv=None, predict_hz=PREDICT_HZ,
                  sim_state="정상", smooth_window=5):
         self.model_path = model_path
+        # window_sec=None이면 모델이 학습 때 쓴 창 길이를 그대로 따른다(권장).
+        # 값을 직접 주면 그 값이 우선한다(창 길이를 실험할 때만 쓸 것).
+        self._window_sec_override = None if window_sec is None else float(window_sec)
         self._install_bundle(joblib.load(model_path))
 
         self.sample_rate = sample_rate
-        self.window_len = int(window_sec * sample_rate)
-        self.buffer = deque(maxlen=self.window_len)
+        self._set_window(self._window_sec_override
+                         if self._window_sec_override is not None else self.bundle_window_sec)
 
         # 버퍼에는 매 샘플(최대 sample_rate Hz)마다 값을 쌓지만, 특징추출+예측(스펙트로그램
         # 렌더링 포함)은 predict_hz 주기로만 수행해 CPU 부하를 실시간 가능한 수준으로 제한한다.
@@ -199,6 +204,16 @@ class RealtimeClassifier:
         self._sim_n = 0
         self._paced_n = 0   # pace()가 지금까지 맞춘 샘플 수(목표 시각 계산용)
 
+    def _set_window(self, window_sec):
+        """분석 창 길이를 정하고 버퍼를 그 길이에 맞춘다. 이미 모아둔 샘플은 살린다."""
+        self.window_sec = float(window_sec)
+        self.window_len = max(1, int(round(self.window_sec * self.sample_rate)))
+        old = getattr(self, "buffer", None)
+        buf = deque(maxlen=self.window_len)
+        if old:
+            buf.extend(list(old)[-self.window_len:])
+        self.buffer = buf
+
     def _install_bundle(self, bundle):
         """joblib 번들의 내용을 속성에 반영한다. 마지막에 _view를 통째로 갈아끼우는 이유는
         step()이 백그라운드 스레드에서 계속 도는 중에도 모델을 바꿀 수 있어야 하기 때문이다.
@@ -211,7 +226,12 @@ class RealtimeClassifier:
         self.feature_mode = bundle.get("feature_mode", "pixel")
         self.img_size = bundle.get("img_size", IMG_SIZE)  # feature_mode=="explicit"일 때는 사용 안 함
         # 학습 때 쓴 필터 대역(없는 예전 번들은 기본 0.5~45Hz + 50Hz 노치). 추론도 동일 대역 사용.
-        self.filter = bundle.get("filter", {"lowcut": 0.5, "highcut": 45.0, "notch_freq": 50.0, "notch_q": 30.0})
+        self.filter = bundle.get("filter", {"lowcut": 0.5, "highcut": 20.0, "notch_freq": 60.0, "notch_q": 30.0})
+        # 학습 때 쓴 창 길이. 이 키가 없는 예전 번들은 2초 창으로 학습된 것이다.
+        self.bundle_window_sec = float(bundle.get("window_sec", 2.0))
+        if self._window_sec_override is None and hasattr(self, "sample_rate"):
+            # 실행 중 모델 교체(reload_model)로 창 길이가 바뀌면 버퍼도 같이 맞춘다.
+            self._set_window(self.bundle_window_sec)
         # 앞단 선형 변환을 미리 접어 둔다(실패하면 원래 모델을 그대로 쓴다).
         folded = None
         try:

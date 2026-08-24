@@ -154,6 +154,10 @@ def _payload(result, recent, clf):
         # 가정하는 주파수축이 어긋나 정확도가 떨어진다는 신호다.
         "sample_rate": SAMPLE_RATE_HZ,
         "actual_rate": clf.actual_rate(),
+        # 화면 설명에 쓰는 값. 모델마다 다르므로 상수로 박아 두면 거짓말이 된다.
+        "band": [clf.filter["lowcut"], clf.filter["highcut"]],
+        "notch": clf.filter["notch_freq"],
+        "window_sec": clf.window_sec,
     }
 
 
@@ -500,12 +504,13 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         if state not in sensor_control.VALID_STATES:
             return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
         try:
-            duration = float(body.get("duration", 30))
+            duration = float(body.get("duration", 120))
         except (TypeError, ValueError):
             return jsonify({"ok": False, "error": "수집 시간이 숫자가 아닙니다"}), 400
-        # 0이면 '중지 누를 때까지' 무제한. 그 외에는 5~600초.
-        if duration != 0 and not (5 <= duration <= 600):
-            return jsonify({"ok": False, "error": "수집 시간은 5~600초, 또는 0(무제한)으로 넣어주세요"}), 400
+        # 0이면 '중지 누를 때까지' 무제한. 그 외에는 5~1800초.
+        # 상한을 늘린 이유: 분석 창이 10초라 30초만 모으면 이미지가 열 몇 장뿐이다.
+        if duration != 0 and not (5 <= duration <= 1800):
+            return jsonify({"ok": False, "error": "수집 시간은 5~1800초, 또는 0(무제한)으로 넣어주세요"}), 400
 
         cmd = [sys.executable, "sensor_control.py", "--state", state,
                "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ)]
