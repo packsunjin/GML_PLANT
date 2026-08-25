@@ -44,6 +44,33 @@ FILE_TO_STATE = {
     "자극.csv": "자극",
 }
 
+# 상태마다 **여러 번 나눠 측정한 파일**을 받는다.
+#   정상.csv, 정상_2.csv, 정상_20260825_1430.csv  →  전부 '정상'
+#
+# 왜 필요한가. 상태마다 세션이 하나뿐이면, 그 세션의 전극이 어느 방향으로 표류했는지가
+# 곧 클래스 라벨이 되어 버린다. "수분부족이라 전위가 밀린 것"과 "그날 그 전극이 그렇게
+# 표류한 것"을 구분할 방법이 없다. 실제로 이 프로젝트의 1차 학습에서 나온 높은 정확도가
+# 식물 반응이 아니라 전극 부착 조건의 차이였다(보고서 Ⅳ장 2절 (4)).
+# 세션을 여러 번 나눠 측정하고, 학습·평가를 **세션 단위로** 갈라야 그 혼동을 뺄 수 있다.
+STATE_SUFFIX_SEP = "_"
+
+
+def state_of(fname):
+    """파일명에서 상태를 알아낸다. 모르는 파일이면 None.
+    '정상.csv' 도 '정상_3.csv' 도 '정상' 이다."""
+    if not fname.lower().endswith(".csv"):
+        return None
+    stem = fname[:-4]
+    if stem + ".csv" in FILE_TO_STATE:
+        return FILE_TO_STATE[stem + ".csv"]
+    head = stem.split(STATE_SUFFIX_SEP)[0]
+    return FILE_TO_STATE.get(head + ".csv")
+
+
+def session_of(fname):
+    """세션 이름(= 파일 이름에서 확장자 뺀 것). 학습/평가를 이 단위로 가른다."""
+    return fname[:-4] if fname.lower().endswith(".csv") else fname
+
 # ---- 품질 기준 --------------------------------------------------------
 # 전극이 잘 안 붙으면 AD8232 출력이 전원 레일에 붙어버린다(3.3V 계통 기준 3.2V 근처).
 # 그 구간은 증폭기 포화지 식물 신호가 아니므로 학습에서 제외한다.
@@ -195,11 +222,11 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     추론이 같은 필터를 쓰도록 이 값을 메타에 기록해야 한다.
     low/high/notch_freq로 대역통과·노치 필터 대역을 조절한다(느린 식물 신호 보존 시 low를 낮춤)."""
     fname = os.path.basename(csv_path)
-    if fname not in FILE_TO_STATE:
+    if state_of(fname) is None:
         print(f"  [건너뜀] 매핑되지 않은 파일: {fname}")
         return 0, [], notch_freq
 
-    cls = FILE_TO_STATE[fname]
+    cls = state_of(fname)
     out_dir = os.path.join(out_root, cls)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -424,17 +451,33 @@ def main():
     existing = set(os.listdir(args.raw_dir)) if os.path.isdir(args.raw_dir) else set()
     if args.only:
         # 한 상태만 돌릴 때는 그 파일만 본다.
-        targets = {f for f in existing if FILE_TO_STATE.get(f) == args.only}
+        targets = {f for f in existing if state_of(f) == args.only}
         if not targets:
             print(f"❌ '{args.only}' 의 원시 CSV가 없습니다. 먼저 수집하세요.")
             return
     else:
         targets = existing
-        missing_states = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname not in existing]
+        # 상태별로 몇 세션이 모였는지 센다. '정상.csv' 하나만 보면 '정상_2.csv' 같은
+        # 추가 세션을 못 알아보고 "수집 안 됨"이라고 잘못 알린다.
+        by_state = {}
+        for f in existing:
+            st = state_of(f)
+            if st:
+                by_state.setdefault(st, []).append(f)
+        all_states = sorted(set(FILE_TO_STATE.values()))
+        missing_states = [st for st in all_states if st not in by_state]
         if missing_states:
             print(f"⚠️  다음 상태가 수집되지 않았습니다: {', '.join(missing_states)}")
-            collected = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname in existing]
-            print(f"   ({' + '.join(collected) if collected else '수집된 상태 없음'} 데이터만으로 진행합니다)")
+            got = [f"{st}({len(v)}세션)" for st, v in sorted(by_state.items())]
+            print(f"   ({' + '.join(got) if got else '수집된 상태 없음'} 데이터만으로 진행합니다)")
+        single = [st for st, v in by_state.items() if len(v) == 1]
+        if single and len(by_state) > 1:
+            print(f"⚠️  세션이 하나뿐인 상태: {', '.join(sorted(single))}")
+            print("    상태마다 세션이 하나면, 그 세션의 전극이 어느 방향으로 표류했는지가")
+            print("    곧 클래스 라벨이 되어 버립니다. 높은 정확도가 나와도 식물 반응이")
+            print("    아니라 측정 조건의 차이일 수 있습니다.")
+            print("    → 상태마다 날짜·전극을 달리해 2회 이상 나눠 수집하세요")
+            print("      (예: 정상.csv, 정상_2.csv, 정상_3.csv).")
 
     total = 0
     all_feature_rows = []
@@ -483,7 +526,7 @@ def main():
     this_run = {"lowcut": args.lowcut, "highcut": args.highcut, "notch_freq": meta_notch,
                 "window_sec": args.window_sec, "step_sec": args.step_sec}
     for fname in sorted(targets):
-        st = FILE_TO_STATE.get(fname)
+        st = state_of(fname)
         if st:
             by_state[st] = dict(this_run)
 
