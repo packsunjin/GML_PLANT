@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>초록말 · 실시간 식물 상태</title>
 <link rel="stylesheet" href="/static/ui.css">
+<!-- 브라우저가 자동으로 요청하는 favicon.ico 를 404 내지 않게 인라인으로 둔다.
+     404 가 콘솔에 계속 쌓이면 진짜 오류를 가린다. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🌱</text></svg>">
 </head>
 <body>
 
@@ -52,8 +55,16 @@
     <button type="button" data-admin-tab="collect">1 · 수집</button>
     <button type="button" data-admin-tab="prep">2 · 변환</button>
     <button type="button" data-admin-tab="train">3 · 학습</button>
+    <button type="button" data-admin-tab="control">대조군</button>
     <button type="button" data-admin-tab="files">자료</button>
     <button type="button" data-admin-tab="sensor">센서</button>
+  </p>
+
+  <!-- 어느 조건에 대고 수집·변환·학습할지. 수집/변환/학습 탭 전부에 적용된다.
+       잘못 고르면 대조군 데이터가 식물 폴더에 섞여 둘 다 못 쓰게 되므로 크게 띄운다. -->
+  <p data-ds="bar">
+    <b>측정 대상:</b> <span data-ds="buttons"></span>
+    <span data-ds="note"></span>
   </p>
   <p data-admin="summary"></p>
 
@@ -95,6 +106,21 @@
     <hr>
     <p><b>최근 학습 결과</b></p>
     <div data-job="train-history"><p>아직 학습 기록이 없어요</p></div>
+  </div>
+
+  <!-- 대조군 — 이 연구의 핵심 질문에 답하는 화면 -->
+  <div data-admin-pane="control" style="display:none">
+    <p><b>지금 잡히는 신호가 정말 식물에서 오는가?</b></p>
+    <p>식물 대신 <b>도체(알루미늄 호일·구리선)</b>나 <b>마른 가지</b>에 전극을 똑같이 붙이고
+       같은 절차로 수집·학습합니다. 살아 있는 조직이 없는데도 정확도가 높게 나오면,
+       그 정확도는 식물이 아니라 <b>측정계나 주변 환경</b>에서 온 것입니다.</p>
+    <ol>
+      <li>위 <b>측정 대상</b>에서 <b>호일</b>(또는 사체)을 고릅니다</li>
+      <li>식물과 <b>같은 상태·같은 길이</b>로 수집 → 변환 → 학습</li>
+      <li>아래 판정을 봅니다 (식물과 <b>같은 과제</b>로 학습해야 비교됩니다)</li>
+    </ol>
+    <div data-control="verdict"></div>
+    <div data-control="table"></div>
   </div>
 
   <!-- 자료 -->

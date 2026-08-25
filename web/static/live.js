@@ -352,10 +352,12 @@
 
   function loadJobOptions() {
     if (demo) return;
-    fetch("/api/train/options", { cache: "no-store" })
+    fetch("/api/train/options?dataset=" + encodeURIComponent(dsPick), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (o) {
+        if (o.error) return;               // 알 수 없는 데이터셋 등
         jobOpts = o;
+        if (o.datasets && o.datasets.length) { dsList = o.datasets; renderDatasets(); }
         var box = jobEl("collect-buttons");
         if (box) {
           box.innerHTML = "";
@@ -566,7 +568,7 @@
     if (demo) return;
     var box = jobEl("train-history");
     if (!box) return;
-    fetch("/api/train/history", { cache: "no-store" })
+    fetch("/api/train/history?dataset=" + encodeURIComponent(dsPick), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var hist = d.history || [];
@@ -685,7 +687,91 @@
     }, 1000);
   }
 
+  // ── 측정 대상(데이터셋) ──────────────────────────────────────────
+  // 식물 / 호일 / 사체를 같은 폴더에 모으면 서로 덮어써서 둘 다 못 쓰게 된다.
+  // 수집·변환·학습이 모두 여기서 고른 조건을 향한다.
+  // 새로고침해도 고른 조건이 유지돼야 한다. 대조군을 고른 채 새로고침했다가
+  // 식물로 되돌아가면, 대조군 데이터를 식물 폴더에 덮어쓰게 된다.
+  var dsPick = "식물", dsList = [];
+  try { dsPick = localStorage.getItem("gml.dataset") || "식물"; } catch (e) {}
+
+  function dsEl(n) { return $('[data-ds="' + n + '"]'); }
+
+  function renderDatasets() {
+    var box = dsEl("buttons");
+    if (!box || !dsList.length) return;
+    box.innerHTML = "";
+    dsList.forEach(function (d) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.dataset.dsSet = d.name;
+      b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
+      b.textContent = d.title;
+      setActive(b, d.name === dsPick);
+      box.appendChild(b);
+    });
+    var note = dsEl("note"), cur = dsList.filter(function (d) { return d.name === dsPick; })[0];
+    if (note) note.textContent = cur ? " — " + cur.note : "";
+    // 대조군을 고른 상태라는 걸 놓치면 식물 데이터를 덮어썼다고 착각하게 된다.
+    var bar = dsEl("bar");
+    if (bar) bar.style.opacity = dsPick === "식물" ? "1" : "1";
+  }
+
+  function pickDataset(name) {
+    if (name === dsPick) return;
+    dsPick = name;
+    try { localStorage.setItem("gml.dataset", name); } catch (e) {}
+    renderDatasets();
+    loadJobOptions();       // 수집/변환/학습 버튼이 그 조건 기준으로 다시 그려진다
+    loadTrainHistory();
+  }
+
+  // 서버가 보낸 문자열을 innerHTML 에 넣기 전에 태그를 무력화한다.
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // ── 대조군 판정 ──────────────────────────────────────────────────
+  function loadControl() {
+    if (demo) return;
+    fetch("/api/control", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (c) {
+        var v = $('[data-control="verdict"]'), t = $('[data-control="table"]');
+        if (v) {
+          if (c.verdict === "ok") {
+            v.innerHTML = "<p><b>✅ 대조군이 우연 수준입니다.</b> 식물 데이터의 정확도는 "
+                        + "식물에서 온 것으로 볼 수 있습니다.</p>";
+          } else if (c.verdict === "contaminated") {
+            v.innerHTML = "<p><b>❌ 살아 있는 조직이 없는데도 정확도가 높습니다.</b> "
+                        + "그 정확도는 식물 반응이 아니라 측정계·환경에서 온 것입니다. "
+                        + "실패가 아니라 <b>그 자체가 보고서에 쓸 결과</b>입니다.</p>";
+          } else {
+            v.innerHTML = "<p>아직 판정할 수 없어요 — " + esc(c.reason || "") + "</p>";
+          }
+          if (c.verdict) v.innerHTML += "<p>" + esc(c.reason || "") + "</p>";
+        }
+        if (t) {
+          var rows = (c.rows || []).map(function (r) {
+            var acc = r.best ? (r.best.accuracy * 100).toFixed(1) + "%" : "—";
+            var why = !r.best ? "아직 학습 안 함"
+                    : (!r.comparable ? "과제가 달라 비교 불가 (" + esc(r.best.task || "?") + ")" : "");
+            return "<tr><td>" + esc(r.title) + "</td><td>" + acc + "</td><td>" + why + "</td></tr>";
+          }).join("");
+          var base = c.base ? (c.base.accuracy * 100).toFixed(1) + "%" : "—";
+          t.innerHTML = "<table><thead><tr><th>조건</th><th>정확도</th><th></th></tr></thead>"
+                      + "<tbody><tr><td>식물 (기준)</td><td>" + base + "</td><td></td></tr>"
+                      + rows + "</tbody></table>";
+        }
+      })
+      .catch(function () {});
+  }
+
   function postJob(url, body, startedText) {
+    body = body || {};
+    body.dataset = dsPick;      // 수집·변환·학습 모두 지금 고른 조건으로 간다
     var hint = jobEl("hint"), log = jobEl("log");
     // 요청이 왕복하는 동안 아무 반응이 없으면 "안 눌린다"고 느끼므로 즉시 표시한다.
     jobFinished = false;
@@ -738,6 +824,7 @@
       p.style.display = p.dataset.adminPane === name ? "block" : "none";
     });
     if (name === "files") loadFiles();
+    if (name === "control") loadControl();
   }
 
   function loadAuth() {
@@ -1120,6 +1207,8 @@
     if (tsel && !tsel.disabled) { selectTrainTask(tsel.dataset.jobTask); return; }
     var msel = e.target.closest("[data-job-mode-btn]");
     if (msel) { selectTrainMode(msel.dataset.jobModeBtn); return; }
+    var dsBtn = e.target.closest("[data-ds-set]");
+    if (dsBtn) { pickDataset(dsBtn.dataset.dsSet); return; }
     var atab = e.target.closest("[data-admin-tab]");
     if (atab) { showAdminTab(atab.dataset.adminTab); return; }
     var abtn = e.target.closest('[data-auth="button"]');
