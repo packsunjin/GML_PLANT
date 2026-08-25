@@ -9,9 +9,9 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from figlib import P, paper_svg, axes, esc
 
-W, H = 900, 330
-X0, X1 = 96, 640
-Y0, Y1 = 24, 236
+W, H = 760, 262
+X0, X1 = 76, 560
+Y0, Y1 = 20, 206
 
 I_OS = 25e-12          # 입력 오프셋 전류 (A, typ) [1]
 LIMIT_MV = 1.23        # 허용 입력 ±1.23 mV (이득 1100배, 3.3V 단전원)
@@ -43,7 +43,7 @@ b.append(f'<rect x="{X0}" y="{vy(LIMIT_MV):.1f}" width="{X1-X0}" '
 b.append(f'<line x1="{X0}" y1="{vy(LIMIT_MV):.1f}" x2="{X1}" y2="{vy(LIMIT_MV):.1f}" '
          f'stroke="{P["ink"]}" stroke-width="1" stroke-dasharray="4 3"/>')
 b.append(f'<text x="{X0+6}" y="{vy(LIMIT_MV)-5:.1f}" font-size="9" fill="{P["ink"]}">'
-         f'허용 입력 한계 ±1.23 mV</text>')
+         f'input limit ±1.23 mV</text>')
 
 # V = I_os · Z 직선
 b.append(f'<line x1="{zx(10**ZE_LO):.1f}" y1="{vy(off_mv(10**ZE_LO)):.1f}" '
@@ -60,10 +60,10 @@ b.append(f'<text x="{xc+9:.1f}" y="{yc+14:.1f}" font-size="9.5" fill="{P["accent
          f'font-weight="700">{esc(f"{Z_CROSS/1e6:.0f} MΩ")}</text>')
 
 # 실제 전극이 놓이는 자리
-for z, name in [(5e4, "사람 피부"), (1e9, "잎 표면 (큐티클)")]:
+for z, name in [(5e4, "human skin"), (1e9, "leaf surface")]:
     x, y = zx(z), vy(off_mv(z))
     b.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="{P["accent2"]}"/>')
-    dy = -8 if z < Z_CROSS else -8
+    dy = 14 if z < Z_CROSS else -8   # 아래쪽 점은 라벨을 선 밑으로
     b.append(f'<text x="{x:.1f}" y="{y+dy:.1f}" font-size="9" fill="{P["accent2"]}" '
              f'text-anchor="{"start" if z < Z_CROSS else "end"}">{esc(name)}</text>')
 
@@ -73,20 +73,12 @@ ZL = {4: "10 kΩ", 6: "1 MΩ", 8: "100 MΩ", 10: "10 GΩ"}
 minor = [zx(m * 10.0 ** e) for e in range(4, 10) for m in range(2, 10)]
 yt = [(e, vy(10.0 ** e)) for e in range(-3, 3)]
 VL = {-3: "0.001", -2: "0.01", -1: "0.1", 0: "1", 1: "10", 2: "100"}
-b.append(axes(X0, Y0, X1, Y1, xt, yt, "전극 임피던스 Zₑ", "직류 오프셋 (mV)",
+b.append(axes(X0, Y0, X1, Y1, xt, yt, "Electrode impedance (Ω)", "DC offset (mV)",
               xfmt=lambda e: ZL[e], yfmt=lambda e: VL[e], minor=minor))
 
-# 범례
-lx, ly = X1 + 26, Y0 + 34
-b.append(f'<text x="{lx}" y="{ly}" font-size="9.5" font-weight="700">V = I_os · Zₑ</text>')
-b.append(f'<text x="{lx}" y="{ly+16}" font-size="9" fill="{P["gray"]}">'
-         f'I_os = 25 pA (typ) [1]</text>')
-b.append(f'<text x="{lx}" y="{ly+42}" font-size="9">경계 {esc(f"{Z_CROSS/1e6:.0f} MΩ")}</text>')
-b.append(f'<text x="{lx}" y="{ly+56}" font-size="9" fill="{P["gray"]}">이 위는 오프셋만으로</text>')
-b.append(f'<text x="{lx}" y="{ly+69}" font-size="9" fill="{P["gray"]}">허용 범위를 벗어난다</text>')
-b.append(f'<text x="{lx}" y="{ly+95}" font-size="9" fill="{P["accent2"]}">잎 표면 1 GΩ</text>')
-b.append(f'<text x="{lx}" y="{ly+109}" font-size="9" fill="{P["gray"]}">'
-         f'{esc(f"→ {off_mv(1e9):.0f} mV, 한계의 {off_mv(1e9)/LIMIT_MV:.0f}배")}</text>')
+lx0, ly0 = X0 + 8, Y0 + 14
+# annotation
+b.append(f'<text x="{lx0:.1f}" y="{ly0:.1f}" font-size="9">V = I_os · Zₑ,  I_os = 25 pA</text>')
 
 open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "FIG_OFFSET.svg"),
      "w", encoding="utf-8").write(
