@@ -21,6 +21,13 @@ FEATURE_NAMES = [
     "zero_crossing_rate", "peak_to_peak",
     "total_energy", "band_power_low", "band_power_mid", "band_power_high",
     "spectral_centroid", "spectral_bandwidth", "peak_frequency",
+    # ── 느린 대역(DC~0.1Hz) ───────────────────────────────────────────
+    # 위 14개는 전부 대역통과 필터를 거친 신호에서 뽑는다. 그런데 수분 스트레스는
+    # 수 시간 규모(10⁻⁴ Hz)라 필터가 지우고, 남아 있더라도 10초 창의 최저 주파수가
+    # 0.1Hz 라 스펙트로그램에 나타날 자리가 없다.
+    # 그래서 **필터 전 원신호**에서 세 가지를 따로 잰다. DC 결합 앞단에서만
+    # 의미가 있고(AD8232 는 회로가 이미 지웠다), 그 경우 0 근처로 나온다.
+    "dc_level", "dc_slope", "dc_drift",
 ]
 
 # 저/중/고 대역은 실제 분석 대역 안에서 나눠야 한다.
@@ -45,7 +52,28 @@ def frequency_bands(f, low=BAND_LOW_HZ):
     return (low, a), (a, b), (b, hi + 1e-9)
 
 
-def extract_features(signal, Sxx_db, f, t, fs=None):
+def slow_features(raw_window, fs, baseline=None):
+    """필터 전 원신호에서 느린 성분 3개를 잰다.
+
+    raw_window : 대역통과를 **거치지 않은** 창 (V)
+    baseline   : 파일 앞부분의 기준 전위(V). 주면 그 대비 변화량을 함께 낸다.
+
+    · dc_level — 이 창의 평균 전위. 수분 스트레스는 기준점 자체를 밀어 올린다.
+    · dc_slope — 창 안에서의 기울기(분당 변화). 진행 중인 드리프트를 잡는다.
+    · dc_drift — 측정 시작 시점 대비 변화량. 가장 직접적인 지표다.
+    """
+    v = np.asarray(raw_window, dtype=float)
+    if v.size < 2:
+        return np.zeros(3, dtype=np.float64)
+    level = float(np.mean(v))
+    # 최소제곱 직선의 기울기 -> 분당 변화로 환산
+    x = np.arange(v.size, dtype=float) / float(fs or 1.0)
+    slope = float(np.polyfit(x, v, 1)[0]) * 60.0
+    drift = level - float(baseline) if baseline is not None else 0.0
+    return np.array([level, slope, drift], dtype=np.float64)
+
+
+def extract_features(signal, Sxx_db, f, t, fs=None, raw_window=None, baseline=None):
     """
     signal : 필터링된 시간영역 신호 구간(1차원 배열). preprocess.py의 segment,
              inference.py의 filtered와 동일한 것을 그대로 전달한다.
@@ -98,9 +126,15 @@ def extract_features(signal, Sxx_db, f, t, fs=None):
         spectral_bandwidth = 0.0
     peak_frequency = float(f[np.argmax(power_per_freq)]) if len(f) > 0 else 0.0
 
-    return np.array([
+    fast = np.array([
         mean, std, rms, skewness, kurt,
         zero_crossing_rate, peak_to_peak,
         total_energy, band_power_low, band_power_mid, band_power_high,
         spectral_centroid, spectral_bandwidth, peak_frequency,
     ], dtype=np.float64)
+
+    # 느린 성분은 필터 전 원신호에서만 볼 수 있다. 주지 않으면 0 으로 채워
+    # 특징 개수는 항상 같게 유지한다(모델 입력 차원이 흔들리면 안 된다).
+    slow = (slow_features(raw_window, fs or 1.0, baseline)
+            if raw_window is not None else np.zeros(3, dtype=np.float64))
+    return np.concatenate([fast, slow])

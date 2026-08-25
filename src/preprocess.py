@@ -32,7 +32,7 @@ import pandas as pd
 from scipy.signal import butter, filtfilt, iirnotch
 
 from spectro_render import render_rgb_image, compute_spectrogram
-from sensor_control import AD8232_HPF_HZ, AD8232_LPF_HZ
+from sensor_control import ANALOG_HPF_HZ, ANALOG_LPF_HZ, FRONTEND_GAIN, FRONTEND
 from feature_extraction import extract_features, FEATURE_NAMES
 
 # 원시 파일명 -> 상태(클래스) 매핑. 3가지 상태를 각각 별도 클래스로 저장한다.
@@ -49,7 +49,12 @@ FILE_TO_STATE = {
 # 그 구간은 증폭기 포화지 식물 신호가 아니므로 학습에서 제외한다.
 RAIL_HIGH_V = 3.0   # 이 위로 평균이 올라간 창은 버림
 RAIL_LOW_V = 0.3    # 이 아래로 내려간 창도 버림
-MIN_STD_V = 0.0005  # 필터 후 표준편차가 이보다 작으면 신호가 없다고 본다
+# 필터 후 표준편차가 이보다 작으면 신호가 없다고 본다.
+# ⚠️ 이 값은 **앞단의 이득에 따라 달라진다.** AD8232 는 1100배로 증폭해서 내보내지만
+# DC 결합은 증폭하지 않으므로, 같은 전극 신호라도 ADC 가 보는 크기가 1100배 다르다.
+# 그래서 전극 입력 환산으로 기준을 정하고(0.45µV), 앞단의 이득을 곱해 쓴다.
+MIN_STD_INPUT_UV = 0.45
+MIN_STD_V = MIN_STD_INPUT_UV * 1e-6 * FRONTEND_GAIN
 
 # 위의 절대 문턱만으로는 포화를 못 잡는 경우가 있다. 실제로 이 프로젝트에서 수집한
 # CSV 6개를 조사한 결과가 그랬다. 모든 파일의 최댓값이 2.57~2.60V, 최솟값이 -0.59~-0.61V로
@@ -309,7 +314,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             continue
 
         p2p = float(segment.max() - segment.min())
-        prepared.append((start, segment, p2p))
+        # 느린 특징은 필터 전 원신호에서만 볼 수 있으므로 함께 들고 간다.
+        prepared.append((start, segment, p2p, raw_win))
 
     # 2차 패스: '자극' 파일은 이 파일 안에서 상대적으로 튀는 창만 남긴다(위 EVENT_ONLY_STATE 설명).
     event_thresh = None
@@ -320,7 +326,11 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
         if np.any(p2ps > thresh):   # 전부 baseline 근처면(계속 자극 중) 거르지 않는다
             event_thresh = thresh
 
-    for start, segment, p2p in prepared:
+    # 측정 시작 시점의 기준 전위. 느린 드리프트는 '시작 대비 얼마나 밀렸나'로 재야
+    # 의미가 있어서, 파일 앞부분 평균을 기준선으로 삼는다.
+    dc_baseline = float(np.mean(prepared[0][3])) if prepared else 0.0
+
+    for start, segment, p2p, raw_seg in prepared:
         if event_thresh is not None and p2p <= event_thresh:
             skipped_quiet += 1
             continue
@@ -332,7 +342,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
         img_path = os.path.join(out_dir, img_name)
         make_spectrogram_image(Sxx_db, img_path)
 
-        feats = extract_features(segment, Sxx_db, f, t, fs=fs)
+        feats = extract_features(segment, Sxx_db, f, t, fs=fs,
+                                 raw_window=raw_seg, baseline=dc_baseline)
         feature_rows.append([img_name, fname, cls] + feats.tolist())
 
         count += 1
@@ -397,12 +408,13 @@ def main():
     print(f"[preprocess] 출력(스펙트로그램): {args.out_dir}")
     print(f"[preprocess] 창 {args.window_sec}초 / 스텝 {args.step_sec}초")
     # AD8232의 아날로그 대역(0.5~40Hz) 밖을 지정하면 소프트웨어 필터는 헛돈다.
-    if args.lowcut < AD8232_HPF_HZ:
-        print(f"[preprocess] ⚠️  하한 {args.lowcut}Hz 는 AD8232의 고역통과({AD8232_HPF_HZ}Hz)보다 낮습니다.")
+    if ANALOG_HPF_HZ > 0 and args.lowcut < ANALOG_HPF_HZ:
+        print(f"[preprocess] ⚠️  하한 {args.lowcut}Hz 는 {FRONTEND.title}의 고역통과({ANALOG_HPF_HZ}Hz)보다 낮습니다.")
         print("    회로에서 이미 지워진 대역이라 하드웨어 데이터에서는 효과가 없습니다"
               " (시뮬레이션 데이터에는 적용됩니다).")
-    if args.highcut > AD8232_LPF_HZ:
-        print(f"[preprocess] ⚠️  상한 {args.highcut}Hz 는 AD8232의 저역통과({AD8232_LPF_HZ}Hz)보다 높습니다.")
+    # lpf_hz == 0 은 '설정된 저역통과 없음'(DC 결합)이라는 뜻이라 비교 대상이 아니다.
+    if ANALOG_LPF_HZ > 0 and args.highcut > ANALOG_LPF_HZ:
+        print(f"[preprocess] ⚠️  상한 {args.highcut}Hz 는 {FRONTEND.title}의 저역통과({ANALOG_LPF_HZ}Hz)보다 높습니다.")
         print("    그 위에는 회로가 통과시킨 신호가 없습니다.")
     print(f"[preprocess] 필터: 대역통과 {args.lowcut}~{args.highcut}Hz"
           + (f" + 노치 {args.notch}Hz" if args.notch else " (노치 없음)"))
