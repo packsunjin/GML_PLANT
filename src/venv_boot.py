@@ -73,5 +73,50 @@ def ensure():
     os.environ[_GUARD] = "1"
     try:
         os.execv(py, [py, script] + sys.argv[1:])
-    except OSError:
-        pass                         # 갈아타기 실패하면 그냥 하던 대로 진행
+    except OSError as e:
+        # 조용히 넘어가면 곧바로 ModuleNotFoundError 가 뜨는데, 그것만 보고는
+        # venv 전환이 실패했다는 걸 알 수 없다. 실패했다는 사실을 남긴다.
+        print(f"[venv_boot] ⚠️  venv 파이썬으로 전환하지 못했습니다: {e}", file=sys.stderr)
+        print(f"[venv_boot]     {py}", file=sys.stderr)
+        print(f"[venv_boot]     시스템 파이썬으로 계속합니다 — 라이브러리가 없으면 "
+              f"'source venv/bin/activate' 후 실행하세요.", file=sys.stderr)
+
+
+def report():
+    """왜 전환이 되는지/안 되는지 한눈에 본다.
+
+        python3 src/venv_boot.py
+    """
+    root = _repo_root()
+    py = venv_python(root)
+    in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    print(f"  저장소 위치   : {root}")
+    print(f"  venv 파이썬   : {py or '못 찾음'}")
+    print(f"  지금 파이썬   : {sys.executable}")
+    print(f"  이미 venv 안? : {in_venv}")
+    print(f"  GML_NO_VENV   : {os.environ.get('GML_NO_VENV') or '(안 켜짐)'}")
+    if in_venv:
+        print("  → 이미 가상환경 안이라 아무것도 하지 않습니다.")
+    elif not py:
+        print("  → venv 를 못 찾아 시스템 파이썬으로 진행합니다.")
+    else:
+        print("  → 실행하면 이 파이썬으로 갈아탑니다.")
+    # 실제로 쓸 파이썬에 필요한 라이브러리가 있는지도 본다
+    import subprocess
+    target = py if (py and not in_venv) else sys.executable
+    need = ["numpy", "scipy", "pandas", "sklearn", "flask", "joblib", "matplotlib"]
+    code = "import importlib,sys;print(' '.join(m for m in sys.argv[1:] "\
+           "if importlib.util.find_spec(m) is None))"
+    try:
+        out = subprocess.run([target, "-c", code] + need,
+                             capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception as e:
+        out = f"확인 실패: {e}"
+    print(f"\n  쓸 파이썬     : {target}")
+    print(f"  빠진 라이브러리: {out or '없음 (전부 있음)'}")
+    if out and "확인 실패" not in out:
+        print(f"\n  설치:  {target} -m pip install {out}")
+
+
+if __name__ == "__main__":
+    report()

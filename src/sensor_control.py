@@ -168,6 +168,34 @@ KOR_FILENAMES = {"정상": "정상.csv", "수분부족": "수분부족.csv", "�
 VALID_STATES = tuple(KOR_FILENAMES.keys())
 
 
+def session_filename(state, session=None):
+    """상태 + 세션 번호 -> 저장 파일명.
+
+    세션을 나누는 이유. 상태마다 한 번만 재면, 그 회차의 전극이 어느 방향으로
+    표류했는지가 곧 클래스 라벨이 된다. "수분부족이라 전위가 밀린 것"과
+    "그날 그 전극이 그렇게 표류한 것"을 가를 방법이 없다.
+    (보고서 Ⅳ장 2절 (4) — 1차 학습의 높은 정확도가 실제로 그랬다)
+
+        session=None -> 정상.csv      (첫 회차)
+        session=2    -> 정상_2.csv
+    """
+    base = KOR_FILENAMES[state][:-4]
+    return f"{base}.csv" if not session or int(session) <= 1 else f"{base}_{int(session)}.csv"
+
+
+def next_session(out_dir, state):
+    """그 상태의 다음 회차 번호. 이미 있는 파일을 세어 결정한다."""
+    n = 1
+    while os.path.isfile(os.path.join(out_dir, session_filename(state, n))):
+        n += 1
+    return n
+
+
+def count_sessions(out_dir, state):
+    """이미 수집된 회차 수."""
+    return next_session(out_dir, state) - 1
+
+
 # 전극 표류의 세기. 30분(1800초)에 표준편차 약 1mV 가 되도록 잡았다.
 # (임의보행이라 시간 T 뒤의 표준편차는 이 값 x sqrt(T) 이다)
 ELECTRODE_DRIFT_V_PER_RTS = 0.001 / np.sqrt(1800.0)
@@ -536,10 +564,11 @@ def _settle(settle_sec, sample_rate_hz, max_sec=SETTLE_MAX_SEC):
 
 
 def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
-            settle_sec=SETTLE_SEC, settle_max_sec=SETTLE_MAX_SEC):
+            settle_sec=SETTLE_SEC, settle_max_sec=SETTLE_MAX_SEC, session=None):
     """
     지정한 상태(state)에 대해 duration_sec 동안 sample_rate_hz로 샘플링하여
-    out_dir/<상태>.csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
+    out_dir/<상태>[_회차].csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
+    session 을 주면 그 회차로, 안 주면 비어 있는 다음 회차로 저장한다.
 
     settle_sec 동안은 전극이 안정되기를 기다렸다가(저장하지 않음) 수집을 시작한다.
 
@@ -551,7 +580,10 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
         raise ValueError(f"state는 {list(VALID_STATES)} 중 하나여야 합니다.")
 
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, KOR_FILENAMES[state])
+    # 회차를 안 주면 비어 있는 다음 번호를 쓴다 — 덮어쓰지 않는다.
+    if session is None:
+        session = next_session(out_dir, state)
+    out_path = os.path.join(out_dir, session_filename(state, session))
 
     unlimited = duration_sec is None or duration_sec <= 0
     n_samples = 0 if unlimited else int(duration_sec * sample_rate_hz)
@@ -668,6 +700,9 @@ def main():
                         help="아날로그 앞단. ad8232=지금까지의 구성, dc=버퍼+차동입력(DC 결합). "
                              "GML_FRONTEND 환경변수로도 지정할 수 있습니다.")
     parser.add_argument("--out", default="../data/raw", help="저장 폴더")
+    parser.add_argument("--session", type=int, default=None,
+                        help="회차 번호. 안 주면 비어 있는 다음 회차로 저장합니다. "
+                             "상태마다 2회 이상 나눠 재야 전극 조건과 식물 상태를 가를 수 있습니다.")
     parser.add_argument("--settle", type=float, default=SETTLE_SEC,
                         help=f"수집 전 전극 안정화 최소 대기(초), 기본 {SETTLE_SEC:.0f}초. 0이면 대기 없음")
     parser.add_argument("--settle-max", type=float, default=SETTLE_MAX_SEC,
@@ -679,7 +714,8 @@ def main():
 
     _install_stop_handler()
     collect(args.state, args.duration, args.rate, args.out,
-            settle_sec=args.settle, settle_max_sec=args.settle_max)
+            settle_sec=args.settle, settle_max_sec=args.settle_max,
+            session=args.session)
 
 
 if __name__ == "__main__":

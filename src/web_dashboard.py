@@ -25,6 +25,9 @@ import threading
 import time
 from collections import deque
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # 직접 실행해도 venv 로 갈아탄다
+
 import numpy as np
 
 import sensor_control
@@ -564,14 +567,16 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         """데이터셋 하나의 진행 상황: 상태별 CSV 유무와 변환된 이미지 장수."""
         p = dataset_paths(name)
         raw_dir, spec_dir = _abs(p["raw"]), _abs(p["spec"])
-        collected, converted = [], {}
+        collected, converted, sessions = [], {}, {}
         for s in sensor_control.VALID_STATES:
-            if os.path.isfile(os.path.join(raw_dir, sensor_control.KOR_FILENAMES[s])):
+            n = sensor_control.count_sessions(raw_dir, s)
+            sessions[s] = n
+            if n:
                 collected.append(s)
             d = os.path.join(spec_dir, s)
             converted[s] = (len([n for n in os.listdir(d) if n.lower().endswith(".png")])
                             if os.path.isdir(d) else 0)
-        return collected, converted
+        return collected, converted, sessions
 
     def _ds_best(name):
         """그 데이터셋에서 가장 정확도가 높았던 학습 기록. 없으면 None."""
@@ -590,10 +595,11 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         """조건별 수집·변환·학습 진행 상황을 한 번에 돌려준다."""
         out = []
         for name, meta in DATASETS.items():
-            collected, converted = _ds_counts(name)
+            collected, converted, sessions = _ds_counts(name)
             best = _ds_best(name)
             out.append({"name": name, "title": meta["title"], "note": meta["note"],
                         "collected": collected, "converted": converted,
+                        "sessions": sessions,
                         "images": sum(converted.values()),
                         "best": ({"accuracy": best["accuracy"], "task": best.get("task"),
                                   "mode": best.get("mode")} if best else None)})
@@ -673,12 +679,20 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         raw_rel = dataset_paths(ds)["raw"]
         os.makedirs(_abs(raw_rel), exist_ok=True)
 
+        # 회차. 안 주면 sensor_control 이 비어 있는 다음 번호를 고른다(덮어쓰지 않는다).
+        sess = body.get("session")
         cmd = [sys.executable, "sensor_control.py", "--state", state,
                "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ),
                "--out", os.path.join("..", raw_rel)]
+        if sess:
+            try:
+                cmd += ["--session", str(int(sess))]
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "회차가 숫자가 아닙니다"}), 400
+        nth = int(sess) if sess else sensor_control.next_session(_abs(raw_rel), state)
         tag = "" if ds == DEFAULT_DATASET else f"[{ds}] "
-        label = (f"{tag}{state} 수집 (무제한)" if duration == 0
-                 else f"{tag}{state} {duration:g}초 수집")
+        label = (f"{tag}{state} {nth}회차 수집 (무제한)" if duration == 0
+                 else f"{tag}{state} {nth}회차 {duration:g}초 수집")
         started = _run_steps("collect", label,
                              [(f"'{state}' 수집", cmd)], src_dir, pause_live=True)
         if not started:
@@ -1062,7 +1076,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         ds = _pick_dataset(request.args)
         if ds is None:
             return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
-        have, converted = _ds_counts(ds)
+        have, converted, sessions = _ds_counts(ds)
         have = sorted(have)
         # 과제별로 필요한 클래스가 다 변환돼 있어야 고를 수 있다(없으면 이유를 같이 보낸다).
         task_ready, task_reason = {}, {}
@@ -1073,6 +1087,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"tasks": list(TASKS), "modes": list(MODES),
                         "states": list(sensor_control.VALID_STATES),
                         "collected": have, "converted": converted,
+                        "sessions": sessions,
                         "task_classes": TASK_CLASSES,
                         "task_ready": task_ready, "task_reason": task_reason,
                         "hardware": sensor_control.HARDWARE_AVAILABLE,

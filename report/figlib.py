@@ -69,3 +69,79 @@ class LogX:
 
     def ticks(self):
         return list(range(int(self.a), int(self.b) + 1))
+
+
+# ── 논문 스타일 ────────────────────────────────────────────────────────
+# 학술지 그림의 문법은 발표 슬라이드와 다르다.
+#   · 가는 선(0.7~1.5), 둥근 모서리·그림자 없음
+#   · 색은 최소한으로. 강조는 하나만
+#   · 글자는 작고 일정하게(8.5~10). 설명은 그림 안이 아니라 캡션에 쓴다
+#   · 축은 눈금을 밖으로 짧게, 테두리는 왼쪽·아래만
+P = {
+    "ink":    "#111111",
+    "gray":   "#666666",
+    "light":  "#aaaaaa",
+    "fill":   "#ececec",
+    "accent": "#a5342b",
+    "accent2":"#1b4f72",
+}
+PF = "'Helvetica Neue',Helvetica,Arial,'Malgun Gothic',sans-serif"
+
+
+def paper_svg(w, h, body, title=""):
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" '
+            f'role="img" aria-label="{esc(title)}">'
+            f'<rect x="0" y="0" width="{w}" height="{h}" fill="#ffffff"/>'
+            f'<g font-family="{PF}" fill="{P["ink"]}">{body}</g></svg>')
+
+
+def axes(x0, y0, x1, y1, xticks, yticks, xlabel="", ylabel="",
+         xfmt=str, yfmt=str, minor=None):
+    """왼쪽·아래만 있는 축. xticks/yticks 는 (값, 화면좌표) 목록."""
+    o = [f'<path d="M{x0},{y0} L{x0},{y1} L{x1},{y1}" fill="none" '
+         f'stroke="{P["ink"]}" stroke-width="0.9"/>']
+    for v, px in xticks:
+        o.append(f'<line x1="{px:.1f}" y1="{y1}" x2="{px:.1f}" y2="{y1+4}" '
+                 f'stroke="{P["ink"]}" stroke-width="0.9"/>')
+        o.append(f'<text x="{px:.1f}" y="{y1+16}" font-size="9.5" fill="{P["ink"]}" '
+                 f'text-anchor="middle">{esc(xfmt(v))}</text>')
+    for px in (minor or []):
+        o.append(f'<line x1="{px:.1f}" y1="{y1}" x2="{px:.1f}" y2="{y1+2.5}" '
+                 f'stroke="{P["light"]}" stroke-width="0.7"/>')
+    for v, py in yticks:
+        o.append(f'<line x1="{x0-4}" y1="{py:.1f}" x2="{x0}" y2="{py:.1f}" '
+                 f'stroke="{P["ink"]}" stroke-width="0.9"/>')
+        o.append(f'<text x="{x0-8}" y="{py+3.2:.1f}" font-size="9.5" fill="{P["ink"]}" '
+                 f'text-anchor="end">{esc(yfmt(v))}</text>')
+    if xlabel:
+        o.append(f'<text x="{(x0+x1)/2:.1f}" y="{y1+34}" font-size="10" '
+                 f'fill="{P["ink"]}" text-anchor="middle">{esc(xlabel)}</text>')
+    if ylabel:
+        cy = (y0 + y1) / 2
+        o.append(f'<text x="{x0-40}" y="{cy:.1f}" font-size="10" fill="{P["ink"]}" '
+                 f'text-anchor="middle" transform="rotate(-90 {x0-40} {cy:.1f})">'
+                 f'{esc(ylabel)}</text>')
+    return "".join(o)
+
+
+def pbox(x, y, w, h, title, lines, accent=None, sw=0.9):
+    """논문용 블록 — 채움 없이 가는 테두리만."""
+    col = accent or P["ink"]
+    o = [f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="none" '
+         f'stroke="{col}" stroke-width="{sw}"/>',
+         f'<text x="{x+w/2:.1f}" y="{y+18}" font-size="10.5" font-weight="700" '
+         f'text-anchor="middle">{esc(title)}</text>']
+    for i, s in enumerate(lines):
+        o.append(f'<text x="{x+w/2:.1f}" y="{y+34+i*13}" font-size="8.8" '
+                 f'fill="{P["gray"]}" text-anchor="middle">{esc(s)}</text>')
+    return "".join(o)
+
+
+def parrow(x0, y, x1, label=None):
+    o = [f'<line x1="{x0}" y1="{y}" x2="{x1-6}" y2="{y}" stroke="{P["ink"]}" '
+         f'stroke-width="0.9"/>',
+         f'<path d="M{x1-6.5},{y-3} L{x1},{y} L{x1-6.5},{y+3} Z" fill="{P["ink"]}"/>']
+    if label:
+        o.append(f'<text x="{(x0+x1)/2:.1f}" y="{y-6}" font-size="8.5" '
+                 f'fill="{P["gray"]}" text-anchor="middle">{esc(label)}</text>')
+    return "".join(o)

@@ -1,67 +1,103 @@
 # -*- coding: utf-8 -*-
-"""그림9 — 식물 전기신호 대역과 AD8232 통과대역의 불일치.
+"""그림9 — AD8232 아날로그 필터의 주파수 응답과 식물 전기신호가 놓인 대역.
 
-본문(Ⅳ장 6절 (1))의 결론은 "세 신호 **모두** 0.5Hz 고역통과 아래에 있다"이다.
-예전 그림은 활동전위를 통과대역 안(0.5~40Hz)에 그려 본문과 정면으로 어긋났다.
-세포 수준의 탈분극 지속시간(0.025~2초)을 쓴 탓인데, 전극에서 실제로 보이는
-시간 규모를 정하는 것은 조직을 따라 전파되는 속도(5.6cm/min)다.
+막대로 '차단됨'이라고 적는 대신 전달함수를 직접 그린다. 몇 dB 깎이는지가
+숫자로 읽히고, 세 신호가 통과대역 밖이라는 본문 주장이 곡선 위에서 확인된다.
+
+전달함수: 2극 고역통과(fc=0.5Hz) x 2극 저역통과(fc=40Hz), 버터워스 기준
+    |H(f)| = (f/f_h)^2 / sqrt(1+(f/f_h)^4)  ·  1/sqrt(1+(f/f_l)^4)
 """
-import sys, os
+import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from figlib import C, LogX, txt, rect, line, svg
+from figlib import P, paper_svg, axes, esc
 
-W, H = 900, 300
-L, R = 176, 812                      # 그래프 영역 좌우
-ax = LogX(-4.3, 2.1, L, R)           # 10^-4.3 ~ 10^2.1 Hz
-ROW_H, TOP = 46, 62
+W, H = 900, 330
+X0, X1 = 74, 660
+Y0, Y1 = 24, 236
+FH, FL = 0.5, 40.0
+EXP_LO, EXP_HI = -5.0, 2.4
+DB_LO, DB_HI = -180.0, 14.0
 
-# (이름, 부제, 대역 lo~hi, 통과여부, 근거)
-BANDS = [
-    ("수분 스트레스", "수 시간~수 일 규모",      1e-4,  1e-3, False),
-    ("변동전위 (VP)", "지속 수 분~수십 분 [13]", 3e-4,  1e-2, False),
-    ("활동전위 (AP)", "전파 5.6 cm/min [12]",   1e-2, 6e-2, False),
-    ("상용전원 잡음",  "60 Hz 유도잡음",          55,    65,  True),
-]
+
+def fx(f):
+    return X0 + (math.log10(f) - EXP_LO) / (EXP_HI - EXP_LO) * (X1 - X0)
+
+
+def fy(db):
+    return Y1 - (db - DB_LO) / (DB_HI - DB_LO) * (Y1 - Y0)
+
+
+def mag_db(f):
+    hp = (f / FH) ** 2 / math.sqrt(1 + (f / FH) ** 4)
+    lp = 1.0 / math.sqrt(1 + (f / FL) ** 4)
+    return 20 * math.log10(max(hp * lp, 1e-12))
+
 
 b = []
-PASS_LO, PASS_HI = 0.5, 40.0
-px0, px1 = ax(PASS_LO), ax(PASS_HI)
-body_h = TOP + len(BANDS) * ROW_H
 
-# 통과대역 띠 — 배경으로 먼저 깐다
-b.append(rect(px0, TOP - 26, px1 - px0, body_h - TOP + 20, C["passbg"]))
-b.append(line(px0, TOP - 26, px0, body_h - 6, C["pass"], 1.6, "5 4"))
-b.append(line(px1, TOP - 26, px1, body_h - 6, C["pass"], 1.6, "5 4"))
-b.append(txt((px0 + px1) / 2, TOP - 34, "AD8232 통과대역 0.5 – 40 Hz (회로에 고정)",
-             13, C["pass"], "middle", 700))
+# 통과대역 음영
+b.append(f'<rect x="{fx(FH):.1f}" y="{Y0}" width="{fx(FL)-fx(FH):.1f}" '
+         f'height="{Y1-Y0}" fill="{P["fill"]}"/>')
+b.append(f'<text x="{(fx(FH)+fx(FL))/2:.1f}" y="{Y0+12}" font-size="9" '
+         f'fill="{P["gray"]}" text-anchor="middle">통과대역 0.5–40 Hz</text>')
 
-for i, (name, sub, lo, hi, passes) in enumerate(BANDS):
-    y = TOP + i * ROW_H
-    cy = y + 13
-    fill = C["warnbg"] if passes else C["blockbg"]
-    edge = C["warn"] if passes else C["block"]
-    x0, x1 = ax(lo), ax(hi)
-    b.append(rect(x0, y, max(x1 - x0, 3), 26, fill, rx=3))
-    b.append(rect(x0, y, max(x1 - x0, 3), 26, "none", rx=3, stroke=edge, sw=1.2))
-    b.append(txt(L - 14, cy - 1, name, 14, C["ink"], "end", 700))
-    b.append(txt(L - 14, cy + 15, sub, 11, C["muted"], "end"))
-    # 60Hz 막대는 폭이 좁아 오른쪽에 라벨을 붙이면 그림 밖으로 나간다.
-    # 통과대역 안쪽(왼쪽)에 붙여 잘리지 않게 한다.
-    if passes:
-        b.append(txt(x0 - 10, cy + 4, "통과 — 잡음만 들어온다", 12, edge, "end", 700))
-    else:
-        b.append(txt(x1 + 9, cy + 4, "차단", 12, edge, "start", 700))
+# -3 dB 보조선
+b.append(f'<line x1="{X0}" y1="{fy(-3):.1f}" x2="{X1}" y2="{fy(-3):.1f}" '
+         f'stroke="{P["light"]}" stroke-width="0.7" stroke-dasharray="3 3"/>')
+b.append(f'<text x="{X1-2}" y="{fy(-3)-4:.1f}" font-size="8.5" fill="{P["gray"]}" '
+         f'text-anchor="end">−3 dB</text>')
+
+# 전달함수 곡선
+pts = []
+n = 460
+for i in range(n + 1):
+    e = EXP_LO + (EXP_HI - EXP_LO) * i / n
+    f = 10 ** e
+    pts.append(f"{fx(f):.1f},{max(fy(mag_db(f)), Y0):.1f}")
+b.append(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{P["ink"]}" '
+         f'stroke-width="1.5"/>')
+
+# 세 신호가 놓인 자리
+MARKS = [("수분 스트레스", 1e-4), ("변동전위 (VP)", 1e-3), ("활동전위 (AP)", 3e-2)]
+for name, f in MARKS:
+    db = mag_db(f)
+    x, y = fx(f), fy(db)
+    b.append(f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x:.1f}" y2="{Y1}" '
+             f'stroke="{P["accent"]}" stroke-width="0.8" stroke-dasharray="2 3"/>')
+    b.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.2" fill="#fff" '
+             f'stroke="{P["accent"]}" stroke-width="1.4"/>')
+
+# 60Hz 잡음
+x60, y60 = fx(60.0), fy(mag_db(60.0))
+b.append(f'<circle cx="{x60:.1f}" cy="{y60:.1f}" r="3.2" fill="{P["accent2"]}"/>')
 
 # 축
-ay = body_h + 8
-b.append(line(L - 8, ay, R + 8, ay, C["line"], 1.2))
-SUP = {-4: "10⁻⁴", -3: "10⁻³", -2: "10⁻²", -1: "10⁻¹", 0: "1", 1: "10", 2: "100"}
-for e in ax.ticks():
-    x = ax(10.0 ** e)
-    b.append(line(x, ay, x, ay + 5, C["line"], 1.2))
-    b.append(txt(x, ay + 20, SUP[e], 11, C["muted"], "middle"))
-b.append(txt((L + R) / 2, ay + 42, "주파수 (Hz, 로그 축)", 12, C["muted"], "middle"))
+xt = [(e, fx(10.0 ** e)) for e in range(-5, 3)]
+SUP = {-5: "10⁻⁵", -4: "10⁻⁴", -3: "10⁻³", -2: "10⁻²", -1: "10⁻¹",
+       0: "1", 1: "10", 2: "10²"}
+minor = [fx(m * 10.0 ** e) for e in range(-5, 3) for m in range(2, 10)
+         if X0 <= fx(m * 10.0 ** e) <= X1]
+yt = [(d, fy(d)) for d in (0, -40, -80, -120, -160)]
+b.append(axes(X0, Y0, X1, Y1, xt, yt, "주파수 (Hz)", "이득 (dB)",
+              xfmt=lambda e: SUP[e], yfmt=str, minor=minor))
 
-open("FIG_BAND.svg", "w", encoding="utf-8").write(
-    svg(W, H, "".join(b), "식물 전기신호 대역과 AD8232 통과대역의 불일치"))
+# 범례
+lx, ly = X1 + 24, Y0 + 24
+b.append(f'<text x="{lx}" y="{ly}" font-size="9.5" font-weight="700">신호별 감쇠량</text>')
+rows = [(n_, f_, mag_db(f_), P["accent"], False) for n_, f_ in MARKS]
+rows.append(("60 Hz 유도잡음", 60.0, mag_db(60.0), P["accent2"], True))
+for i, (name, f, db, col, filled) in enumerate(rows):
+    yy = ly + 18 + i * 26
+    if filled:
+        b.append(f'<circle cx="{lx+5}" cy="{yy-3.5}" r="3.2" fill="{col}"/>')
+    else:
+        b.append(f'<circle cx="{lx+5}" cy="{yy-3.5}" r="3.2" fill="#fff" '
+                 f'stroke="{col}" stroke-width="1.4"/>')
+    b.append(f'<text x="{lx+15}" y="{yy}" font-size="9">{esc(name)}</text>')
+    b.append(f'<text x="{lx+15}" y="{yy+12}" font-size="8.5" fill="{P["gray"]}">'
+             f'{esc(f"{f:g} Hz  ·  {db:+.0f} dB")}</text>')
+
+open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "FIG_BAND.svg"),
+     "w", encoding="utf-8").write(
+    paper_svg(W, H, "".join(b), "AD8232 아날로그 필터의 주파수 응답"))
 print("FIG_BAND.svg")

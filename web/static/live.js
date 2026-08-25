@@ -388,13 +388,33 @@
             b.type = "button";
             b.dataset.jobCollect = s;
             b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
-            // 이미 수집된 상태는 표시해 준다(다시 누르면 덮어쓰기).
-            b.textContent = o.collected.indexOf(s) >= 0 ? s + " ✓" : s;
+            // 이미 몇 회차까지 모았는지 보여준다. 다시 누르면 덮어쓰지 않고
+            // 다음 회차로 저장된다.
+            var n = (o.sessions || {})[s] || 0;
+            b.textContent = n ? s + " (" + n + "회)" : s;
             box.appendChild(b);
           });
           var last = remembered("collect", null);
           selectCollect(o.states.indexOf(last) >= 0 ? last : o.states[0]);
         }
+        // 상태마다 회차가 하나뿐이면, 그 회차의 전극 조건이 곧 클래스 라벨이 된다.
+        // 정확도가 높게 나와도 식물 상태를 배운 것이 아닐 수 있어 미리 알린다.
+        var warn = $('[data-job="session-warn"]');
+        if (warn) {
+          var got = (o.collected || []).filter(function (s) {
+            return ((o.sessions || {})[s] || 0) === 1; });
+          if (got.length && (o.collected || []).length > 1) {
+            warn.style.display = "block";
+            warn.textContent = "⚠️ 회차가 1회뿐인 상태: " + got.join(", ")
+              + " — 상태마다 날짜·전극을 달리해 2회 이상 나눠 재세요. "
+              + "1회뿐이면 그날의 전극 조건이 곧 정답이 되어, 높은 정확도가 나와도 "
+              + "식물 상태를 구분한 것인지 알 수 없습니다.";
+          } else {
+            warn.style.display = "none";
+            warn.textContent = "";   // 조건이 바뀌었을 때 옛 문구가 남지 않게
+          }
+        }
+
         // 전처리 버튼: 상태별 + 전체. 변환이 끝난 상태에는 이미지 장수를 붙여준다.
         var pbox = jobEl("prep-buttons");
         if (pbox) {
@@ -535,9 +555,10 @@
     }
     var unlimited = (jobEl("unlimited") || {}).checked;
     var dur = parseFloat((jobEl("duration") || {}).value) || 30;
-    hint.textContent = unlimited
-      ? "'" + collectPick + "' 을(를) 중지할 때까지 측정합니다"
-      : "'" + collectPick + "' 을(를) " + dur + "초 동안 측정합니다";
+    // 몇 회차로 저장될지 미리 알려준다. 덮어쓴다고 오해하지 않게.
+    var nth = (((jobOpts || {}).sessions || {})[collectPick] || 0) + 1;
+    hint.textContent = "'" + collectPick + "' " + nth + "회차 · "
+      + (unlimited ? "중지할 때까지 측정합니다" : dur + "초 동안 측정합니다");
     if (!jobRunning) { btn.disabled = false; btn.style.opacity = ""; }
   }
 
