@@ -37,6 +37,8 @@
   var lastState = null;
   var stateSince = Date.now();
   var lastSeen = 0;
+  var paused = false;            // 수집 중이라 실시간 루프가 쉬고 있는가
+  var lastWaveAt = 0;            // 파형을 마지막으로 이어붙인 시각(흐른 시간 계산용)
   var pageLoad = Date.now();     // lastSeen이 한 번도 안 찍혔을 때(첫 판정 전 실패)의 기준 시각
   var lastWorkerError = null;    // 실시간 루프가 보낸 마지막 에러 메시지(있으면 일반 문구보다 우선)
 
@@ -151,6 +153,17 @@
 
   // ── 적용 ─────────────────────────────────────────────────────────
   function apply(d) {
+    // 수집 중에는 실시간 루프가 센서를 양보하고 쉰다. 화면이 멈춘 게 고장이 아니라는
+    // 것을 알려주고, '신호 끊김' 경고도 이 동안에는 띄우지 않는다.
+    paused = !!(d && d.paused);
+    if (paused) {
+      setText("source", "⏸ " + (d.paused_by || "작업") + " 중 — 측정을 양보하고 잠시 멈춥니다");
+      // 멈춘 시간만큼 흘렀다고 보고 한꺼번에 이어붙이면 파형이 튄다. 재개할 때
+      // 다시 첫 갱신처럼 시작하도록 기준 시각을 지운다.
+      lastWaveAt = 0;
+      return;                    // 멈춘 동안의 옛 값으로 그래프를 다시 그리지 않는다
+    }
+
     if (!d || !d.ready) {
       // 실시간 루프가 죽지는 않았지만 매 반복에서 계속 실패하는 중이면(예: 방금
       // 갈아끼운 모델이 안 맞음) 서버가 이유를 같이 보낸다. 그냥 '대기 중'만 뜨는 것보다
@@ -211,10 +224,19 @@
       }
     }
 
-    // 파형 버퍼 (뒤쪽 일부만 이어붙여 흐르게)
+    // 파형 버퍼 — 지난 폴링 이후 **실제로 흐른 시간**만큼만 이어붙인다.
+    // 배열 길이의 일정 비율(예전엔 1/6)을 떼어 쓰면 폴링 간격과 어긋나, 서버가 내주는
+    // 것보다 많이 갖다 써서 파형이 실제보다 빠르게 흐르고 같은 구간이 반복해 그려진다.
     if (!paused && d.signal && d.signal.length) {
-      var take = d.signal.slice(-Math.max(4, Math.round(d.signal.length / 6)));
-      waveBuf = waveBuf.concat(take);
+      var hz = d.signal_hz || (d.signal.length / 2);
+      var now = Date.now();
+      // 첫 갱신이면 받은 것을 다 채우고, 그 뒤로는 흐른 시간만큼만 가져온다.
+      var n = lastWaveAt
+        ? Math.round((now - lastWaveAt) / 1000 * hz)
+        : d.signal.length;
+      lastWaveAt = now;
+      n = Math.max(1, Math.min(d.signal.length, n));
+      waveBuf = waveBuf.concat(d.signal.slice(-n));
       if (waveBuf.length > WAVE_MAX) waveBuf = waveBuf.slice(-WAVE_MAX);
       drawWave();
     }
@@ -724,6 +746,7 @@
     renderDatasets();
     loadJobOptions();       // 수집/변환/학습 버튼이 그 조건 기준으로 다시 그려진다
     loadTrainHistory();
+    if (adminTab === "files") loadFiles();     // 자료 목록도 그 조건 것으로
   }
 
   // 서버가 보낸 문자열을 innerHTML 에 넣기 전에 태그를 무력화한다.
@@ -769,9 +792,27 @@
       .catch(function () {});
   }
 
+  // 사전 점검에서 막힌 요청. '그래도 시작'을 누르면 force 를 붙여 다시 보낸다.
+  var precheckPending = null;
+
+  function forceStart() {
+    if (!precheckPending) return;
+    var p = precheckPending;
+    precheckPending = null;
+    var f = jobEl("force");
+    if (f) f.style.display = "none";
+    p.body.force = true;
+    postJob(p.url, p.body, p.startedText);
+  }
+
   function postJob(url, body, startedText) {
     body = body || {};
     body.dataset = dsPick;      // 수집·변환·학습 모두 지금 고른 조건으로 간다
+    if (!body.force) {
+      precheckPending = null;
+      var fb = jobEl("force");
+      if (fb) fb.style.display = "none";
+    }
     var hint = jobEl("hint"), log = jobEl("log");
     // 요청이 왕복하는 동안 아무 반응이 없으면 "안 눌린다"고 느끼므로 즉시 표시한다.
     jobFinished = false;
@@ -783,6 +824,22 @@
       .then(function (res) {
         if (res.j.ok) { renderJob(res.j.job); watchJob(); }
         else if (handleAuthError(res.j)) { if (hint) hint.textContent = "🔒 관리자 로그인이 필요합니다"; }
+        else if (res.j.precheck) {
+          // 레일 포화 등으로 막힌 경우. 이유를 자세히 보여주고, 그래도 하겠다면 길을 열어준다.
+          if (hint) hint.textContent = "⛔ " + res.j.error;
+          if (log) {
+            log.style.display = "block";
+            log.textContent = res.j.error + "\n\n" + (res.j.detail || "")
+              + "\n\n확인할 것\n"
+              + "  1) RA·LA·RL 세 전극이 모두 닿아 있는가\n"
+              + "  2) RL(기준) 전극 — 기준 전위를 못 잡으면 출력이 레일로 밀립니다\n"
+              + "  3) AD8232 와 ADS1115 의 GND 가 공통인가\n"
+              + "\n'센서' 탭에서 자세히 볼 수 있습니다.";
+          }
+          precheckPending = { url: url, body: body, startedText: startedText };
+          var f = jobEl("force");
+          if (f) f.style.display = "inline-block";
+        }
         else if (hint) hint.textContent = "❌ " + (res.j.error || "실패");
       })
       .catch(function () { if (hint) hint.textContent = "❌ 요청을 보내지 못했습니다"; });
@@ -894,7 +951,8 @@
   function loadFiles() {
     if (demo) { fEl("hint").textContent = "데모 화면이라 파일 목록은 백엔드에서만 보입니다"; return; }
     Promise.all([
-      fetch("/api/files", { cache: "no-store" }).then(function (r) { return r.json(); }),
+      fetch("/api/files?dataset=" + encodeURIComponent(dsPick), { cache: "no-store" })
+        .then(function (r) { return r.json(); }),
       fetch("/api/trash", { cache: "no-store" }).then(function (r) { return r.json(); })
     ]).then(function (res) {
       var d = res[0];
@@ -1207,6 +1265,7 @@
     if (tsel && !tsel.disabled) { selectTrainTask(tsel.dataset.jobTask); return; }
     var msel = e.target.closest("[data-job-mode-btn]");
     if (msel) { selectTrainMode(msel.dataset.jobModeBtn); return; }
+    if (e.target.closest('[data-job="force"]')) { forceStart(); return; }
     var dsBtn = e.target.closest("[data-ds-set]");
     if (dsBtn) { pickDataset(dsBtn.dataset.dsSet); return; }
     var atab = e.target.closest("[data-admin-tab]");
@@ -1284,7 +1343,8 @@
     if (lastState) setText("duration", since(stateSince));
     // lastSeen은 ready:true를 한 번도 못 받으면 0으로 남으므로, 그 경우 페이지를 연
     // 시각을 기준으로 삼는다(안 그러면 시작부터 실패해도 이 경고가 영영 안 뜬다).
-    if (!demo && Date.now() - (lastSeen || pageLoad) > 4000) {
+    // 수집 중에는 일부러 멈춘 것이므로 '신호 끊김' 경고를 띄우지 않는다.
+    if (!demo && !paused && Date.now() - (lastSeen || pageLoad) > 4000) {
       setText("source", lastWorkerError ? "⚠️ " + lastWorkerError : "신호 끊김 — 재시도 중");
     }
   }, 1000);

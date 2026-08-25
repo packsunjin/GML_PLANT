@@ -36,6 +36,9 @@ import numpy as np
 # (preprocess.py 의 품질 게이트와 같은 기준).
 RAIL_HIGH_V = 3.0
 RAIL_LOW_V = 0.3
+# 증폭기가 레일에 붙으면 입력이 변해도 출력이 안 따라가서 흔들림이 사라진다.
+# 정상 측정에서는 잡음만으로도 이보다 훨씬 크게 흔들린다(실측 수 mV 이상).
+STUCK_STD_V = 0.0008
 
 # ── AD8232 라는 하드웨어가 정하는 한계 ────────────────────────────────
 # 이 회로는 원래 심전도용이고, 심전도 신호(500µV~5mV)에 맞춰 설계되어 있다.
@@ -121,10 +124,10 @@ def sensor_status():
     if not HARDWARE_AVAILABLE:
         return info
 
-    # 기준점을 1초만 재서 평균을 낸다(레일에 붙어 있는지 보는 것이 목적).
+    # 기준점을 2초 재서 평균과 흔들림을 함께 본다.
     vs = []
     t0 = time.time()
-    while time.time() - t0 < 1.0:
+    while time.time() - t0 < 2.0:
         try:
             vs.append(read_sample_hardware())
         except Exception as e:
@@ -134,9 +137,25 @@ def sensor_status():
     if not vs:
         return info
 
-    avg = sum(vs) / len(vs)
+    v = np.asarray(vs, dtype=float)
+    avg = float(v.mean())
+    std = float(v.std())
     info["baseline"] = round(avg, 3)
-    if avg > RAIL_HIGH_V:
+    info["std"] = round(std, 5)
+    info["min"] = round(float(v.min()), 3)
+    info["max"] = round(float(v.max()), 3)
+
+    # 위 RAIL_HIGH_V(3.0)·RAIL_LOW_V(0.3)는 전원 전압에서 짐작한 값이라 보드마다
+    # 실제 한계와 다르다. 실측한 이 보드의 출력 한계는 2.57~2.60 V / -0.59~-0.61 V 였고,
+    # 그래서 값만 보는 판정은 진짜 포화를 놓친다. 값이 문턱을 넘었는지보다
+    # **출력이 아예 움직이지 않는지**가 포화의 확실한 증거다 — 레일에 붙으면
+    # 입력이 변해도 출력이 따라가지 않으므로 표준편차가 무너진다.
+    info["stuck"] = std < STUCK_STD_V
+    if info["stuck"]:
+        where = "상단" if avg > (RAIL_HIGH_V + RAIL_LOW_V) / 2 else "하단"
+        info["baseline_verdict"] = (
+            f"출력이 움직이지 않습니다(흔들림 {std*1000:.2f} mV) — {where} 레일 포화로 보입니다")
+    elif avg > RAIL_HIGH_V:
         info["baseline_verdict"] = "상단 레일 포화 — 전극 연결을 확인하세요"
     elif avg < RAIL_LOW_V:
         info["baseline_verdict"] = "하단 레일 포화 — 전극 연결을 확인하세요"

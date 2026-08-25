@@ -144,6 +144,11 @@ DATASETS = {
 }
 DEFAULT_DATASET = "식물"
 
+# 화면 파형용으로 매번 보낼 최근 구간과 다운샘플 비율.
+# 브라우저가 이어붙여 그리므로 폴링을 몇 번 놓쳐도 메울 만큼만 있으면 된다.
+SIGNAL_TAIL_SEC = 2.0
+SIGNAL_DECIM = 3
+
 
 def dataset_paths(name):
     """데이터셋 이름 -> 저장소 기준 상대경로 4개."""
@@ -167,7 +172,11 @@ def _payload(result, recent, clf):
     (픽셀 방식 모델은 이 이미지로 직접 추론하고, 특징 방식도 여기서 특징을 뽑는다).
     분류에 쓰지 않는 값은 싣지 않는다(네트워크 절약).
     """
-    sig = np.asarray(recent)[::3]  # 5초 버퍼를 1/3로 다운샘플(네트워크 절약)
+    # 화면 파형은 브라우저가 자기 버퍼에 **이어붙여** 그린다. 그래서 매번 5초를 통째로
+    # 보낼 필요가 없다 — 폴링 간격(0.5초)에 폴링을 몇 번 놓쳐도 메울 여유만 있으면 된다.
+    # 2초면 네 번을 연속으로 놓쳐도 파형이 끊기지 않는다.
+    tail = int(SIGNAL_TAIL_SEC * clf.sample_rate)
+    sig = np.asarray(recent)[-tail:][::SIGNAL_DECIM]
     spec = np.asarray(result["spectrogram_db"], dtype=float)
     filt = result["filtered_signal"]
     return {
@@ -181,10 +190,16 @@ def _payload(result, recent, clf):
         # 실측 20배 이상 빠르다.
         "signal": np.round(sig, 5).tolist(),
         "spec": np.round(spec, 1).tolist(),  # (주파수 x 시간)
+        # mean 은 내장 폴백 화면이 쓴다. 없어서 'undefined V' 로 뜨고 있었다.
+        "mean": round(float(np.mean(filt)), 4),
         "std": round(float(np.std(filt)), 4),
         "p2p": round(float(np.max(filt) - np.min(filt)), 4),
         # 실제로 초당 몇 샘플을 읽고 있는지. 명목(250Hz)보다 많이 낮으면 필터/스펙트로그램이
         # 가정하는 주파수축이 어긋나 정확도가 떨어진다는 신호다.
+        # signal 배열이 초당 몇 점인지. 브라우저가 '지난 폴링 이후 흐른 시간 x 이 값'
+        # 만큼만 이어붙이면 파형이 실제 속도로 흐른다. 이 값 없이 배열 길이의 일정 비율을
+        # 떼어 쓰면 폴링 간격과 어긋나 파형이 실제보다 빠르거나 느리게 흐른다.
+        "signal_hz": round(clf.sample_rate / SIGNAL_DECIM, 3),
         "sample_rate": SAMPLE_RATE_HZ,
         "actual_rate": clf.actual_rate(),
         # 화면 설명에 쓰는 값. 모델마다 다르므로 상수로 박아 두면 거짓말이 된다.
@@ -422,7 +437,15 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     @app.route("/data")
     def data():
         with _lock:
-            return jsonify(dict(_latest))
+            d = dict(_latest)
+        # 수집 중에는 실시간 루프가 센서를 양보하고 쉰다(같은 ADS1115를 두 프로세스가
+        # 번갈아 읽으면 수집 쪽 샘플레이트가 떨어지기 때문). 그 사이 화면은 마지막 값에
+        # 멈춰 있는데, 안내가 없으면 고장난 것으로 보인다. 그래서 왜 멈췄는지 같이 보낸다.
+        d["paused"] = _pause.is_set()
+        if d["paused"]:
+            with _job_lock:
+                d["paused_by"] = _job.get("label")
+        return jsonify(d)
 
     # ---- 모드 전환 (SSH 없이 브라우저에서) -----------------------------
     # RealtimeClassifier 는 매 스텝마다 self.sim_state 를 읽으므로, 값만 바꿔도
@@ -629,6 +652,24 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         ds = _pick_dataset(body)
         if ds is None:
             return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+
+        # 증폭기가 레일에 붙어 있으면 입력이 변해도 출력이 안 움직인다. 그 상태로
+        # 30분을 모아도 전부 못 쓰는 데이터가 되므로, 시작 전에 한 번 보고 막는다.
+        # (force=true 면 사용자가 알고도 강행하는 것으로 보고 진행한다.)
+        if not body.get("force"):
+            try:
+                st = sensor_control.sensor_status()
+            except Exception:
+                st = None
+            if st and st.get("i2c") and st.get("baseline") is not None \
+                    and st.get("baseline_verdict") not in (None, "정상 범위"):
+                return jsonify({
+                    "ok": False, "precheck": True,
+                    "error": f"측정계가 정상 동작점에 있지 않습니다 — {st['baseline_verdict']}",
+                    "detail": ("이 상태로 모은 데이터는 입력이 변해도 출력이 따라가지 않아 "
+                               "학습에 쓸 수 없습니다. RL(기준) 전극 접촉부터 확인하세요."),
+                    "status": st}), 409
+
         raw_rel = dataset_paths(ds)["raw"]
         os.makedirs(_abs(raw_rel), exist_ok=True)
 
@@ -776,8 +817,8 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     # 상태별 하위 폴더를 각각 훑어, 상태 정보를 붙이고 상태마다 같은 개수만 보낸다.
     PER_STATE_CAP = 120
 
-    def _spectrogram_group():
-        base = os.path.join(root_dir, "data", "spectrogram")
+    def _spectrogram_group(spec_rel):
+        base = os.path.join(root_dir, spec_rel)
         files, totals = [], {}
         for st in sensor_control.VALID_STATES:
             d = os.path.join(base, st)
@@ -803,18 +844,26 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     @app.route("/api/files")
     @require_admin
     def api_files():
-        return jsonify({"current_model": os.path.relpath(os.path.realpath(clf.model_path),
+        # 자료 탭도 조건별로 본다. 대조군 파일이 목록에 아예 안 나오면 확인도 삭제도 못 한다.
+        ds = _pick_dataset(request.args)
+        if ds is None:
+            return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
+        p = dataset_paths(ds)
+        # features.csv 는 폴더가 아니라 파일 하나라, 그 파일이 있는 폴더를 훑는다.
+        feat_dir = os.path.dirname(p["features"]) or "data"
+        return jsonify({"dataset": ds,
+                        "current_model": os.path.relpath(os.path.realpath(clf.model_path),
                                                          root_dir).replace(os.sep, "/"),
                         "groups": [
             _group("raw", "원시 데이터 (CSV)", "csv",
-                   "수집한 전위 신호. 지우고 다시 수집할 수 있어요.", "data/raw", (".csv",)),
+                   "수집한 전위 신호. 지우고 다시 수집할 수 있어요.", p["raw"], (".csv",)),
             _group("features", "특징 테이블 (CSV)", "csv",
-                   "전처리가 뽑은 윈도우별 특징 14개.", "data", (".csv",)),
-            _spectrogram_group(),
+                   "전처리가 뽑은 윈도우별 특징 14개.", feat_dir, (".csv",)),
+            _spectrogram_group(p["spec"]),
             _group("eval", "평가 이미지 (혼동행렬)", "image",
-                   "학습 결과 confusion matrix.", "models", (".png",)),
+                   "학습 결과 confusion matrix.", p["models"], (".png",)),
             _group("model", "학습된 모델", "model",
-                   "지우면 해당 모델로는 실행할 수 없게 됩니다.", "models", (".joblib",)),
+                   "지우면 해당 모델로는 실행할 수 없게 됩니다.", p["models"], (".joblib",)),
         ]})
 
     @app.route("/api/files/download")
@@ -1106,7 +1155,7 @@ PAGE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
     <span class="rec"><span class="d"></span>LIVE</span><span class="mono" id="clock">--:--:--</span></div>
 
   <div class="signal">
-    <div class="h"><h2>전위 신호 · 필터 후</h2><span class="u">최근 5.0 s</span></div>
+    <div class="h"><h2>전위 신호 · 필터 후</h2><span class="u" id="span">최근 —</span></div>
     <svg id="wave" viewBox="0 0 1000 240" preserveAspectRatio="none"></svg>
   </div>
 
@@ -1171,6 +1220,9 @@ function mode(d){
 async function tick(){
   try{const d=await (await fetch('/data')).json(); if(!d.ready)return;
     mode(d); drawWave(d.signal); drawSpec(d.spec); status(d);
+    // 보내는 구간 길이가 바뀌어도 라벨이 거짓말하지 않게 값에서 계산한다.
+    if(d.signal_hz)document.getElementById('span').textContent=
+      '최근 '+(d.signal.length/d.signal_hz).toFixed(1)+' s';
     document.getElementById('s_mean').textContent=d.mean+' V';
     document.getElementById('s_std').textContent=d.std+' V';
     document.getElementById('s_p2p').textContent=d.p2p+' V';
