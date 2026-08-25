@@ -1,0 +1,684 @@
+<title>식물 전기신호 분류</title>
+<style>
+  :root{
+    --paper:#fbfcfa; --surface:#f4f7f2; --ink:#16201a; --slate:#5c6b62;
+    --faint:#8a978e; --rule:#dde4dc; --stem:#1f6b3d; --trace:#0e9f52;
+    --amber:#9a6b12; --amber-soft:#f7f0dc; --crit:#a33a2a; --crit-soft:#f9e9e5;
+    --grid:#e6ebe4; --band:#e8f2e9; --fill:#fffdf4; --fill-line:#c9b98a;
+    --serif:'휴먼명조','HY헤드라인M','Noto Serif KR','Nanum Myeongjo',Batang,'Times New Roman',serif;
+    --sans:'Pretendard','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',system-ui,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,'D2Coding',monospace;
+  }
+  *{box-sizing:border-box}
+  /* 서식 하단 지정: 본문(휴먼명조, 11) / 장 14pt · 절 12pt · 항·목 11pt, 전부 휴먼명조 */
+  body{background:var(--paper); color:var(--ink); font-family:var(--serif);
+    font-size:14.7px; line-height:1.78; margin:0; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px; margin:0 auto; padding:0 24px 90px}
+
+  .cover{padding:58px 0 44px; text-align:center; border-bottom:1px solid var(--rule)}
+  .form-tag{font-family:var(--mono); font-size:11px; letter-spacing:.14em; color:var(--faint); margin:0 0 24px}
+  .doc-title{font-family:var(--serif); font-size:clamp(18px,2.5vw,24px); font-weight:700;
+    border:1.5px solid var(--ink); display:inline-block; padding:12px 28px; margin:0 0 11px}
+  .deadline{font-size:12.5px; color:var(--slate); margin:0 0 50px}
+  .topic-label{font-family:var(--mono); font-size:11px; letter-spacing:.14em; color:var(--stem); margin:0 0 13px; font-weight:700}
+  h1{font-family:var(--serif); font-weight:700; font-size:clamp(23px,3.4vw,33px);
+    line-height:1.44; letter-spacing:-.015em; margin:0 auto 56px; max-width:25ch; text-wrap:balance}
+  .byline{display:inline-block; text-align:left; font-size:15px; line-height:2.3; font-family:var(--serif)}
+  .fill{display:inline-block; min-width:var(--w,7em); border-bottom:1.4px solid var(--fill-line);
+    background:var(--fill); color:var(--faint); font-family:var(--sans); font-size:13px;
+    text-align:center; padding:0 6px; margin:0 2px}
+  .byline .lead{display:inline-block; min-width:5.2em}
+  .adv{margin-top:32px; padding-top:20px; border-top:1px solid var(--rule)}
+
+  .toc{max-width:520px; margin:60px auto 0; padding:32px 0 0}
+  .toc h2{font-family:var(--serif); font-size:21px; font-weight:700; text-align:center;
+    letter-spacing:1.2em; text-indent:1.2em; border:0; padding:0; margin:0 0 28px; display:block}
+  .toc ol{list-style:none; padding:0; margin:0}
+  .toc li{display:flex; align-items:baseline; gap:10px; font-family:var(--serif); font-size:15.5px; margin-bottom:14px}
+  .toc .dots{flex:1; border-bottom:1.5px dotted var(--rule); transform:translateY(-4px)}
+  .toc .pg{font-family:var(--mono); font-size:12.5px; color:var(--faint)}
+  .toc .ch{min-width:1.9em; color:var(--stem); font-weight:700}
+
+  .summary{margin:58px 0 0}
+  .summary h2{font-family:var(--serif); font-size:19px; font-weight:700; margin:0 0 13px;
+    border:0; padding:0; display:block; text-align:center}
+  .summary h2 span{border:1.3px solid var(--ink); padding:6px 26px; display:inline-block}
+  table.sum{border-collapse:collapse; width:100%; font-size:14.5px; border-top:1.8px solid var(--ink)}
+  table.sum th{width:118px; background:var(--surface); font-family:var(--serif); font-weight:700;
+    text-align:center; vertical-align:middle; border-bottom:1px solid var(--rule);
+    border-right:1px solid var(--rule); padding:14px 10px; white-space:nowrap}
+  table.sum td{padding:14px 18px; border-bottom:1px solid var(--rule); vertical-align:top}
+  table.sum tr:last-child th, table.sum tr:last-child td{border-bottom:1.8px solid var(--ink)}
+  table.sum ul{margin:0; padding-left:19px}
+  table.sum li{margin-bottom:5px}
+  table.sum p{margin:0 0 8px} table.sum p:last-child{margin:0}
+
+  section{margin-top:64px}
+  h2{font-family:var(--serif); font-size:18.7px; font-weight:700; margin:0 0 6px;
+    padding-bottom:11px; border-bottom:2px solid var(--stem);
+    display:flex; align-items:baseline; gap:13px; text-wrap:balance}
+  h2 .num{font-family:var(--serif); font-size:18.7px; color:var(--stem); flex:none}
+  .sec-note{font-size:13px; color:var(--slate); margin:0 0 22px; font-style:italic}
+  h3{font-family:var(--serif); font-size:16px; font-weight:700; margin:36px 0 10px; text-wrap:balance}
+  h4{font-family:var(--serif); font-size:14.7px; font-weight:700; margin:26px 0 8px}
+  p{margin:0 0 14px; max-width:70ch}
+  ul,ol{margin:0 0 14px; padding-left:22px; max-width:70ch}
+  li{margin-bottom:6px}
+  em{font-style:normal; background:var(--band); padding:1px 5px; border-radius:2px}
+  code,.n{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:.92em}
+  code{background:var(--surface); padding:1.5px 5px; border-radius:3px}
+  sup{font-family:var(--mono); font-size:10px; color:var(--stem); font-weight:700}
+
+  figure{margin:28px 0}
+  .plate{padding:8px 0 4px; overflow-x:auto}
+  .plate svg{display:block; margin:0 auto; max-width:100%; height:auto}
+  figcaption{font-size:13px; color:var(--ink); margin-top:12px; line-height:1.62;
+    max-width:78ch; text-align:center; margin-left:auto; margin-right:auto}
+  figcaption .cap{font-family:var(--serif); font-weight:700; margin-right:6px}
+  figcaption .en{color:var(--slate); font-style:italic}
+  figcaption .desc{display:block; margin-top:7px; font-size:12.5px; color:var(--slate); text-align:left; line-height:1.65}
+  .tbl-wrap{overflow-x:auto; margin:24px 0}
+  caption{text-align:center; font-size:13px; color:var(--ink); margin-bottom:10px; line-height:1.62}
+  caption .cap{font-family:var(--serif); font-weight:700; margin-right:6px}
+  caption .en{color:var(--slate); font-style:italic}
+  table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:480px}
+  th,td{padding:9px 12px; text-align:center; border-bottom:1px solid var(--rule); vertical-align:middle}
+  thead th{border-top:1.6px solid var(--ink); border-bottom:1.2px solid var(--ink);
+    font-size:12.5px; font-weight:700; white-space:nowrap; background:var(--surface)}
+  tbody tr:last-child td{border-bottom:1.6px solid var(--ink)}
+  td.n,th.n{font-family:var(--mono); font-variant-numeric:tabular-nums; text-align:center}
+  .good{color:var(--stem); font-weight:700}
+  .bad{color:var(--crit); font-weight:700}
+
+  .photo{border:1.6px dashed var(--stem); padding:19px 21px; margin:26px 0; background:var(--surface)}
+  .photo .tag{font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; color:var(--stem); font-weight:700; margin:0 0 8px}
+  .photo h6{font-family:var(--serif); font-size:15.5px; font-weight:700; margin:0 0 7px}
+  .photo p{font-size:13.5px; color:var(--slate); margin:0 0 7px}
+  .photo ul{font-size:13px; color:var(--slate); margin:0; padding-left:19px}
+  .photo li{margin-bottom:3px}
+  .photo .cap-hint{margin-top:9px; font-size:12.5px; font-family:var(--serif);
+    color:var(--ink); background:var(--paper); padding:7px 11px}
+
+  .note{border-left:3px solid var(--amber); background:var(--amber-soft); padding:15px 19px; margin:22px 0; font-size:14px}
+  .note p{margin:0 0 8px; max-width:68ch} .note p:last-child{margin:0}
+  .note .lbl{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; color:var(--amber); font-weight:700; display:block; margin-bottom:5px}
+  .note.crit{border-left-color:var(--crit); background:var(--crit-soft)}
+  .note.crit .lbl{color:var(--crit)}
+
+  .refs{counter-reset:ref; padding-left:0; list-style:none; max-width:80ch}
+  .refs li{counter-increment:ref; position:relative; padding-left:32px; margin-bottom:12px; font-size:13.5px; line-height:1.65}
+  .refs li::before{content:"[" counter(ref) "]"; position:absolute; left:0;
+    font-family:var(--mono); font-size:12px; color:var(--stem); font-weight:700}
+
+  media print{
+    body{font-size:10.5pt}
+    .wrap{max-width:none; padding:0}
+    .cover,.toc{page-break-after:always}
+    section{margin-top:30px}
+    h2,h3{page-break-after:avoid}
+    figure,table,.photo,.note{page-break-inside:avoid}
+  }
+  media (max-width:620px){
+    .wrap{padding:0 16px 60px}
+    h2{font-size:20px} h2 .num{font-size:20px}
+    .toc h2{letter-spacing:.5em; text-indent:.5em}
+  }
+</style>
+
+<div class="wrap">
+
+<header class="cover">
+  <p class="form-tag">〈서식 2〉</p>
+  <p class="doc-title">제6회 학생 SW·AI 인재 양성 프로젝트 결과 보고서</p>
+  <p class="deadline">2026. 11. 1주(추후 공문 안내)까지 창의인재과로 공문 제출 · 전체 20페이지 이내</p>
+  <p class="topic-label">연 구 주 제 명</p>
+  <h1>머신러닝 모델 기반의 식물 전기 신호 시각화 및 패턴 분석을 활용한 실시간 상태 분류 시스템 구현</h1>
+  <div class="byline">
+    <div>영천고등학교&nbsp; 1학년&nbsp; 김도윤</div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;박선진</div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;유도혁</div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;이유찬</div>
+    <div class="adv">
+      <div><span class="lead">자문위원:</span> ㈜에이포랩&nbsp; 김민재</div>
+      <div><span class="lead">지도교사:</span> 영천고등학교&nbsp; 이민정</div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <h2>목차</h2>
+  <ol>
+    <li><span>〈연구 요약〉</span><span class="dots"></span><span class="pg">1</span></li>
+    <li><span class="ch">Ⅰ.</span><span>서론</span><span class="dots"></span><span class="pg">2</span></li>
+    <li><span class="ch">Ⅱ.</span><span>연구 배경</span><span class="dots"></span><span class="pg">3</span></li>
+    <li><span class="ch">Ⅲ.</span><span>연구 방법 및 내용</span><span class="dots"></span><span class="pg">6</span></li>
+    <li><span class="ch">Ⅳ.</span><span>연구 결과</span><span class="dots"></span><span class="pg">9</span></li>
+    <li><span class="ch">Ⅴ.</span><span>결론 및 제언</span><span class="dots"></span><span class="pg">17</span></li>
+    <li><span>참고 문헌</span><span class="dots"></span><span class="pg">19</span></li>
+    <li><span>부록</span><span class="dots"></span><span class="pg">20</span></li>
+  </ol>
+</nav>
+
+<div class="summary">
+  <h2><span>연구 요약</span></h2>
+  <div class="tbl-wrap">
+  <table class="sum"><tbody>
+    <tr><th>연구 제목</th><td>머신러닝 모델 기반의 식물 전기 신호 시각화 및 패턴 분석을 활용한 실시간 상태 분류 시스템 구현</td></tr>
+    <tr><th>연구 목표</th><td>
+      <p><strong>식물의 미세 전기 신호를 수집하여 인간이 직관적으로 이해할 수 있는 정보로 변환하는 '실시간 식물 상태 분류 시스템(식물 번역기)'</strong>을 구현한다. <em>정상 · 수분부족 · 자극</em> 세 가지 상태를 실시간으로 분류하는 것이 목표이며, 실험 대상 식물종으로 방울토마토를 선정했다.</p>
+    </td></tr>
+    <tr><th>연구 내용</th><td>
+      <ul>
+        <li>라즈베리파이 5 + AD8232(생체전위 증폭기) + ADS1115(16비트 ADC)로 <span class="n">250 Hz</span> 측정 시스템 구현</li>
+        <li>대역통과·노치 필터 후 10초 창 단위로 스펙트로그램(<span class="n">224×224</span>)과 통계·주파수 특징 <span class="n">14</span>개를 추출</li>
+        <li>SVM·Random Forest를 시간순 그룹 분할로 학습하여 두 특징 방식을 비교</li>
+        <li>분류가 되지 않는 원인을 추적하여 측정계 결함 <span class="n">4</span>종을 발견·제거하고, 접촉 조건을 달리한 <span class="n">4</span>조건 대조실험 수행</li>
+        <li>문헌 조사와 실측값 대조를 통해 <strong>목표 미달성의 근본 원인을 분석</strong></li>
+      </ul>
+    </td></tr>
+    <tr><th>연구 성과</th><td>
+      <p>측정 시스템 구현과 2상태(정상·자극) 실시간 반응 확인까지 진행하였다. 다만 <strong>검출된 신호가 식물에서 온 것임을 아직 입증하지 못했고</strong>, 수분부족 상태는 측정 조건을 확보하지 못해 3상태 분류의 최종 검증은 진행 중이다.</p>
+      <ul>
+        <li>측정 시스템 구현 — ADC 연속변환 전환으로 샘플레이트 확보, 상용전원 <span class="n">50/60 Hz</span> 자동 판별, 브라우저 통합 웹 시스템 개발</li>
+        <li><strong>초기에 얻은 높은 정확도가 신뢰할 수 없는 값임을 규명</strong> — 식물 반응이 아니라 클래스 간 전극 부착 조건의 차이를 학습한 결과였음</li>
+        <li><strong>검출 신호의 상당 부분이 실험자 신체를 통한 전위 결합임을 대조실험으로 확인</strong></li>
+        <li><strong>측정계의 구조적 한계 규명</strong> — AD8232의 통과대역(<span class="n">0.5–40 Hz</span>)이 수분부족 신호 대역(<span class="n">10⁻⁴–10⁻² Hz</span>)을 원리적으로 차단하며, 입력 임피던스가 식물 조직 측정 요구치에 미달함</li>
+      </ul>
+    </td></tr>
+  </tbody></table>
+  </div>
+</div>
+
+<section>
+  <h2><span class="num">Ⅰ.</span>서론</h2>
+  <p class="sec-note">※ 연구개요 및 내용 (연구 목적과 필요성 등 서술)</p>
+
+  <h3>1. 연구의 필요성</h3>
+  <p>반려식물 재배와 스마트농업에 대한 관심이 커지며 식물의 생육 상태를 실시간으로 관리할 정밀 시스템의 필요성이 높아지고 있다. 그러나 현재의 식물 관리 방식은 대부분 토양 수분이나 잎의 시듦 같은 <strong>외형적 변화(Phenotype)</strong>에 의존한다. 이러한 변화는 생리적 상태가 <strong>이미 악화된 뒤에 나타나는 사후 지표</strong>인 경우가 많아 대응 시기를 놓치기 쉽고, 미세한 환경 변화나 초기 스트레스는 관찰만으로 파악하기 어렵다.</p>
+  <p>식물은 수분 부족이나 물리적 자극 같은 외부 스트레스에 반응하여 <strong>전기적 생체신호(Electrophysiological signals)</strong>를 발생시킨다<sup>[3]</sup>. 이 신호는 체내에서 정보를 신속하게 전달하는 즉각적인 정보원으로, <strong>외형적 변화가 나타나기 전 단계</strong>에서 내적 생리 상태를 정량적으로 판단할 근거를 제공한다. 따라서 이 미세 신호를 포착·해석하는 접근은 식물의 생존율을 높이고 생육 환경을 최적화하는 데 유효한 경로가 된다.</p>
+
+  <h3>2. 연구 목적</h3>
+  <p>본 연구에서는 식물의 미세 전기 신호를 수집하여 인간이 직관적으로 이해할 수 있는 정보로 변환하는 <strong>'실시간 식물 상태 분류 시스템(식물 번역기)'</strong>을 구현하고자 한다. 이를 위해 라즈베리파이 기반의 데이터 수집 체계를 구축하고, 수집된 데이터를 전처리하여 SVM 및 Random Forest 등의 머신러닝 모델로 식물의 상태를 <strong>정상 · 수분부족 · 자극</strong> 세 가지로 분류할 계획이다. 실험 대상 식물종으로는 재배가 쉽고 자극 반응이 비교적 뚜렷하다고 알려진 <strong>방울토마토</strong>를 선정했다. 이를 위한 세부 목표는 다음과 같다.</p>
+  <ol>
+    <li>AD8232 생체전위 증폭기와 ADS1115 ADC로 방울토마토의 미세 전위를 <span class="n">250 Hz</span>로 안정적으로 획득한다.</li>
+    <li>획득한 시계열을 스펙트로그램과 명시적 특징으로 변환하고, SVM·Random Forest로 세 상태를 분류한다.</li>
+    <li>분류 정확도 <span class="n">70 %</span> 이상을 달성한다.</li>
+    <li>SSH·VNC 없이 브라우저만으로 수집–학습–추론이 가능한 통합 시스템을 구현한다.</li>
+  </ol>
+
+  <h3>3. 연구 문제</h3>
+  <ul>
+    <li><strong>연구문제 1.</strong> 저비용 장비로 방울토마토의 세 가지 상태를 구분할 수 있는 전기신호를 획득할 수 있는가?</li>
+    <li><strong>연구문제 2.</strong> 획득한 신호로 학습한 분류기가 실제 환경에서 세 상태를 정확히 판별하는가?</li>
+  </ul>
+  <p>본 보고서 Ⅳ장은 이 두 질문에 대해 현재까지 확인된 것과 확인되지 않은 것을 구분하여 서술하고, 측정계가 갖는 구조적 한계를 문헌과 대조하여 분석한다.</p>
+</section>
+
+<section>
+  <h2><span class="num">Ⅱ.</span>연구 배경</h2>
+  <p class="sec-note">※ 이론적 배경, 선행연구 등 서술</p>
+
+  <h3>1. 식물의 전기신호</h3>
+  <h4>(1) 발생 기전과 두 가지 신호 유형</h4>
+  <p>식물이 전기신호를 낸다는 관찰은 1873년 Burdon-Sanderson이 파리지옥(<i>Dionaea muscipula</i>)에서 처음 기록했고<sup>[18]</sup>, 20세기 초 Bose가 여러 식물종에서 자극 반응 전위를 측정하며 이어졌다<sup>[19]</sup>. 다만 이 신호가 실제 생리 반응을 유발하는지는 오랫동안 논쟁거리였고, Fromm과 Lautner가 광합성률 저하·호흡 증가·유전자 발현 변화로 이어짐을 정리하며 정량적 답을 주었다<sup>[3]</sup>.</p>
+  <p>식물 세포도 동물 신경세포처럼 세포막을 사이에 둔 이온 농도 차로 <span class="n">−100 ~ −200 mV</span>의 <strong>막전위</strong>를 유지한다. 자극이 문턱값을 넘으면 <strong>Ca²⁺ 유입 → Cl⁻ 유출(탈분극) → K⁺ 유출(재분극)</strong> 순서로 막전위가 무너졌다 돌아온다. 동물 신경의 Na⁺/K⁺ 기전과 채널 종류만 다를 뿐 원리가 같은 <strong>전-무(all-or-none) 방식</strong>의 재생성 신호이며, 여기서 두 유형이 갈린다.</p>
+  <ul>
+    <li><strong>활동전위(AP)</strong> — 접촉·전기 자극에 대한 전-무 방식의 신호. 원통형질연락으로 이어진 <strong>체관부를 따라 전기적으로 자기재생</strong>하며 전파되어 거리가 멀어져도 진폭이 거의 줄지 않는다.</li>
+    <li><strong>변동전위(VP)</strong> — 상처·건조 등 손상성 자극에 대해 발생하는 <strong>등급성(graded)</strong> 신호. 화학 신호가 <strong>물관부의 유압 변화</strong>로 이동해 막전위를 이차적으로 흔들므로 거리에 따라 감쇠하고, 지속 시간이 수 분에서 수십 분에 이른다<sup>[13]</sup>.</li>
+  </ul>
+  <p>측정 설계에서 결정적인 것은 <strong>이 신호들의 크기와 속도</strong>다. 진폭은 측정 방식에 따라 편차가 커서 표면 전극의 과도 신호는 <span class="n">1 mV</span> 미만으로<sup>[9]</sup>, 토마토 줄기에서는 <span class="n">21.2 mV</span>로<sup>[12]</sup> 보고된다. 속도는 더 중요하다. 토마토 AP의 전파 속도 <span class="n">5.6 ± 0.5 cm/min</span><sup>[12]</sup>은 초속 <span class="n">0.93 mm</span>여서, 전극을 <span class="n">3 cm</span> 간격으로 붙이면 신호가 두 전극 사이를 지나는 데 <strong>약 32초</strong>가 걸린다. 즉 전극에서 보이는 파형의 시간 규모는 초가 아니라 <strong>수십 초</strong>이며 주파수로는 <span class="n">0.03 Hz</span> 수준이다. 자기재생 방식임에도 신경 신호(초속 수 m)보다 <span class="n">10⁵</span>배 느린 것은 전용 축삭 없이 체관부 세포를 하나씩 거쳐 가기 때문이다. 이 진폭과 속도가 Ⅳ장 6절 분석의 핵심 근거가 된다.</p>
+
+  <h4>(2) 수분 스트레스의 시간 규모</h4>
+  <p>토양 수분이 부족해지면 뿌리의 삼투압 조절이 변하고 기공이 닫히며 막전위가 서서히 이동한다. AP·VP처럼 특정 순간의 이벤트가 아니라 막전위 기준점 자체가 옮겨 가는 <strong>준정상(quasi-steady) 변화</strong>다. 접촉 자극이 <strong>초 단위</strong>인 데 비해 수분부족은 <strong>수 시간~수 일</strong>에 걸쳐 진행되어 시간 규모가 <span class="n">10,000</span>배 이상 차이 나며, 이는 곧 두 신호의 주파수 대역이 완전히 다르다는 뜻이다.</p>
+  <p>이렇게 느린 신호라면 <strong>토양 수분 센서로 충분하지 않은가</strong>라는 의문이 나올 수 있다. 그러나 토양 센서는 <strong>흙</strong>의 물 함량을 잴 뿐 <strong>식물 자체</strong>의 수분 상태를 재지 않는다. 뿌리 손상, 근권 병해, 염류 집적, 또는 토양은 젖어 있어도 증산 요구량이 커서 흡수가 못 따라가는 경우처럼 <strong>토양이 젖어 있는데 식물은 스트레스를 겪는 상황</strong>에서 토양 센서는 이상을 감지하지 못한다. Ríos-Rojas 등은 과수 줄기 전위로<sup>[20]</sup>, Cattani 등은 포도나무에서<sup>[21]</sup> 이를 보완하는 실시간 수분 스트레스 센서를 제시했다. 본 연구처럼 자극(초 단위)과 수분부족(시간~일 단위)을 <strong>같은 전극 한 세트로</strong> 잡으려는 시도는, 상태마다 별도 센서가 필요한 방식과 구분되는 통합적 이점을 목표로 한다.</p>
+
+  <h3>2. 생체전위 측정 회로의 원리</h3>
+  <p>AD8232는 Analog Devices가 <strong>웨어러블 심박수 모니터</strong>용으로 설계한 단일 리드 생체전위 프런트엔드다<sup>[1]</sup>. 소자 자체가 (a) 사람 피부라는 저저항·저잡음 전극 환경과 (b) 심박(1–2 Hz 근방) 대역을 전제로 최적화되어 있어, 이 전제가 식물 측정과 어긋나는 지점이 곧 본 연구의 결과를 좌우한다.</p>
+  <h4>(1) 계측 증폭기와 공통모드 제거</h4>
+  <p>핵심은 <strong>계측 증폭기</strong>로, 두 측정 전극(RA·LA) 사이의 <strong>차이</strong>만 증폭하고 공통으로 들어오는 신호는 제거한다. 이 능력의 지표가 <strong>CMRR</strong>이며 AD8232는 <span class="n">80 dB</span> 수준으로 설계되었다<sup>[1]</sup>. 그러나 CMRR은 두 입력 전극의 <strong>임피던스가 균형</strong>을 이룰 때만 사양대로 동작한다 — 한쪽 접촉 저항이 크게 높으면 균형이 깨지며 실효 CMRR이 급격히 낮아진다. 흙에 꽂은 전극처럼 접촉 저항이 크고 불안정하면 이 조건 자체가 무너진다.</p>
+  <h4>(2) RLD 능동 피드백</h4>
+  <p>AD8232는 세 번째 전극(RL)을 단순 접지로 쓰지 않고, <strong>RA·LA에서 감지한 공통모드 잡음을 반전 증폭해 RL로 되돌려보내 능동 상쇄</strong>하는 <strong>RLD(Right Leg Drive)</strong> 음성 피드백 루프를 갖는다<sup>[1]</sup>. 즉 RL은 받기만 하는 단자가 아니라 <strong>내보내는 단자</strong>이며, RL 쪽 부하 임피던스가 루프 이득에 포함되는 구조라 부하가 설계 전제를 크게 벗어나면 <strong>루프가 발진하거나 출력이 포화</strong>할 수 있다. 이 구조가 실제로 어떤 결과를 낳는지는 Ⅳ장 3절에서 대조실험으로 확인하였다.</p>
+  <h4>(3) 대역 제한과 입력 임피던스</h4>
+  <p>AD8232는 <strong><span class="n">0.5 Hz</span> 2극 고역통과 + <span class="n">40 Hz</span> 2극 저역통과</strong> 필터가 내장된 고정 구조이며<sup>[8]</sup>, 차단주파수가 실리콘 내부 RC 값으로 정해져 있어 소프트웨어로 바꿀 수 없다. 입력단은 사람 피부(<span class="n">50 kΩ</span> 안팎)를 전제하지만 차동 입력 임피던스 자체는 <strong><span class="n">10 GΩ ∥ 7.5 pF</span></strong>로<sup>[1]</sup> 식물 전위 측정 요구치 <span class="n">10 MΩ</span> 이상<sup>[10]</sup>을 넉넉히 충족한다. 따라서 문제는 입력 임피던스의 절대값이 아니라, 높은 전극 임피던스가 <strong>오프셋 전류·입력 용량·CMRR 균형</strong>을 통해 일으키는 이차적 효과다(Ⅳ장 6절 (3)).</p>
+
+  <h3>3. 스펙트로그램 기반 시계열 분류</h3>
+  <p>시계열 분류에 널리 쓰이는 방법은 <strong>단시간 푸리에 변환(STFT)</strong>으로 시간–주파수 표현인 스펙트로그램을 만들어 이미지로 분류하는 것이다. 다만 스펙트로그램을 이미지로 렌더링할 때 각 창의 최솟값–최댓값으로 <strong>개별 정규화</strong>가 수행되며, 이 과정에서 <strong>신호의 절대적 크기 정보가 소실</strong>된다.</p>
+  <p>이에 대한 대안으로 본 연구는 <strong>명시적 특징 추출</strong>을 병행한다. 평균·표준편차·RMS·왜도·첨도·영교차율·피크투피크(시간영역)와 총에너지·대역별 파워·스펙트럴 중심·대역폭·피크 주파수(주파수영역) 등 <span class="n">14</span>개를 수치로 직접 계산해 사용한다.</p>
+
+  <h3>4. 선행연구 검토</h3>
+  <h4>(1) 토마토 전기신호의 실측 특성</h4>
+  <p>본 연구의 대상인 토마토에 대해서는 이미 정량적 측정이 보고되어 있다. Volkov 연구진은 야생형 토마토에서 활동전위의 <strong>진폭 <span class="n">21.2 ± 2.4 mV</span></strong>, <strong>전파 속도 <span class="n">5.6 ± 0.5 cm/min</span></strong>을 측정했고, <span class="n">9 V</span> 전기자극에는 <span class="n">40 mV</span> 진폭 신호가 <span class="n">3.5–4.5 mm/s</span>로 전파됨을 확인했다<sup>[12]</sup>. 변동전위는 더 느려 <strong>진폭 수십 <span class="n">mV</span>, 지속 수십 분</strong>으로 보고된다<sup>[13]</sup>. 이 값들을 주파수로 환산했을 때 드러나는 문제가 Ⅳ장 6절의 출발점이다(1절 (1) 참조).</p>
+
+  <h4>(2) 전기신호 기반 상태 분류 선행연구</h4>
+  <p>식물 전기신호를 머신러닝으로 분류하려는 시도는 이미 여러 건 보고되어 있으며, 토마토를 대상으로 한 연구도 존재한다.</p>
+  <div class="tbl-wrap">
+    <table>
+      <caption><span class="cap">표1.</span> 식물 전기신호 기반 분류 선행연구</caption>
+      <thead><tr><th>연구</th><th>대상 · 과제</th><th>측정 방식</th></tr></thead>
+      <tbody>
+        <tr><td>Volkov et al.<sup>[12]</sup></td><td>토마토 · 전기신호 전파 특성</td><td>Ag/AgCl 전극, 고임피던스 전위계</td></tr>
+        <tr><td>토마토 가뭄 분류 연구<sup>[14]</sup></td><td>토마토 · 정상 vs 가뭄</td><td>BIOPAC MP150, 증상 발현 전후 측정</td></tr>
+        <tr><td>토마토 영양결핍 분류<sup>[15]</sup></td><td>토마토 · 영양소별 결핍</td><td>전기생리 신호 분해 + 표본공간 축소</td></tr>
+        <tr><td>관수 관리용 수분스트레스 검출<sup>[16]</sup></td><td>수분 스트레스 조기 검출</td><td>PhytoNode 센서, 16개체 18일 연속 측정</td></tr>
+        <tr><td><strong>본 연구</strong></td><td>토마토 · 정상/수분부족/자극</td><td class="bad">AD8232 (ECG용), 심전도 젤 패드</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>표에서 드러나듯 <strong>선행연구는 예외 없이 식물 전기생리 전용 장비 또는 범용 생체신호 계측기를 사용</strong>하며, 심전도 전용 소자를 전용(轉用)한 사례는 학술 문헌에서 찾기 어려웠다. 메이커 커뮤니티에는 AD8232를 식물에 연결한 사례가 다수 있으나, 측정된 신호가 식물에서 온 것인지 검증한 기록은 확인되지 않았다.</p>
+
+  <h4>(3) 전문 측정 장비의 사양</h4>
+  <p>식물 세포외 전기신호 측정 프로토콜을 정리한 문헌은 <strong>비분극성 Ag/AgCl 전극</strong>, <strong>입력 임피던스 <span class="n">2 × 10¹³ Ω</span>의 전압 폴로어</strong>, <strong><span class="n">DC 결합</span>(고역통과 필터 없음)</strong>, <strong><span class="n">40–100 Hz</span> 샘플링·<span class="n">24</span>비트 ADC</strong>를 제시한다<sup>[17]</sup>. 샘플링 요구치가 AP의 신호 대역(<span class="n">0.03 Hz</span> 수준)보다 훨씬 높아 보이지만 모순은 아니다 — 같은 전극으로 훨씬 짧은 시간 규모의 변화까지 함께 잡아야 하고, 나이퀴스트 여유와 <span class="n">60 Hz</span> 계열 잡음 제거용 여유 대역까지 고려하면 <span class="n">40–100 Hz</span>는 VP·AP를 동시에 놓치지 않기 위한 하한선에 가깝다.</p>
+  <p>본 연구의 AD8232를 이 항목들과 나란히 놓으면 샘플링 주파수(<span class="n">250 Hz</span>)와 입력 임피던스는 요구치를 충족하는 반면 <strong>DC 결합은 구조적으로 불가능하다.</strong> 항목별 대조는 Ⅳ장 6절 표10에 정리했다.</p>
+</section>
+
+<section>
+  <h2><span class="num">Ⅲ.</span>연구 방법 및 내용</h2>
+  <p class="sec-note">※ 설계, 방법, 내용 등 서술</p>
+
+  <h3>1. 측정 시스템 설계</h3>
+  <h4>(1) 하드웨어 구성</h4>
+  <p>측정 시스템은 식물에 부착한 <span class="n">3</span>개 전극에서 시작해 라즈베리파이까지 이어지는 단일 신호 경로로 구성된다. AD8232는 디지털 출력이 없으므로 증폭된 아날로그 전위를 ADS1115로 변환한 뒤 I2C로 전달한다.</p>
+
+  <figure>
+    <div class="plate">{{FIG_HW}}</div>
+    <figcaption><span class="cap">그림1.</span> 측정 시스템 하드웨어 구성
+      <span class="desc">AD8232는 디지털 출력이 없으므로 측정된 전위를 파이가 읽으려면 반드시 ADS1115를 거쳐야 한다. RL 전극은 단순 접지가 아니라 RLD 능동 피드백 회로의 출력단이며(Ⅱ장 2절), 이 전극이 접촉한 대상의 임피던스가 루프 안정성을 좌우한다.</span></figcaption>
+  </figure>
+
+  <p>ADS1115는 라즈베리파이의 <span class="n">3V3</span>·GND·I2C(SCL·SDA)에 연결하고, A0 채널로 AD8232의 OUTPUT을 받는다. 공통 접지가 확보되지 않으면 두 소자의 기준 전위가 어긋나 측정값이 무의미해지므로 <strong>AD8232와 ADS1115의 GND는 반드시 같은 지점에 연결</strong>한다. I2C 주소는 기본 <span class="n">0x48</span>이며 <code>i2cdetect</code>로 인식 여부를 확인한다. 핀 번호 단위의 배선표는 부록의 저장소 README에 있다.</p>
+
+  <h4>(2) 전극 배치와 기준 전위</h4>
+  <p>세 전극의 역할은 서로 다르다. <strong>RA·LA는 측정 전극</strong>으로 줄기 표면의 서로 떨어진 두 지점에 부착해 그 사이의 전위차를 잰다. 반면 <strong>RL은 기준 전극</strong>으로, 단순한 접지가 아니라 RLD 능동 피드백 회로의 출력단이다(Ⅱ장 2절 (2)).</p>
+
+  <div class="note crit">
+    <span class="lbl">기준 전극이 측정 가능 여부를 결정한다</span>
+    <p>RL이 안정적인 기준 전위를 잡지 못하면 <strong>AD8232의 출력이 전원 레일에 붙어 포화된다.</strong> 포화된 구간에서는 입력이 변해도 출력이 움직이지 않으므로, 그 데이터로는 어떤 분석도 성립하지 않는다.</p>
+    <p>따라서 측정을 시작하기 전에 <strong>출력 기준점이 전원 범위의 중간 부근에 있는지부터 확인해야 한다.</strong> 기준점이 상단이나 하단 레일에 붙어 있으면 전극 배치를 먼저 바로잡고, 그 뒤에 데이터를 수집한다. 본 연구에서 이 확인 절차가 왜 필요한지는 Ⅳ장 3절 (3)에서 다룬다.</p>
+  </div>
+
+
+    <div class="photo slim">
+    <p class="tag">■ 직접 촬영 삽입 · 그림2</p>
+    <p>실험 장치 전체 사진 — 화분·브레드보드·라즈베리파이가 한 프레임에</p>
+  </div>
+
+    <div class="photo slim">
+    <p class="tag">■ 직접 촬영 삽입 · 그림3</p>
+    <p>전극 부착 상태 근접 사진 — RA·LA 밀착 정도와 토양 속 RL</p>
+  </div>
+
+  <h4>(3) 신호 획득 설정</h4>
+  <div class="tbl-wrap">
+    <table>
+      <caption><span class="cap">표2.</span> 신호 획득 파라미터</caption>
+      <thead><tr><th>항목</th><th>설정값</th><th>근거</th></tr></thead>
+      <tbody>
+        <tr><td>샘플링 주파수</td><td class="n">250 Hz</td><td>분석 대역 상한 20 Hz의 나이퀴스트 조건 충족</td></tr>
+        <tr><td>ADC 데이터레이트</td><td class="n">860 SPS</td><td>250 Hz 달성에 필요한 최소 설정</td></tr>
+        <tr><td>ADC 변환 모드</td><td>연속변환</td><td>싱글샷은 샘플당 8 ms 이상</td></tr>
+        <tr><td>I2C 클럭</td><td class="n">400 kHz</td><td>기본 100 kHz는 대역폭 부족</td></tr>
+        <tr><td>대역통과 필터</td><td class="n">0.5 – 20 Hz</td><td>하한은 AD8232 아날로그 대역이 정한 값, 상한은 신호가 희박한 <span class="n">20–40 Hz</span> 잡음 배제</td></tr>
+        <tr><td>노치 필터</td><td class="n">60 Hz</td><td>국내 상용전원. 신호에서 <span class="n">50/60 Hz</span>를 재어 자동 판별</td></tr>
+        <tr><td>분석 창 길이</td><td class="n">10 초 (2,500 샘플)</td><td>동일 센서 선행연구의 구간 <span class="n">3–15</span>초<sup>[22][23]</sup> 범위 내</td></tr>
+        <tr><td>창 이동 간격</td><td class="n">2 초</td><td><span class="n">80 %</span> 중첩으로 표본 수 확보</td></tr>
+        <tr><td>STFT 조각 길이</td><td class="n">512 샘플</td><td>주파수 간격 <span class="n">0.49 Hz</span> — 관심 대역 <span class="n">41</span>구간</td></tr>
+        <tr><td>전극 안정화 대기</td><td class="n">20 초</td><td>부착 직후의 접촉 전위·상처 반응 배제</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>2. 신호 처리 및 특징 추출</h3>
+  <p>수집된 원시 전압 시계열은 대역통과·노치 필터를 거쳐 10초 창으로 분할되고, 각 창에서 두 가지 방식으로 특징이 추출된다. 학습 시와 실시간 추론 시에 <strong>완전히 동일한 함수를 공유</strong>하도록 모듈을 분리하여 학습–서빙 간 불일치를 구조적으로 차단했다.</p>
+
+  <figure>
+    <div class="plate">{{FIG_PIPE}}</div>
+    <figcaption><span class="cap">그림4.</span> 신호 처리 및 학습 파이프라인</figcaption>
+  </figure>
+
+  <h3>3. 분류 모델 및 검증 설계</h3>
+  <h4>(1) 학습 알고리즘</h4>
+  <p>SVM(선형·RBF 커널)과 Random Forest를 각각 <code>GridSearchCV</code>로 하이퍼파라미터를 탐색해 학습하고 비교했다<sup>[4]</sup>. 픽셀 방식은 표준화 후 PCA로 차원을 축소했고, 명시적 특징 방식은 표준화만 적용했다.</p>
+
+  <h4>(2) 데이터 누수 차단</h4>
+  <p>10초 창을 2초 간격으로 이동시키므로 인접한 두 창은 <strong>80 %가 물리적으로 동일한 신호</strong>를 공유한다. 무작위 분할을 쓰면 겹치는 창이 학습·평가 양쪽에 들어가 정확도가 부풀려진다. 이를 막기 위해 원본 파일별로 창을 <strong>시간순 정렬 후 앞부분 <span class="n">70 %</span>를 학습, 뒷부분 <span class="n">30 %</span>를 평가</strong>로 나누고, 경계에서 겹치는 창을 폐기했다. 폐기할 개수는 창 길이 <span class="n">W</span>와 이동 간격 <span class="n">S</span>에서 <span class="n">⌈W/S⌉ − 1</span>로 계산한다. 본 연구의 설정(<span class="n">10</span>초 창, <span class="n">2</span>초 이동)에서는 <span class="n">4</span>개다.</p>
+  <p>이 값을 상수로 고정하면 창 설정을 바꿀 때 누수가 되살아난다. 실제로 본 연구는 창을 <span class="n">2</span>초에서 <span class="n">10</span>초로 변경한 뒤에도 폐기 개수를 <span class="n">1</span>로 두고 있었으며, 그 동안 학습 구간의 마지막 창이 평가 구간의 앞쪽 창 <span class="n">4</span>개와 시간적으로 겹친 상태로 평가되었다. 이는 Ⅳ장 2절 (4)에서 다루는 "높은 정확도가 그 자체로는 타당성을 보장하지 않는다"는 문제가 본 연구의 코드 안에서 재현된 사례이며, 분할 파라미터를 데이터 생성 조건에서 유도해야 하는 이유를 보여준다.</p>
+
+  <h3>4. 실험 설계</h3>
+  <div class="tbl-wrap">
+    <table>
+      <caption><span class="cap">표3.</span> 상태별 데이터 수집 조건</caption>
+      <thead><tr><th>상태</th><th>성격</th><th>수집 조건</th><th class="n">측정 길이</th></tr></thead>
+      <tbody>
+        <tr><td><strong>정상</strong></td><td>지속 상태</td><td>충분히 관수한 상태에서 5분간 무접촉 방치</td><td class="n">300 s</td></tr>
+        <tr><td><strong>자극</strong></td><td>순간 이벤트</td><td>5분간 10–20초 간격으로 잎·줄기에 반복 접촉</td><td class="n">300 s</td></tr>
+        <tr><td><strong>수분부족</strong></td><td>지속 상태</td><td>관수 중단 후 3–5일 경과 시점에 측정</td><td class="n">300 s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>분류기가 학습한 것이 식물 반응인지 검증하기 위해 두 가지 대조실험을 함께 설계했다(Ⅳ장 3절). 하나는 <strong>접촉 주체와 접촉 매개</strong>를 바꾸어 <strong>인체 전위 결합</strong> 여부를 가리는 <span class="n">4</span>조건 실험이고, 다른 하나는 <strong>(가)</strong> 배선을 고정한 채 식물체만 접촉하는 조건과 <strong>(나)</strong> 식물은 건드리지 않고 전극 연결부·배선만 흔드는 조건을 비교해 <strong>물리적 흔들림에 의한 잡음</strong>을 가려내는 진동 아티팩트 실험이다.</p>
+
+  <h3>5. 재현성 및 소스코드 공개</h3>
+  <p>본 연구의 수집·전처리·학습·실시간 추론에 사용한 전체 소스코드는 GitHub 저장소<sup>[7]</sup>에 공개되어 있다. 부록 1절의 모듈 구성과 저장소 README의 재현 절차를 따르면 동일한 측정 시스템을 재구성할 수 있다. 학습–추론 간 특징 추출 함수를 공유하도록 설계했으므로(Ⅲ장 2절), 저장소의 코드만으로 학습 시와 동일한 조건의 실시간 분류가 재현된다.</p>
+</section>
+
+<section>
+  <h2><span class="num">Ⅳ.</span>연구 결과</h2>
+  <p class="sec-note">※ 연구 결과 해석 및 논의 서술</p>
+
+  <h3>1. 신호 획득 및 특징 추출 결과</h3>
+  <p>측정 시스템은 구현을 마쳤으나, <strong>보고서에 실을 만한 안정적인 측정 데이터는 아직 확보하지 못했다.</strong> 3절에서 서술하듯 전극 접촉과 배선 진동에서 비롯된 잡음이 신호를 지배하고 있어, 획득한 파형을 식물의 전기신호로 제시할 수 없는 상태다. 파형·스펙트로그램·특징 추출 결과는 아래 조건을 갖춘 재측정 이후에 제시한다.</p>
+
+    <div class="photo slim">
+    <p class="tag">■ 데이터 수집 후 삽입 · 그림5–7</p>
+    <p>상태별 원신호 파형 · 접촉 이벤트 구간 · 10초 창 스펙트로그램</p>
+  </div>
+
+  <h3>2. 측정계 결함의 발견과 제거</h3>
+  <p>학습을 시도하는 과정에서 네 가지 측정계 결함이 발견되었다. 이 중 셋은 <strong>제거하기 전까지 분류기가 식물 신호가 아닌 것을 학습하게 만들었다.</strong> 아래는 각 결함의 내용과 소스코드에 반영한 해결 방법이며, <strong>개선 폭을 보이는 정량 수치는 재측정 후 채운다.</strong></p>
+
+  <h4>(1) 실효 샘플레이트 왜곡</h4>
+  <p>ADS1115의 초기 설정(<span class="n">128 SPS</span> · 싱글샷)에서는 읽을 때마다 변환을 시작하고 끝날 때까지 기다리므로 한 샘플에 <span class="n">8 ms</span> 이상이 소요된다. 목표한 <span class="n">250 Hz</span>에 크게 못 미치는 속도인데, 필터와 스펙트로그램은 여전히 <span class="n">250 Hz</span>를 가정하므로 모든 주파수 성분이 그 비율만큼 밀려서 해석된다.</p>
+  <p><strong>해결.</strong> I2C 클럭 <span class="n">400 kHz</span>, <code>data_rate=860</code>, 연속변환 모드로 변경했다. 아울러 저장 파일에 가정한 격자(<span class="n">i/fs</span>)가 아니라 <strong>실제 경과 시각</strong>을 기록하도록 바꿔, 하드웨어가 목표 속도를 못 따라가더라도 전처리가 CSV의 시각으로부터 샘플레이트를 역산하게 했다.</p>
+
+  <h4>(2) 상용전원 유도잡음의 주파수 판별</h4>
+  <p>초기 코드의 노치 필터는 <span class="n">50 Hz</span>로 고정되어 있었으나 한국의 상용전원은 <span class="n">60 Hz</span>이므로 <strong>이 필터는 실측 데이터에서 아무 일도 하지 않았다.</strong> 전극과 식물이 안테나 역할을 해 전등·콘센트의 교류를 그대로 유입시키는데, 정작 그것을 제거해야 할 필터가 다른 주파수를 겨냥하고 있었던 것이다.</p>
+  <p><strong>해결.</strong> 신호에서 <span class="n">50 Hz</span>와 <span class="n">60 Hz</span>의 파워를 직접 측정해 강한 쪽을 노치하는 자동 판별 로직을 구현하고, 판별한 주파수를 모델 번들에 함께 저장해 추론 시에도 학습과 동일한 필터가 적용되도록 했다.</p>
+
+  <h4>(3) 이벤트 라벨링 오류</h4>
+  <p>자극은 정상·수분부족과 달리 <strong>순간 이벤트</strong>다. 5분을 수집해도 실제 반응이 담긴 구간은 짧고 나머지는 조용한 기저선인데, 파일 하나를 통째로 “자극”으로 라벨링하면 학습 데이터의 대부분이 <strong>“조용한 신호 = 자극”이라는 잘못된 대응</strong>을 가르치게 된다. 실시간에서는 대부분의 입력이 조용하므로 모델이 계속 “자극”을 출력한다.</p>
+  <p><strong>해결.</strong> 자극 클래스에 한해 파일 내 피크투피크 중앙값의 <span class="n">2</span>배를 넘는 창만 학습에 쓰도록 선별 단계를 추가했다. 표준편차가 아니라 피크투피크를 기준으로 삼은 것은, 반응 스파이크가 창 안에서 수십 <span class="n">ms</span>만 튀기 때문에 표준편차로는 조용한 구간에 묻히기 때문이다.</p>
+
+  <h4>(4) 클래스 간 전극 조건 불일치</h4>
+  <p>선별을 적용한 뒤에도 실시간 추론이 개선되지 않아 원본을 재검토한 결과, 두 클래스의 <strong>전압 기준점 자체가 달랐다</strong>는 사실이 드러났다. 한쪽은 기준점이 <span class="n">0 V</span>에 붙어 전극이 사실상 미접촉 상태였던 반면 다른 쪽은 정상 범위에 있었다. 즉 두 클래스가 서로 다른 하드웨어 조건에서 수집된 것이다.</p>
+  <p>이는 <strong>1차 결과의 재해석을 요구한다.</strong> 1차 학습에서 얻은 높은 정확도는 식물의 생리 반응을 구분한 결과가 아니라 <strong>“전극이 제대로 붙어 있었는가”라는 측정 조건의 차이를 학습한 결과</strong>였다. 실시간에서 계속 “자극”이 출력된 것도 이와 일관된다 — 전극이 정상 부착된 상태는 모델 입장에서 학습된 “자극” 조건과 같기 때문이다.</p>
+  <p><strong>해결.</strong> 모든 클래스를 동일한 전극 조건에서 재수집하도록 프로토콜을 고쳤다. 아울러 창 단위로 전원 레일 포화를 검사해 학습에서 제외하는 품질 게이트를 추가했다.</p>
+
+  <h3>3. 검출 신호의 출처 검증</h3>
+  <p>위 결함을 교정한 뒤 실시간 추론에서 접촉 시 “자극” 판정이 나타났다. 그러나 이 판정이 <strong>식물의 반응인지, 접촉 과정에서 함께 유입된 다른 요인인지</strong> 확인할 필요가 있었다. 의심되는 경로는 두 가지이며, <strong>본 보고서 작성 시점에서 어느 쪽도 검증을 마치지 못했다.</strong></p>
+
+  <h4>(1) 배선 진동에 의한 접촉 잡음의 배제</h4>
+  <p>잎을 건드릴 때 리드선도 함께 흔들리면 접촉 저항이 순간적으로 변해 큰 전압 변동이 생긴다. 이 변동은 파형만으로는 식물 반응과 구분되지 않으며, 더 큰 문제는 <strong>2절 (3)의 이벤트 선별이 피크투피크가 큰 창을 자극으로 고르는 방식</strong>이라는 점이다. 배선 진동이 섞이면 걸러지기는커녕 우선적으로 학습 데이터에 선택된다.</p>
+
+  <div class="photo">
+    <p class="tag">■ 실험 수행 후 삽입 · 표4</p>
+    <h6>진동 아티팩트 대조실험 — 설계</h6>
+    <ul>
+      <li><strong>(가)</strong> 배선·커넥터를 고정한 채 리드선이 붙지 않은 잎을 비전도성 도구로 접촉</li>
+      <li><strong>(나)</strong> 식물은 건드리지 않고 리드선·커넥터만 흔들기</li>
+      <li>각 조건 <span class="n">10</span>–<span class="n">20</span>초 측정. 비교 지표는 <strong>증폭기 포화 비율과 유효 구간 내 전압 변동</strong>으로 한다.</li>
+    </ul>
+    <p class="cap-hint">(나)에서만 반응이 나오면 배선 진동이 독립적인 잡음원임이 확인된다. 단, 증폭기가 전원 레일에 포화된 구간에서 잰 값은 잡음 바닥으로 쓸 수 없으므로, 동작점이 정상 범위에 있는 측정으로만 비교해야 한다.</p>
+  </div>
+
+  <h4>(2) 인체 전위 결합의 배제</h4>
+  <p>또 하나의 의심 경로는 <strong>접촉하는 사람의 신체를 통해 유입되는 전위</strong>다. 사람의 피부는 잎보다 임피던스가 수백~수천 배 낮으므로(6절 (3)), 실험자가 맨손으로 식물을 만지면 인체를 경유한 신호 경로가 식물 조직을 경유한 경로보다 전기적으로 우세할 수 있다.</p>
+
+  <div class="photo">
+    <p class="tag">■ 실험 수행 후 삽입 · 표5</p>
+    <h6>접촉 조건에 따른 신호 검출 여부 — 4조건 대조실험 설계</h6>
+    <ul>
+      <li><strong>조건 ①</strong> 회로에 연결된 실험자 A가 맨손으로 잎·줄기 접촉</li>
+      <li><strong>조건 ②</strong> 회로와 무관한 실험자 B가 맨손으로 같은 부위 접촉</li>
+      <li><strong>조건 ③</strong> 실험자 A가 비전도성 도구(나무젓가락 등)로 접촉</li>
+      <li><strong>조건 ④</strong> 실험자 B가 A의 팔을 잡은 채 맨손으로 접촉</li>
+      <li>각 조건마다 CSV와 대시보드 판정 결과를 함께 기록</li>
+    </ul>
+    <p class="cap-hint">조건 ②와 ④의 차이는 <strong>B가 A와 신체 접촉을 했는가</strong> 하나뿐이므로, 두 조건의 결과가 다르면 인체 전위 결합이 실재한다는 직접 증거가 된다. 조건 ③은 반대 방향에서 같은 결론을 준다.</p>
+  </div>
+
+  <h4>(3) 기준전극 조건</h4>
+  <p>위 두 검증에 앞서 <strong>측정계가 정상 동작점에 있는지부터 확보해야 한다.</strong> 예비 측정에서 기준전극(RL)의 위치에 따라 증폭기 출력이 전원 레일에 포화되는 경우가 관찰되었다. 포화된 구간에서는 입력이 변해도 출력이 움직이지 않으므로, 그 데이터로는 어떤 대조실험도 성립하지 않는다. 따라서 <strong>RL 위치별로 출력이 정상 범위에 머무는 비율을 먼저 확인</strong>한 뒤, 그 조건에서 (1)과 (2)를 수행한다.</p>
+
+  <div class="photo">
+    <p class="tag">■ 측정 후 삽입 · 표6</p>
+    <h6>기준전극(RL) 위치별 출력 안정성</h6>
+    <p>RL을 어디에 두었을 때 증폭기가 정상 동작점에 머무는지 비교한다. 조건마다 자극 없이 <span class="n">30</span>초씩 수집한다.</p>
+    <ul>
+      <li>비교할 조건: 줄기 부착 · 토양 삽입 · 회로 접지 직결</li>
+      <li>기록할 값: <strong>상단 레일 포화 비율 · 하단 레일 포화 비율 · 유효 구간 비율 · 유효 구간의 평균 전압</strong></li>
+      <li>같은 조건을 <span class="n">2</span>–<span class="n">3</span>회 반복해 재현되는지 함께 확인</li>
+    </ul>
+    <p class="cap-hint">유효 구간 비율이 가장 높고 평균 전압이 전원 범위 중앙에 가까운 조건을 이후 측정에 사용한다.</p>
+  </div>
+
+  <h4>(4) 음성 대조군 — 식물 없이 같은 신호가 나오는가</h4>
+  <p>위 (1)~(3)이 오염 경로를 하나씩 배제하는 방식이라면, 음성 대조군은 반대 방향에서 같은 질문에 답한다. <strong>식물을 빼고 측정계만 남겼을 때도 같은 분류가 되는지</strong>를 보는 것이다. 이때도 정확도가 유지된다면 그 정확도는 식물이 아니라 측정계 자체에서 나온 것이다.</p>
+  <p>선행연구는 이 목적으로 두 가지 대조를 쓴다<sup>[24]</sup>. <strong>도체 대조(sham)</strong>는 식물 대신 알루미늄 호일에 전극을 동일한 간격·배치로 붙여 같은 절차로 수집·학습하는 것으로, 해당 연구에서 이 조건의 정확도는 우연 수준으로 떨어졌다 — 유의미한 분류에 살아 있는 식물이 필요함을 뜻한다. <strong>사체 대조</strong>는 살아 있는 세포가 남지 않도록 오래 건조시킨 가지를 같은 화분 흙에 꽂고 동일하게 측정하는 것이다.</p>
+
+  <div class="photo">
+    <p class="tag">■ 실험 수행 후 삽입 · 표7</p>
+    <h6>음성 대조군 — 도체 대조와 사체 대조</h6>
+    <p>본 연구의 측정계로 다음 세 조건을 동일한 절차(전극 간격, 안정화 대기, 수집 길이, 전처리, 학습)로 수행하고 분류 정확도를 비교한다.</p>
+    <ul>
+      <li>조건 ㉮ 살아 있는 방울토마토 — 기준 조건</li>
+      <li>조건 ㉯ <strong>알루미늄 호일</strong>에 동일 간격으로 전극 부착 (도체 대조)</li>
+      <li>조건 ㉰ 말린 가지를 같은 흙에 꽂고 전극 부착 (사체 대조)</li>
+    </ul>
+    <p class="cap-hint">㉯·㉰에서도 ㉮와 비슷한 정확도가 나오면, 그 정확도는 식물 반응이 아니라 측정계·환경에서 유래한 것이다. 반대로 우연 수준(3분류에서 <span class="n">33 %</span> 부근)으로 떨어지면 ㉮의 정확도가 식물에서 왔다는 근거가 된다.</p>
+  </div>
+
+  <p><strong>사전 검증 — 분석 절차 자체가 우연 이상을 만들어내지는 않는가.</strong> 음성 대조군이 의미를 가지려면 대조군의 낮은 정확도가 “신호가 없어서”임이 보장되어야 한다. 절차가 입력과 무관하게 높은 정확도를 만들어내는 구조라면 대조 자체가 성립하지 않는다. 이를 확인하기 위해 <strong>세 상태가 통계적으로 완전히 동일한 모의 신호</strong>(동일 분산의 백색잡음 + 동일한 전원 성분)를 생성해 본 연구의 전처리·학습 절차를 그대로 적용한 결과, <strong>SVM <span class="n">31.4 %</span>, Random Forest <span class="n">39.2 %</span></strong>로 3분류 우연 수준(<span class="n">33.3 %</span>) 부근이었다. 따라서 실제 음성 대조군에서 높은 정확도가 관측된다면 그것은 절차의 산물이 아니라 <strong>측정계 또는 환경에서 실제로 유입된 신호</strong>로 해석해야 한다.</p>
+  <p class="cap-hint">이 검증은 모의 신호로 수행한 것이며 측정계를 통과한 실제 신호에 대한 결과가 아니다. 아울러 학습·평가 분할이 Ⅲ장 3절 (2)대로 시간적 겹침을 배제하는지 함께 확인하는 절차이기도 하다 — 경계 창 폐기가 불충분하면 이 조건에서도 정확도가 부풀려진다.</p>
+  <p>이 대조는 추가 장비 없이 수행할 수 있으며, 본 연구가 <strong>확인하지 못한 채 남겨 둔 가장 근본적인 질문</strong>에 직접 답한다는 점에서 후속 측정의 최우선 항목이다.</p>
+
+  <h3>4. 분류 성능</h3>
+  <p>3절의 검증을 통과한 조건에서 수집한 데이터로 학습과 평가를 수행한다. 평가는 Ⅲ장 3절 (2)의 시간순 그룹 분할을 적용해 인접 창의 중첩으로 정확도가 부풀려지지 않도록 한다. <strong>본 보고서 작성 시점에서는 측정계를 안정시키지 못해 실측 데이터로 학습한 결과가 없다.</strong></p>
+
+    <div class="photo slim">
+    <p class="tag">■ 학습 후 삽입 · 표8</p>
+    <p>과제·특징 방식별 분류 성능 (정확도·Precision·Recall, 목표 70 % 대비)</p>
+  </div>
+
+    <div class="photo slim">
+    <p class="tag">■ 학습 후 삽입 · 그림8</p>
+    <p>최적 모델의 혼동행렬</p>
+  </div>
+
+  <h3>5. 연구 목표 대비 달성 현황</h3>
+  <div class="tbl-wrap">
+    <table>
+      <caption><span class="cap">표9.</span> 연구 목표별 달성 여부</caption>
+      <thead><tr><th>세부 목표</th><th>결과</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>250 Hz 안정 획득</td><td class="bad">검증 필요</td><td>설정은 마쳤으나 실측값 미기록</td></tr>
+        <tr><td>브라우저 통합 시스템</td><td class="good">달성</td><td>수집–전처리–학습–추론 전 과정</td></tr>
+        <tr><td>정상 · 자극 2상태 분류</td><td class="bad">보류</td><td>분류는 동작하나 신호 출처 미검증(3절)</td></tr>
+        <tr><td>수분부족 포함 3상태 분류</td><td class="bad">미달성</td><td>현 장비로 해당 대역 측정 불가(6절)</td></tr>
+        <tr><td>정확도 70 % 이상</td><td class="bad">검증 필요</td><td>3상태 실측 학습이 아직 성립하지 않음</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>시스템 구현 목표는 달성했으나 <strong>주 목적인 분류 목표는 아직 검증되지 않았다.</strong> 다음 절에서 그 구조적 원인을 분석한다.</p>
+
+  <h3>6. 측정계의 구조적 한계</h3>
+  <p>위 결과들이 공통으로 가리키는 문제를 문헌 조사와 실측값 대조로 분석한 결과, 원인은 개별 실수가 아니라 <strong>측정 장비의 설계 목적과 측정 대상의 물리적 특성이 어긋난 데</strong> 있었다.</p>
+
+  <h4>(1) 통과대역 불일치</h4>
+  <p>AD8232의 <span class="n">0.5 Hz</span> 고역통과–<span class="n">40 Hz</span> 저역통과 고정 대역은<sup>[8]</sup> 심전도 QRS 복합파(<span class="n">10–25 Hz</span>)에 맞춰진 것이다. 반면 Ⅱ장 4절의 토마토 실측값을 주파수로 환산하면 <strong>활동전위</strong>는 전극 간격 <span class="n">3 cm</span> 기준 통과에 약 32초가 걸려 <span class="n">0.03 Hz</span> 수준<sup>[12]</sup>, <strong>변동전위</strong>는 지속 수십 분이므로 <span class="n">10⁻³ Hz</span> 이하<sup>[13]</sup>, <strong>수분 스트레스</strong>는 수 시간 규모이므로 <span class="n">10⁻⁴ Hz</span> 수준이다. <strong>세 신호 모두 <span class="n">0.5 Hz</span> 고역통과 필터 아래에 있다.</strong> 당초 본 연구는 활동전위가 “초 단위의 빠른 신호”이므로 통과대역에 걸칠 것으로 판단했으나, 전극에서 관측되는 파형의 시간 규모를 결정하는 것은 세포 수준의 탈분극 속도가 아니라 <strong>조직을 따라 전파되는 속도</strong>였다.</p>
+
+  <figure>
+    <div class="plate">{{FIG_BAND}}</div>
+    <figcaption><span class="cap">그림9.</span> 식물 전기신호 대역과 AD8232 통과대역의 불일치
+      <span class="desc">활동전위(0.5–40 Hz)는 통과대역에 겨우 걸치지만, 변동전위와 수분 스트레스가 담기는 10⁻⁴–10⁻² Hz 대역은 고역통과 필터에 의해 완전히 차단된다.</span></figcaption>
+  </figure>
+
+  <p>이 분석은 <strong>수분부족 클래스를 확보하지 못한 이유를 다시 쓰게 한다.</strong> 보고서 초안은 이를 “시간이 부족해 측정하지 못함”으로 기술했으나, 실제로는 <strong>현 장비 구성으로 원리적으로 측정이 불가능했다.</strong> 며칠을 말려 데이터를 모아도 고역통과 필터가 신호를 지우므로 정상 데이터와 구분되지 않았을 것이다.</p>
+
+  <h4>(2) 신호 진폭과 증폭기 입력 범위</h4>
+  <p>진폭이 부족해 검출되지 않았다는 해석은 문헌값과 맞지 않는다. 토마토 활동전위의 보고 진폭은 <span class="n">21.2 mV</span>로<sup>[12]</sup> 생체전위로서 결코 작지 않다. 오히려 <strong>그 신호가 증폭기 입력단까지 도달하는지</strong>가 문제이며, 근거는 (3)에서 다룬다.</p>
+  <p><strong>덧붙여, 신호가 온전히 도달했더라도 이 회로는 그 파형을 담지 못한다.</strong> AD8232의 심전도 구성은 계측증폭기 <span class="n">100</span>배와 저역통과단 <span class="n">11</span>배를 합해 총 이득이 <span class="n">1100</span>배로<sup>[8]</sup>, 심전도 신호가 <span class="n">500 µV–5 mV</span>라는 전제에 맞춘 값이다. <span class="n">3.3 V</span> 단전원에서 허용되는 <strong>전극 간 입력은 약 ±<span class="n">1.2 mV</span></strong>에 그친다. 문헌이 보고하는 식물 전위는 수 <span class="n">mV</span>~수십 <span class="n">mV</span>이므로<sup>[12][13]</sup>, 그런 신호가 감쇠 없이 도달했다면 작게 기록되는 것이 아니라 <strong>레일에서 잘려 포화로 나타났을 것이다.</strong> 즉 임피던스로 신호가 훼손되는 경로와 온전할 경우 포화되는 경로가 동시에 존재하여, 현 구성은 어느 쪽에서도 원 파형을 재현할 수 없다 — <span class="n">1 mV</span> 미만의 작은 과도신호<sup>[9]</sup>만이 잘리지 않고 통과할 범위에 든다.</p>
+  <p class="cap-hint">위 이득·허용 입력 값은 데이터시트의 심전도 구성을 근거로 계산한 것이며, 직접 측정해 확인한 값은 아니다.</p>
+
+    <div class="photo slim">
+    <p class="tag">■ 측정 후 삽입 · 그림10</p>
+    <p>무자극 정지 상태의 잡음 바닥 — 문헌 진폭 21.2 mV와 같은 축에서 비교</p>
+  </div>
+
+  <h4>(3) 전극 임피던스가 만드는 문제</h4>
+  <p>본 보고서 초안은 이 항목을 “입력 임피던스 부정합”으로 기술하고, 전극 임피던스 <span class="n">Z<sub>e</sub></span>와 증폭기 입력 임피던스가 전압 분배기를 이루어 신호가 <span class="n">μV</span> 수준으로 감쇠한다고 설명했다. <strong>데이터시트를 재확인한 결과 이 설명은 성립하지 않는다.</strong> AD8232의 차동 입력 임피던스는 <span class="n">10 GΩ ∥ 7.5 pF</span>로<sup>[1]</sup> 요구 최소치 <span class="n">10 MΩ</span><sup>[10]</sup>을 세 자릿수 넘게 상회하여, <span class="n">Z<sub>e</sub></span>가 <span class="n">1 GΩ</span>이어도 직류 손실은 <span class="n">9 %</span>에 그친다. 그러나 <strong>높은 전극 임피던스가 문제를 일으킨다는 관찰 자체는 유효하며</strong>, 그 기전은 전압 분배가 아니라 다음 넷이다(<span class="n">Z<sub>e</sub> = 1 GΩ</span> 기준).</p>
+  <ul>
+    <li><strong>오프셋 전류가 만드는 직류 오프셋</strong> — 입력 오프셋 전류 <span class="n">25 pA</span>(typ)<sup>[1]</sup>가 <span class="n">Z<sub>e</sub></span>를 지나며 <span class="n">25 mV</span>를 만든다. (2)의 허용 입력 <span class="n">±1.23 mV</span>의 <strong><span class="n">20</span>배</strong>다. <span class="n">0.5 Hz</span> 서보가 정적 성분은 상쇄하지만, 접촉이 조금만 흔들려도 증폭기가 레일에 닿는다.</li>
+    <li><strong>입력 용량과 만드는 저역통과</strong> — 입력 용량 <span class="n">7.5 pF</span>에 리드선 용량(<span class="n">150 pF</span> 가정)이 더해지면 차단 주파수가 <span class="n">1.1 Hz</span>로 내려와 분석 대역(<span class="n">0.5–20 Hz</span>) 한복판에서 신호가 깎인다.</li>
+    <li><strong>임피던스 불균형에 의한 CMRR 저하</strong> — 두 전극의 임피던스가 다르면 공통모드 <span class="n">60 Hz</span>가 차동으로 변환되어 증폭된다(Ⅱ장 2절 (1)). 실측에서 <span class="n">60 Hz</span>와 그 배수가 전체 파워의 대부분을 차지한 것과 일관된다.</li>
+    <li><strong>전극 저항의 열잡음</strong> — <span class="n">√(4kTRB)</span> = <span class="n">17.9 µV</span>(rms, 입력 환산). 문헌의 <span class="n">1 mV</span> 미만 과도신호<sup>[9]</sup>와 견주면 무시할 수 없다.</li>
+  </ul>
+
+  <figure>
+    <div class="plate">{{FIG_OFFSET}}</div>
+    <figcaption><span class="cap">그림11.</span> 전극 임피던스가 만드는 직류 오프셋과 증폭기 허용 입력 범위
+      <span class="desc">전극 임피던스가 <span class="n">100 MΩ</span>을 넘으면 오프셋만으로 허용 입력을 벗어난다.</span></figcaption>
+  </figure>
+
+  <p>첫 항목은 실측에서 관찰한 <strong>주기적 fast-restore 재작동</strong>(약 <span class="n">168 ms</span> 간격의 순간적 출력 강하)을 그대로 설명한다. fast-restore는 증폭기가 레일에 붙었을 때 동작하는 기능이므로<sup>[1]</sup>, 그 반복은 <strong>증폭기가 반복적으로 레일에 닿고 있다는 직접적 증거</strong>다. 이 구분은 개선 방향을 바꾼다 — 전압 분배가 원인이라면 입력 임피던스가 더 높은 증폭기가 답이지만, 실제 원인이 위 넷이라면 <strong>전극 접촉 개선과 리드선 단축이 먼저</strong>다. 또한 사람의 피부는 잎보다 임피던스가 수백~수천 배 낮아 네 기전이 모두 완화되므로, 맨손 접촉 시 <strong>인체를 경유한 경로가 식물 조직을 경유한 경로보다 전기적으로 유리해진다</strong> — 3절 (2)의 대조실험이 필요한 이유다.</p>
+
+  <h4>(4) 장비 사양 종합 비교</h4>
+  <div class="tbl-wrap">
+    <table>
+      <caption><span class="cap">표10.</span> 전문 연구 장비와 본 연구 측정계의 사양 비교</caption>
+      <thead><tr><th>항목</th><th>전문 연구 장비<sup>[17]</sup></th><th>본 연구 (AD8232)</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td>결합 방식</td><td><strong>DC 결합</strong> (필터 없음)</td><td>AC, 0.5 Hz 고역통과</td><td class="bad">치명적 불일치</td></tr>
+        <tr><td>입력 임피던스</td><td class="n">2 × 10¹³ Ω</td><td class="n">10¹⁰ Ω (10 GΩ ∥ 7.5 pF)</td><td class="good">요구치 충족</td></tr>
+        <tr><td>전극</td><td>Ag/AgCl <span style="color:var(--slate)">(토양용 별도)</span></td><td>심전도 젤 패드 + 토양 직접 삽입</td><td class="bad">기준전극 부적합</td></tr>
+        <tr><td>ADC 분해능</td><td class="n">24 비트</td><td class="n">16 비트</td><td>허용 가능</td></tr>
+        <tr><td>샘플링 주파수</td><td class="n">40 – 100 Hz</td><td class="n">250 Hz</td><td class="good">요구 충족(과잉)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>표10은 본 연구의 사양 불일치를 항목별로 요약한 것이다. <strong>본 연구는 샘플링 주파수를 높이는 데 가장 많은 노력을 투입했으나(Ⅳ장 2절 (1)), 정작 그 항목만 요구 사양을 초과 달성했고 결정적인 두 항목은 처음부터 충족할 수 없는 소자를 선택했다.</strong> 측정계 최적화의 방향 자체가 잘못되어 있었던 것이다.</p>
+
+  <h4>(5) 기준전극의 분극과 고역통과 정착 시간</h4>
+  <p>생체전위 측정에는 비분극성 전극이 필요하며 Ag/AgCl이 표준이다. 본 연구가 쓴 심전도 패드는 Ag/AgCl 기반이라 RA·LA에는 적절했으나, 문제는 <strong>토양에 삽입하는 기준전극</strong>이다. 토양은 피부와 전해질 조성이 전혀 달라 식물 전기생리용으로는 <strong>토양 전용 Ag/AgCl 기준전극</strong>이 별도로 상용화되어 있을 만큼 요구 조건이 다르다<sup>[11]</sup>. 일반 패드를 토양에 꽂으면 계면 분극으로 임피던스가 시간에 따라 드리프트하며, 이것이 실험 중 관찰된 <strong>RLD 피드백 루프 불안정</strong>의 물리적 원인이다. 관수를 해도 개선되지 않은 것은 토양 전체의 수분량과 전극 표면의 국소적·안정적 접촉이 별개 문제이기 때문이다.</p>
+  <p>또한 <span class="n">0.5 Hz</span> 고역통과 필터는 DC 오프셋이 변할 때 안정화까지 수 초를 요한다<sup>[8]</sup>. 전극 접촉이 미세하게 변하기만 해도 큰 과도 신호가 생기며, 이는 분류기 입장에서 실제 “자극” 스파이크와 구분되지 않는다.</p>
+
+  <h4>(6) 종합</h4>
+  <div class="tbl-wrap">
+    <table>
+      <caption><span class="cap">표11.</span> 측정계 한계와 개선 방향</caption>
+      <thead><tr><th>원인</th><th>근거</th><th>영향받은 목표</th><th>개선 방향</th></tr></thead>
+      <tbody>
+        <tr><td>통과대역 불일치</td><td>0.5 Hz 고역통과<sup>[8]</sup> vs 수분 스트레스 10⁻⁴ Hz</td><td class="bad">수분부족 분류</td><td>DC 결합 증폭기 또는 고역통과 커패시터 교체</td></tr>
+        <tr><td>전극 임피던스 과다</td><td>오프셋 전류 × Z<sub>e</sub> 가 허용 입력 초과, 입력 용량과 저역통과, CMRR 균형 붕괴</td><td class="bad">전 클래스</td><td>전극 접촉 개선 · 리드선 단축</td></tr>
+        <tr><td>배선 진동 잡음</td><td>3절 (1) — 검증 예정</td><td class="bad">자극 분류</td><td>리드선 고정, 진동 차단</td></tr>
+        <tr><td>기준전극 분극</td><td>토양 전용 Ag/AgCl 필요<sup>[11]</sup></td><td class="bad">측정 안정성</td><td>토양용 기준전극 도입</td></tr>
+        <tr><td>인체 전위 결합</td><td>3절 (2) — 검증 예정</td><td class="bad">자극 분류</td><td>비전도성 도구 자극 프로토콜</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>정리하면, <strong>본 연구가 사용한 AD8232는 심박수 검출용으로 대역과 임피던스가 고정된 소자이며, 식물 전기신호 측정에는 사양이 맞지 않는다.</strong> 소프트웨어를 아무리 개선해도 아날로그 프런트엔드에서 이미 소실된 신호를 복원할 수는 없다. 이것이 본 연구가 분류 목표를 달성하지 못한 근본 원인이다.</p>
+
+    <div class="photo slim">
+    <p class="tag">■ 화면 캡처 삽입 · 그림12</p>
+    <p>실시간 분류 대시보드 — 파형·확신도·표준편차가 보이는 화면</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">Ⅴ.</span>결론 및 제언</h2>
+
+  <h3>1. 결론</h3>
+  <p>본 연구는 식물의 전기신호로 정상·수분부족·자극 세 상태를 실시간 분류하는 시스템 구축을 목적으로 했으며, 실험 대상으로는 방울토마토를 선정했다. <strong>현재까지 이 목적은 완전히 달성되지 않았으며, 그 원인을 측정계 수준에서 규명하는 데 이르렀다.</strong></p>
+  <p>달성한 것은 측정 시스템의 구현이다. ADS1115를 연속변환 모드로 바꿔 샘플레이트 병목을 제거했고, 상용전원 주파수를 신호에서 자동 판별해 노치하도록 했다. 브라우저만으로 수집–전처리–학습–추론이 가능한 통합 시스템도 완성했다.</p>
+  <p>그러나 본 시스템으로 획득한 신호에서는 다음 세 가지 문제가 확인되었다.</p>
+  <ul>
+    <li><strong>초기에 얻은 높은 정확도는 타당한 값이 아니었다.</strong> 클래스 간 전극 부착 조건의 차이를 학습한 결과였으며, 실시간 환경에서 즉시 무너졌다.</li>
+    <li><strong>정상·자극 구분처럼 보였던 반응이 식물의 것인지 확인하지 못했다.</strong> 배선 진동과 인체 전위 결합이라는 두 가지 오염 경로를 배제하는 대조실험을 설계했으나(Ⅳ장 3절), 측정계를 정상 동작점에 안정시키지 못해 아직 수행하지 못했다.</li>
+    <li><strong>수분부족은 현 장비로 측정이 불가능하다.</strong> AD8232의 <span class="n">0.5 Hz</span> 고역통과 필터가 수분 스트레스 대역(<span class="n">10⁻⁴ Hz</span>)을 원리적으로 차단하기 때문이다(그림9).</li>
+  </ul>
+  <p>근본 원인은 <strong>측정 장비의 사양이 측정 대상에 맞지 않았다는 것</strong>이다. 문헌이 보고한 토마토 활동전위의 진폭은 <span class="n">21.2 mV</span>로<sup>[12]</sup> 생체전위로서 작지 않으므로, 실패를 “신호가 너무 작아서”로 돌리기는 어렵다. 사양 불일치는 두 가지로 압축된다(표10). 첫째, 전문 장비가 <strong>DC 결합</strong>으로 직류 성분까지 재는 반면 AD8232는 <span class="n">0.5 Hz</span> 고역통과가 고정되어 있어 느린 식물 신호를 통과시키지 못한다. 둘째, 입력 임피던스 자체는 <span class="n">10 GΩ</span>로 요구치를 충족하지만 — 따라서 흔히 지목되는 <strong>전압 분배에 의한 감쇠는 원인이 아니다</strong> — 큐티클을 통한 <span class="n">MΩ~GΩ</span>의 접촉 임피던스가 <strong>오프셋 전류와 곱해져</strong> 허용 입력 범위(<span class="n">±1.23 mV</span>)를 크게 넘는 직류 오프셋을 만들고, 입력 용량과 저역통과를 이루며, CMRR 균형을 무너뜨린다(Ⅳ장 6절 (3)).</p>
+  <p>본 연구는 이 두 항목이 아니라 <strong>샘플링 주파수를 높이는 데 가장 많은 노력을 투입했다.</strong> 그 결과 샘플링만 문헌 권장치(<span class="n">40–100 Hz</span>)를 두 배 이상 초과 달성했고, 정작 결정적인 두 항목은 소자 선택 시점에 이미 결정되어 있었다. <strong>측정계 최적화의 방향 자체를 다시 잡아야 한다</strong>는 것이 본 연구의 가장 중요한 교훈이다.</p>
+
+  <h3>2. 연구의 의의</h3>
+  <p>분류 목표는 아직 달성하지 못했으나 다음 세 가지는 후속 연구에 실질적으로 기여할 수 있다.</p>
+  <ol>
+    <li><strong>저비용 ECG 소자를 식물 측정에 전용할 때의 한계를 정량적으로 특정했다.</strong> 메이커 커뮤니티에 AD8232를 식물에 연결한 사례는 많으나, 어떤 신호가 왜 측정되지 않는지를 대역·임피던스 수준에서 분석한 기록은 드물다.</li>
+    <li><strong>검출 신호의 출처를 검증하는 대조실험 프로토콜을 설계했다.</strong> 제3자 접촉·비전도성 매개를 포함한 <span class="n">4</span>조건 설계와 배선 진동 대조군은 다른 연구에도 그대로 적용할 수 있다. 이러한 대조군 없이 얻은 “식물 접촉 반응”은 신뢰하기 어렵다.</li>
+    <li><strong>높은 정확도가 그 자체로는 아무것도 증명하지 않는다</strong>는 점을 실제 사례로 확인했다. 오프라인 평가에서 높은 정확도를 낸 모델이 실은 전극 부착 여부를 학습하고 있었고, 이는 오프라인 지표로는 끝까지 드러나지 않았다.</li>
+  </ol>
+
+  <h3>3. 연구의 한계</h3>
+  <ul>
+    <li><strong>음성 대조군 미수행.</strong> 알루미늄 호일을 이용한 도체 대조와 건조 가지를 이용한 사체 대조를 Ⅳ장 3절 (4)에 설계하였으나 수행하지 못하여, 검출 신호에 식물 기여분이 전혀 없을 가능성을 배제하지 못하였다.</li>
+    <li><strong>단일 개체·단일 세션.</strong> 개체 간·일간 변이를 평가할 수 없었다.</li>
+    <li><strong>임피던스 직접 측정 미실시.</strong> 전극–식물 계면 임피던스를 실측하지 못해 Ⅳ장 6절 (3)에서 서술한 네 가지 기전의 실제 기여도를 정량화하지 못했다.</li>
+  </ul>
+
+  <h3>4. 후속 연구 제언</h3>
+  <ol>
+    <li><strong>측정 장비 교체.</strong> 프런트엔드를 <strong>DC 결합·저바이어스 계측 증폭기</strong>로 재구성한다. 선정 기준은 입력 임피던스의 절대값이 아니라 <strong>입력 바이어스·오프셋 전류</strong>여야 한다(6절 (3)). JFET 입력 소자인 <strong>AD8220</strong><sup>[25]</sup>은 입력 바이어스 전류 최댓값이 <span class="n">10 pA</span>로 AD8232(<span class="n">1 nA</span>)의 <span class="n">1/100</span> 수준이며, <span class="n">Z<sub>e</sub> = 1 GΩ</span>에서 오프셋이 <span class="n">25 mV</span>에서 <span class="n">10 mV</span>로 줄어든다. 아울러 <strong>이득을 <span class="n">10~100</span>배로 낮춰</strong> 허용 입력 범위를 넓힌다. AD8232를 유지한다면 고역통과 결정 커패시터를 교체해 차단 주파수를 <span class="n">0.01 Hz</span> 이하로 낮추는 것이 수분부족 측정을 가능하게 하는 유일한 경로다.</li>
+    <li><strong>전극 개선.</strong> 토양 전용 Ag/AgCl 기준전극을 도입하고, 잎 표면 큐티클을 우회할 수 있도록 줄기 삽입형 미세 전극을 검토한다.</li>
+    <li><strong>음성 대조군 도입.</strong> Ⅳ장 3절 (4)에 설계한 도체 대조(알루미늄 호일)와 사체 대조(건조 가지)를 수행한다. 두 조건에서도 유사한 정확도가 나온다면 그 정확도는 식물 반응이 아니다.</li>
+    <li><strong>비전도성 자극 프로토콜.</strong> 모든 자극 데이터를 비전도성 도구로만 수집하여 인체 결합을 원천 차단한다.</li>
+    <li><strong>전극 임피던스 실측.</strong> LCR 미터로 전극–식물 계면 임피던스 <span class="n">Z<sub>e</sub></span>를 측정하여, Ⅳ장 6절 (3)의 네 기전(직류 오프셋·입력 용량 저역통과·CMRR 불균형·열잡음)이 각각 얼마나 기여하는지 정량화한다. 이 값이 있어야 필요한 증폭기의 <strong>바이어스·오프셋 전류 상한</strong>을 역산할 수 있다.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>참고 문헌</h2>
+  <ol class="refs">
+    <li>Analog Devices. <i>AD8232: Single-Lead, Heart Rate Monitor Front End</i> (Data Sheet, Rev. D). Analog Devices, Inc.</li>
+    <li>Texas Instruments. <i>ADS1113/ADS1114/ADS1115: Ultra-Small, Low-Power, 16-Bit Analog-to-Digital Converter with Internal Reference</i> (Data Sheet). Texas Instruments Inc.</li>
+    <li>Fromm, J., &amp; Lautner, S. (2007). Electrical signals and their physiological significance in plants. <i>Plant, Cell &amp; Environment</i>, 30(3), 249–257.</li>
+    <li>Pedregosa, F., Varoquaux, G., Gramfort, A., et al. (2011). Scikit-learn: Machine Learning in Python. <i>Journal of Machine Learning Research</i>, 12, 2825–2830.</li>
+    <li>Virtanen, P., Gommers, R., Oliphant, T. E., et al. (2020). SciPy 1.0: Fundamental algorithms for scientific computing in Python. <i>Nature Methods</i>, 17, 261–272.</li>
+    <li>Raspberry Pi Ltd. <i>Raspberry Pi 5 and RP1 Peripherals Documentation</i>. Raspberry Pi Ltd.</li>
+    <li>Green Mind Lab. <i>[제출용 저장소명]</i></li>
+    <li>Analog Devices. <i>AD8232 Single-Lead ECG Front End Design Guide</i> — 0.5Hz 고역통과·40Hz 저역통과 필터 구성.</li>
+    <li>U.S. Patent 8,893,551 / 8,205,502. <i>Plant biosensor and method</i> — 식물 과도 전기신호 진폭 1mV 미만.</li>
+    <li>ECHEMI. <i>How can we detect electrical signals in plants?</i> — 식물 전위 측정 요구 입력 임피던스 10MΩ 이상.</li>
+    <li>MSE Supplies / Redox.me. <i>Soil Silver/Silver Chloride Reference Electrode (Soil Ag/AgCl)</i> — 토양 삽입형 비분극성 기준전극 사양.</li>
+    <li>Volkov, A. G. et al. (2018). Electrical signal propagation within and between tomato plants. <i>Bioelectrochemistry</i>. — 토마토 활동전위 21.2±2.4mV, 5.6±0.5cm·min⁻¹.</li>
+    <li>Sukhov, V. et al. (2021). Electrical Signaling of Plants under Abiotic Stressors: Transmission of Stimulus-Specific Information. <i>International Journal of Molecular Sciences</i>. — 변동전위 진폭 수십 mV, 지속 수십 분.</li>
+    <li>Time series data modelling for classification of drought in tomato plants (2023). <i>Theoretical and Experimental Plant Physiology</i>. — 토마토 정상·가뭄 분류. BIOPAC MP150.</li>
+    <li>Classification of various nutrient deficiencies in tomato plants through electrophysiological signal decomposition and sample space reduction (2022). <i>Plant Physiology and Biochemistry</i>. <span style="color:var(--slate)">(ScienceDirect S0981942822003333)</span></li>
+    <li>Early Detection of Water Stress by Plant Electrophysiology: Machine Learning for Irrigation Management. <i>arXiv preprint</i>. — PhytoNode 센서로 토마토 16개체 18일 연속 측정.</li>
+    <li>Equipment and protocol for measurement of extracellular electrical signals, gas exchange and turgor pressure in plants (2021). <i>MethodsX</i>. — 전문 측정 프로토콜 사양(DC 결합, 2×10¹³Ω).</li>
+    <li>Burdon-Sanderson, J. (1873). Note on the electrical phenomena which accompany irritation of the leaf of <i>Dionæa muscipula</i>. <i>Proceedings of the Royal Society of London</i>, 21, 495–496. — 식물 전기신호 최초 기록.</li>
+    <li>Bose, J. C. (1902). <i>Response in the Living and Non-Living</i>. Longmans, Green &amp; Co. — 전기 탐침을 이용한 식물 자극 반응 전위 측정.</li>
+    <li>Ríos-Rojas, L., Tapia, F., &amp; Gurovich, L. A. (2014). Electrophysiological assessment of water stress in fruit-bearing woody plants. <i>Journal of Plant Physiology</i>, 171(10), 799–806. — 과수 줄기 전위 기반 실시간 수분 스트레스 센서.</li>
+    <li>Cattani, A., de Riedmatten, L., Roulet, J., et al. (2024). Water status assessment in grapevines using plant electrophysiology. <i>OENO One</i>, 58(4).</li>
+    <li>Gloor, P. A. (2025). <i>Plant Bioelectrical Signals for Environmental and Emotional State Classification</i>. Biosensors, 15(11), 744. — <strong>AD8232</strong> 400Hz, 3초 구간 스펙트로그램+CNN 분류.</li>
+    <li>Classifying plant electrical signals in response to external stimuli using machine learning for enhanced agricultural sustainability (2025). <i>NJAS: Impact in Agricultural and Life Sciences</i>, 97(1). — <strong>AD8232</strong>+아두이노, 15초 구간 분류.</li>
+    <li>Plant Bioelectric Early Warning Systems: A Five-Year Investigation into Human–Plant Electromagnetic Communication (2025). arXiv:2506.04132. — 음성 대조군 설계(호일 도체 대조·건조 가지 사체 대조).</li>
+    <li>Analog Devices. <i>AD8220: JFET Input Instrumentation Amplifier with Rail-to-Rail Output</i> (Data Sheet). — 입력 바이어스 전류 최대 10 pA, CMRR 86 dB(min, DC).</li>
+  </ol>
+  <p style="font-size:12.5px; color:var(--slate); margin-top:18px">※ [12]–[17]은 Ⅳ장 6절의 측정계 한계 분석에서 비교 기준으로 인용한 문헌이다. 논문의 그림·표를 직접 전재하지 않고, 보고된 수치만을 인용하여 본 연구의 측정 조건과 비교하는 그림(그림9, 그림12)을 새로 작성하였다.</p>
+</section>
+
+<section>
+  <h2>부 록</h2>
+
+  <h3>1. 개발 소스코드 구성</h3>
+  <p>전체 소스코드는 GitHub 저장소<sup>[7]</sup>에 공개되어 있다. 주요 모듈은 <code>sensor_control.py</code>(하드웨어 제어·수집·진단), <code>preprocess.py</code>(필터·품질 게이트·스펙트로그램 생성), <code>feature_extraction.py</code>·<code>spectro_render.py</code>(학습·추론이 공유하는 특징 변환), <code>train.py</code>(학습·평가), <code>inference.py</code>(실시간 추론), <code>web_dashboard.py</code>(브라우저 통합 화면)이며, 각 파일의 역할과 함수 단위 설명은 저장소의 README에 정리되어 있다.</p>
+
+  <h3>2. 실험 재현 절차</h3>
+  <ol>
+    <li>라즈베리파이에서 I2C를 활성화하고 그림1의 배선대로 연결한다.</li>
+    <li><code>python3 check_sensors.py</code>로 I2C 장치 인식(주소 <span class="n">0x48</span>)과 전극 기준점을 확인한다. <strong>기준점이 전원 레일에 붙어 있으면 이후 단계를 진행하지 않는다</strong>(Ⅳ장 3절 (3)).</li>
+    <li><code>python3 main.py --web</code>로 대시보드를 실행하고 브라우저로 접속한다.</li>
+    <li>관리자 로그인 후 <strong>수집</strong> 탭에서 상태별로 <span class="n">5</span>분씩 측정한다. 자극 수집 시 반드시 비전도성 도구를 사용한다.</li>
+    <li><strong>변환</strong> 탭에서 상태별 전처리를 수행한다.</li>
+    <li><strong>학습</strong> 탭에서 과제와 특징 방식을 선택해 학습한다.</li>
+    <li>표4·표5·표7의 대조실험을 수행하여 신호 출처를 반드시 검증한다. 특히 표7의 음성 대조군(알루미늄 호일·건조 가지)은 추가 장비 없이 수행할 수 있다.</li>
+  </ol>
+
+  <h3>3. 용어 정리</h3>
+  <div class="tbl-wrap">
+    <table>
+      <caption><span class="cap">부표2.</span> 주요 용어</caption>
+      <thead><tr><th>용어</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td>활동전위 <span style="color:var(--slate)">(AP)</span></td><td>접촉 등 자극에 대해 발생하는 빠른 전-무 방식의 전기신호</td></tr>
+        <tr><td>변동전위 <span style="color:var(--slate)">(VP)</span></td><td>상처·건조에 대해 발생하며 수 분~수십 분 지속되는 느린 전기신호</td></tr>
+        <tr><td>RLD <span style="color:var(--slate)">(Right Leg Drive)</span></td><td>공통모드 잡음을 반전 증폭해 기준 전극으로 되돌려 상쇄시키는 능동 피드백 회로</td></tr>
+        <tr><td>비분극성 전극</td><td>전류가 흘러도 전위가 변하지 않는 전극. Ag/AgCl이 대표적이며 생체전위 측정의 표준</td></tr>
+        <tr><td>레일 포화</td><td>증폭기 출력이 전원 전압 한계에 붙어 신호를 표현하지 못하는 상태</td></tr>
+        <tr><td>데이터 누수</td><td>평가 데이터의 정보가 학습에 섞여 들어가 성능이 부풀려지는 현상</td></tr>
+        <tr><td>train/serve skew</td><td>학습 시 처리 방식과 실제 운영 시 처리 방식이 달라 성능이 저하되는 현상</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
