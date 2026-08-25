@@ -23,6 +23,10 @@ import threading
 import time
 import sys
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # venv 를 안 켜도 알아서 갈아탄다
+
 import numpy as np
 
 # ----------------------------------------------------------------------
@@ -408,33 +412,73 @@ def _report_i2c_users():
         print("    (I2C 를 열고 있는 다른 프로세스는 없습니다 — 다른 원인입니다)")
 
 
-SETTLE_SEC = 20.0  # 전극을 붙인 직후의 안정화 대기(초). 시뮬레이션에서는 건너뛴다.
+# ── 전극 안정화 대기 ────────────────────────────────────────────────
+# 전극을 붙이거나 꽂는 행위 자체가 식물에 상처·자극 반응을 일으킨다. 문헌은 전극을
+# 찔러 넣었을 때 초기 탈분극이 수 분에 걸쳐 진행된다고 보고하며, 젖은/겔 전극은
+# 마르면서 계속 표류한다. 그래서 취득 전에 안정화 시간을 두는 것이 표준 절차다.
+#
+# 다만 "몇 초"라고 못 박으면 조건마다 맞지 않는다. 표면 부착은 금방 가라앉고
+# 삽입형은 훨씬 오래 걸린다. 그래서 시간을 정해 두는 대신 기준점이 실제로
+# 잠잠해졌는지를 재서, 조건이 충족되면 바로 넘어가고 아니면 더 기다린다.
+SETTLE_SEC = 20.0                 # 최소 대기(초)
+SETTLE_MAX_SEC = 180.0            # 최대 대기(초). 여기까지도 안 잡히면 경고하고 진행
+SETTLE_STABLE_MV_PER_MIN = 30.0   # 기준점 기울기가 이 아래면 안정된 것으로 본다
+SETTLE_CHUNK_SEC = 5.0            # 이 간격으로 끊어 재면서 판정한다
 
 
-def _settle(settle_sec, sample_rate_hz):
+def _slope_mv_per_min(times, vals):
+    """(시각, 전압) 목록의 1차 추세 기울기를 mV/분으로 돌려준다."""
+    if len(times) < 2:
+        return 0.0
+    t = np.asarray(times, dtype=float); v = np.asarray(vals, dtype=float)
+    if t[-1] - t[0] <= 0:
+        return 0.0
+    return float(np.polyfit(t, v, 1)[0]) * 60.0 * 1000.0
+
+
+def _settle(settle_sec, sample_rate_hz, max_sec=SETTLE_MAX_SEC):
     """수집 시작 전에 전극이 안정될 때까지 기다린다(하드웨어일 때만).
 
-    전극을 붙이거나 꽂는 행위 자체가 식물에 상처·자극 반응을 일으키고, 접촉 전위도
-    붙인 직후에 가장 크게 흔들린다. 선행연구가 취득 전 안정화 시간을 두는 이유다.
-    이 구간의 값은 저장하지 않고, 기준점이 레일에 붙지 않았는지만 확인해 알려준다."""
+    최소 settle_sec 은 무조건 기다리고, 그 뒤로는 기준점의 기울기가
+    SETTLE_STABLE_MV_PER_MIN 아래로 떨어질 때까지 max_sec 까지 더 기다린다.
+    이 구간의 값은 저장하지 않는다."""
     if not HARDWARE_AVAILABLE or settle_sec <= 0:
         return
-    print(f"[sensor_control] 전극 안정화 대기 {settle_sec:.0f}초 "
-          f"(붙인 직후의 접촉 전위·상처 반응이 가라앉기를 기다립니다)")
-    end = time.time() + settle_sec
-    vals = []
+    print(f"[sensor_control] 전극 안정화 대기 (최소 {settle_sec:.0f}초, 최대 {max_sec:.0f}초)")
+    print("    붙인 직후의 접촉 전위·상처 반응이 가라앉기를 기다립니다.")
     interval = 1.0 / max(1.0, sample_rate_hz)
+    t0 = time.time()
+    times = []; vals = []; head = None
     try:
-        while time.time() < end:
-            vals.append(read_sample_hardware())
-            time.sleep(interval)
+        while True:
+            chunk_end = time.time() + SETTLE_CHUNK_SEC
+            while time.time() < chunk_end:
+                times.append(time.time() - t0)
+                vals.append(read_sample_hardware())
+                time.sleep(interval)
+            if head is None:
+                head = float(np.mean(vals))
+            elapsed = time.time() - t0
+            # 최근 3청크(약 15초)의 기울기로 판정한다
+            n_recent = int(3 * SETTLE_CHUNK_SEC * sample_rate_hz)
+            slope = _slope_mv_per_min(times[-n_recent:], vals[-n_recent:])
+            avg = float(np.mean(vals[-n_recent:]))
+            print(f"    {elapsed:5.0f}초  기준점 {avg:.3f}V  기울기 {slope:+7.1f} mV/분")
+            if elapsed >= settle_sec and abs(slope) < SETTLE_STABLE_MV_PER_MIN:
+                print(f"[sensor_control] 기준점이 안정됐습니다 ({elapsed:.0f}초 소요).")
+                break
+            if elapsed >= max_sec:
+                print(f"[sensor_control] ⚠️  {max_sec:.0f}초를 기다려도 기준점이 계속 움직입니다 "
+                      f"({slope:+.1f} mV/분).")
+                print("    전극이 마르고 있거나 접촉이 불안정합니다. 접촉면을 다시 적시고")
+                print("    마르지 않게 덮은 뒤 다시 시작하는 것이 좋습니다.")
+                break
     except KeyboardInterrupt:
         print("[sensor_control] ⏹ 안정화 대기를 건너뜁니다.")
         return
     if not vals:
         return
-    avg = float(np.mean(vals))
-    head = float(np.mean(vals[:max(1, len(vals) // 5)]))
+    avg = float(np.mean(vals[-int(SETTLE_CHUNK_SEC * sample_rate_hz):]))
     print(f"[sensor_control] 안정화 후 기준점 {avg:.3f}V "
           f"(대기 시작 무렵 {head:.3f}V -> {avg - head:+.3f}V 이동)")
     if avg > RAIL_HIGH_V or avg < RAIL_LOW_V:
@@ -443,7 +487,7 @@ def _settle(settle_sec, sample_rate_hz):
 
 
 def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
-            settle_sec=SETTLE_SEC):
+            settle_sec=SETTLE_SEC, settle_max_sec=SETTLE_MAX_SEC):
     """
     지정한 상태(state)에 대해 duration_sec 동안 sample_rate_hz로 샘플링하여
     out_dir/<상태>.csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
@@ -469,7 +513,7 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
     print(f"[sensor_control] 모드: {mode_str}")
     print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={length_str} -> {out_path}")
 
-    _settle(settle_sec, sample_rate_hz)
+    _settle(settle_sec, sample_rate_hz, max_sec=settle_max_sec)
 
     rows = []
     stopped = False
@@ -572,11 +616,15 @@ def main():
     parser.add_argument("--rate", type=float, default=250.0, help="샘플링 주기(Hz), 100~1000 권장")
     parser.add_argument("--out", default="../data/raw", help="저장 폴더")
     parser.add_argument("--settle", type=float, default=SETTLE_SEC,
-                        help=f"수집 전 전극 안정화 대기(초), 기본 {SETTLE_SEC:.0f}초. 0이면 대기 없음")
+                        help=f"수집 전 전극 안정화 최소 대기(초), 기본 {SETTLE_SEC:.0f}초. 0이면 대기 없음")
+    parser.add_argument("--settle-max", type=float, default=SETTLE_MAX_SEC,
+                        help=f"안정화 최대 대기(초), 기본 {SETTLE_MAX_SEC:.0f}초. "
+                             "기준점이 잠잠해지면 이보다 일찍 넘어간다")
     args = parser.parse_args()
 
     _install_stop_handler()
-    collect(args.state, args.duration, args.rate, args.out, settle_sec=args.settle)
+    collect(args.state, args.duration, args.rate, args.out,
+            settle_sec=args.settle, settle_max_sec=args.settle_max)
 
 
 if __name__ == "__main__":

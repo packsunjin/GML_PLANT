@@ -27,6 +27,7 @@ SAMPLE_RATE_HZ = 250.0
 WINDOW_SEC = 10.0
 IMG_SIZE = 224
 PREDICT_HZ = 5.0  # 실시간 루프에서 무거운 특징추출+추론을 반복할 최대 빈도
+SMOOTH_SEC = 1.0  # 예측 스무딩 구간(초). 개수가 아니라 시간으로 지정한다(아래 설명)
 
 # 상태 이모지 매핑 (정상/수분부족/자극 + 구버전 스트레스)
 STATE_EMOJI = {"정상": "🌱", "수분부족": "💧", "자극": "⚡", "스트레스": "😵"}
@@ -41,7 +42,7 @@ def _design_bandpass(fs, low, high, order):
 
 @lru_cache(maxsize=8)
 def _design_notch(fs, notch_freq, notch_q):
-    """50Hz 노치필터 계수도 고정 파라미터에 대해 캐시하여 재사용한다."""
+    """노치필터 계수도 고정 파라미터에 대해 캐시하여 재사용한다."""
     return iirnotch(notch_freq, notch_q, fs)
 
 
@@ -159,7 +160,7 @@ class RealtimeClassifier:
     def __init__(self, model_path="../models/best_model.joblib",
                  sample_rate=SAMPLE_RATE_HZ, window_sec=None,
                  sim_source_csv=None, predict_hz=PREDICT_HZ,
-                 sim_state="정상", smooth_window=5):
+                 sim_state="정상", smooth_sec=SMOOTH_SEC, smooth_window=None):
         self.model_path = model_path
         # window_sec=None이면 모델이 학습 때 쓴 창 길이를 그대로 따른다(권장).
         # 값을 직접 주면 그 값이 우선한다(창 길이를 실험할 때만 쓸 것).
@@ -180,9 +181,21 @@ class RealtimeClassifier:
         # (예전에는 항상 "정상"만 생성해 하드웨어/CSV 없이는 스트레스 시연이 불가능했다.)
         self.sim_state = sim_state
 
-        # 예측 스무딩: 인접 예측이 크게 겹치므로 최근 smooth_window개 예측을 평균/다수결로
-        # 합쳐 순간적인 오검출 깜빡임을 줄인다. 1이면 스무딩 없음(원래 동작).
+        # 예측 스무딩: 인접 예측이 크게 겹치므로 최근 몇 개를 평균/다수결로 합쳐
+        # 순간적인 오검출 깜빡임을 줄인다.
+        #
+        # 개수가 아니라 '몇 초를 평균할지'로 지정한다. 개수로 고정해 두면 predict_hz 를
+        # 바꿨을 때 실제 평균 구간이 조용히 달라진다. 예전에는 5개로 고정돼 있었는데,
+        # 5Hz 기준으로 1초에 해당한다.
+        #
+        # 주의: 창이 10초인데 1초를 평균하면, 그 예측들은 창의 90% 이상을 공유하므로
+        # 사실상 거의 같은 입력을 평균하는 셈이라 잡음 억제 효과가 크지 않다. 실측
+        # 데이터를 확보한 뒤 이 값을 창 길이의 1/4~1/2 수준으로 올려 보며 조정할 것.
+        # 반대로 너무 키우면 순간 이벤트인 '자극' 반응이 뭉개질 수 있다.
+        if smooth_window is None:
+            smooth_window = round(float(smooth_sec) * (predict_hz or 1.0))
         self.smooth_window = max(1, int(smooth_window))
+        self.smooth_sec = self.smooth_window / (predict_hz or 1.0)
         self._proba_history = deque(maxlen=self.smooth_window)
         self._pred_history = deque(maxlen=self.smooth_window)
 

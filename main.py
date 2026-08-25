@@ -20,6 +20,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
+import venv_boot; venv_boot.ensure()   # venv 를 안 켜도 알아서 갈아탄다
+
 from gui import run_gui, run_headless  # noqa: E402
 
 

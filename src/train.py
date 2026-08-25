@@ -30,7 +30,12 @@ import glob
 import json
 import os
 import sys
+import math
 import time
+
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # venv 를 안 켜도 알아서 갈아탄다
 
 import numpy as np
 import pandas as pd
@@ -210,10 +215,17 @@ def load_feature_dataset(features_csv_path, classes):
 def chronological_group_split(X, y, groups, order, test_size=0.3, guard=1):
     """원본 상태(그룹)별로 윈도우를 시간순 정렬한 뒤, 앞부분을 train, 뒷부분을 test로 나눈다.
 
-    preprocess.py가 2초 윈도우 / 1초 스텝으로 슬라이딩하므로 인접 윈도우는 50%가 겹친다.
+    preprocess.py가 창을 겹쳐 가며 슬라이딩하므로 인접 윈도우는 서로 겹친다.
     무작위 분할을 쓰면 겹치는 윈도우가 train과 test에 동시에 들어가 데이터 누수가 생겨
     정확도가 부풀려진다. 여기서는 그룹별로 시간축을 따라 나누고, train의 마지막 guard개
     윈도우를 버려 train/test 경계 윈도우가 시간적으로 겹치지 않게 한다.
+
+    guard 는 반드시 창 길이와 스텝에서 계산해야 한다. 창 W초를 S초씩 밀면 거리가
+    W/S 미만인 윈도우끼리 겹치므로, 버려야 할 개수는 ceil(W/S) - 1 이다.
+      2초 창 / 1초 스텝 -> 1개    (예전 설정)
+      10초 창 / 2초 스텝 -> 4개   (현재 설정)
+    이 값을 1로 고정해 두면 창을 늘렸을 때 경계에서 겹침이 그대로 남아 누수가 생긴다.
+    실제로 창을 2초에서 10초로 바꾸면서 한동안 그 상태였다.
 
     각 상태(소스)는 단일 클래스라, 상태마다 앞/뒤로 나누면 모든 클래스가 train과 test에
     비례적으로 포함된다(stratify 없이도 클래스 균형 유지)."""
@@ -230,6 +242,15 @@ def chronological_group_split(X, y, groups, order, test_size=0.3, guard=1):
     train_idx = np.array(train_idx)
     test_idx = np.array(test_idx)
     return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
+
+
+def overlap_guard(window_sec=None, step_sec=None):
+    """train/test 경계에서 버려야 할 윈도우 수. 창 W초를 S초씩 밀면 거리 ceil(W/S)-1 까지 겹친다."""
+    w = float(window_sec if window_sec is not None else WINDOW_META["window_sec"])
+    st = float(step_sec if step_sec is not None else WINDOW_META["step_sec"])
+    if st <= 0:
+        return 1
+    return max(1, int(math.ceil(w / st)) - 1)
 
 
 def validate_classes(y, classes, context="전체"):
@@ -373,8 +394,11 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     validate_classes(y, classes)
 
     # 무작위 분할 대신 상태별 시간순 분할로 윈도우 겹침에 의한 데이터 누수를 차단한다.
-    X_train, X_test, y_train, y_test = chronological_group_split(X, y, groups, order, test_size=0.3)
-    print(f"[train] ({tag_prefix}) Train={len(y_train)}, Test={len(y_test)} (시간순 그룹 분할, 겹침 제거)")
+    guard = overlap_guard()
+    X_train, X_test, y_train, y_test = chronological_group_split(X, y, groups, order,
+                                                                 test_size=0.3, guard=guard)
+    print(f"[train] ({tag_prefix}) Train={len(y_train)}, Test={len(y_test)} "
+          f"(시간순 그룹 분할, 경계에서 겹치는 {guard}창 제거)")
 
     cv_folds = cv_folds_for(y_train, classes)
     results, file_suffix, tag = train_and_eval(X_train, X_test, y_train, y_test, models_dir,

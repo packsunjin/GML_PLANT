@@ -657,6 +657,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                 "files": files, "total": total}
 
     @app.route("/api/files")
+    @require_admin
     def api_files():
         return jsonify({"current_model": os.path.relpath(os.path.realpath(clf.model_path),
                                                          root_dir).replace(os.sep, "/"),
@@ -673,6 +674,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         ]})
 
     @app.route("/api/files/download")
+    @require_admin
     def api_files_download():
         full = _safe_path(request.args.get("path", ""))
         if not full or not os.path.isfile(full):
@@ -682,6 +684,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                                    as_attachment=as_attachment)
 
     @app.route("/api/files/preview")
+    @require_admin
     def api_files_preview():
         """CSV는 그림이 없으니 파형을 그릴 수 있게 값만 추려서 보낸다.
         (어떤 파일인지 눈으로 보고 지울 수 있어야 하므로)"""
@@ -714,6 +717,11 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                         "signal": [round(float(x), 5) for x in sig]})
 
     # ---- 휴지통 -----------------------------------------------------------
+    # 자료(파일) 관련 엔드포인트는 읽기도 관리자만 쓸 수 있게 한다.
+    # 화면에서는 자료 탭이 관리자 패널 안에 있어 로그인 없이는 보이지 않는데,
+    # API 는 열려 있어서 주소만 알면 원시 CSV·학습된 모델을 그대로 받아갈 수 있었다.
+    # (경로 자체는 _safe_path 가 ALLOWED_ROOTS 밖으로 못 나가게 막고 있다.)
+
     # 삭제는 바로 지우지 않고 .trash/ 로 옮긴다. 잘못 지워도 되돌릴 수 있어야 하기 때문.
     # 원래 경로는 manifest.json에 적어 두고, 복원할 때 그 자리로 돌려놓는다.
     trash_dir = os.path.join(root_dir, ".trash")
@@ -791,6 +799,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
                         "purged": purge, "trash": len(_trash_entries())})
 
     @app.route("/api/trash")
+    @require_admin
     def api_trash():
         return jsonify({"items": _trash_entries()})
 
