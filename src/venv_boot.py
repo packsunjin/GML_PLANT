@@ -62,24 +62,60 @@ def ensure():
     py = venv_python()
     if not py:
         return
-    try:
-        if os.path.samefile(py, sys.executable):
-            return               # 이미 그 파이썬으로 돌고 있다
-    except OSError:
-        pass
+    # ⚠️ 여기서 os.path.samefile(py, sys.executable) 로 비교하면 안 된다.
+    # samefile 은 심볼릭 링크를 따라가는데, venv 의 python3 는 원본 인터프리터를
+    # 가리키는 심볼릭 링크다. 그래서 항상 '같은 파일'로 나와 늘 여기서 되돌아갔고,
+    # 결과적으로 한 번도 갈아타지 않았다.
+    # '이미 그 venv 안인가'는 sys.prefix 로 판단해야 한다.
+    venv_root = os.path.dirname(os.path.dirname(py))
+    if os.path.normcase(os.path.abspath(sys.prefix)) == \
+       os.path.normcase(os.path.abspath(venv_root)):
+        return                   # 이미 그 venv 안이다
     script = os.path.abspath(sys.argv[0])
     if not os.path.isfile(script):
         return                       # -c, -m, 대화형 등은 건드리지 않는다
     os.environ[_GUARD] = "1"
     try:
         os.execv(py, [py, script] + sys.argv[1:])
-    except OSError as e:
+    except Exception as e:
+        # execv 는 성공하면 돌아오지 않는다. 여기까지 왔다는 건 실패했다는 뜻이다.
         # 조용히 넘어가면 곧바로 ModuleNotFoundError 가 뜨는데, 그것만 보고는
-        # venv 전환이 실패했다는 걸 알 수 없다. 실패했다는 사실을 남긴다.
-        print(f"[venv_boot] ⚠️  venv 파이썬으로 전환하지 못했습니다: {e}", file=sys.stderr)
-        print(f"[venv_boot]     {py}", file=sys.stderr)
-        print(f"[venv_boot]     시스템 파이썬으로 계속합니다 — 라이브러리가 없으면 "
-              f"'source venv/bin/activate' 후 실행하세요.", file=sys.stderr)
+        # venv 전환이 실패했다는 걸 알 수 없다.
+        print(f"[venv_boot] execv 실패({e}) — 대신 venv 의 라이브러리 경로를 붙입니다.",
+              file=sys.stderr)
+    # 프로세스를 갈아타지 못했더라도, venv 의 site-packages 를 import 경로에
+    # 붙이면 대부분 그대로 돌아간다. execv 가 막힌 환경(권한·컨테이너 등)을 위한 대비다.
+    add_venv_site_packages()
+
+
+def venv_site_packages(root=None):
+    """venv 안 site-packages 경로들. 없으면 빈 목록."""
+    import glob
+    root = root or _repo_root()
+    if not root:
+        return []
+    pats = [os.path.join(root, "venv", "lib", "python*", "site-packages"),
+            os.path.join(root, "venv", "Lib", "site-packages")]
+    out = []
+    for pat in pats:
+        out.extend(sorted(p for p in glob.glob(pat) if os.path.isdir(p)))
+    return out
+
+
+def add_venv_site_packages():
+    """venv 의 라이브러리를 import 경로에 붙인다(프로세스는 그대로).
+
+    os.execv 로 갈아타는 것이 정석이지만, 그게 막히는 환경이 있다. 그럴 때
+    최소한 라이브러리는 찾을 수 있게 한다. 파이썬 버전이 다르면 C 확장이
+    안 맞을 수 있어 정석보다 약하지만, 아무것도 안 하는 것보다는 낫다."""
+    # 뒤에 붙이면(append) 시스템 쪽 경로가 먼저 잡혀 venv 것이 무시된다.
+    # sys.path[0] 은 실행한 스크립트의 폴더라 건드리지 않고, 그 바로 뒤에 넣는다.
+    added = []
+    for sp in reversed(venv_site_packages()):
+        if sp not in sys.path:
+            sys.path.insert(1, sp)
+            added.append(sp)
+    return added
 
 
 def report():
