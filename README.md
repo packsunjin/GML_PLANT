@@ -162,7 +162,7 @@ python3 main.py --no-gui --sim_state 순환             # 정상→수분부족�
 ### 1. 저장소 받기 (처음 한 번, clone)
 
 ```bash
-git clone https://github.com/P-SUNJiN/GML_SOURCECODE2.git project
+git clone https://github.com/packsunjin/GML_PLANT.git project
 cd project
 ```
 > `project`는 받을 폴더 이름입니다(원하는 이름으로 바꿔도 됨). 이렇게 받아야 이후 `git pull`로 업데이트할 수 있습니다.

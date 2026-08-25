@@ -10,3 +10,6 @@ data/app/
 data/moisture_calibration.json
 data/admin.json
 models/train_history.json
+
+# 보고서 빌드 중간 산출물 (tpl.html 에서 매번 생성된다)
+report/blocks.json
