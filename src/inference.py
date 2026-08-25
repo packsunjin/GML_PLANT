@@ -42,7 +42,7 @@ def _design_bandpass(fs, low, high, order):
 
 @lru_cache(maxsize=8)
 def _design_notch(fs, notch_freq, notch_q):
-    """50Hz 노치필터 계수도 고정 파라미터에 대해 캐시하여 재사용한다."""
+    """노치필터 계수도 고정 파라미터에 대해 캐시하여 재사용한다."""
     return iirnotch(notch_freq, notch_q, fs)
 
 
