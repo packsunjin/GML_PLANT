@@ -23,10 +23,26 @@ FEATURE_NAMES = [
     "spectral_centroid", "spectral_bandwidth", "peak_frequency",
 ]
 
-# 대역통과필터 통과 대역(0.5~45Hz) 내에서 나눈 저/중/고 주파수 구간
-BAND_LOW = (0.5, 5.0)
-BAND_MID = (5.0, 20.0)
-BAND_HIGH = (20.0, 45.0)
+# 저/중/고 대역은 실제 분석 대역 안에서 나눠야 한다.
+# 예전에는 (0.5~5, 5~20, 20~45)로 고정해 두었는데, 분석 대역 상한을 45Hz에서 20Hz로
+# 낮추자 20~45Hz 구간에 아무것도 남지 않아 band_power_high 가 항상 0이 되었다.
+# 특징 14개 중 하나가 상수가 되면 그만큼 정보가 줄어든다.
+# -> 고정하지 않고 스펙트로그램의 주파수축에서 직접 만든다. 대역을 또 바꿔도 따라온다.
+#
+# 3등분은 로그 축으로 한다. 식물 신호의 에너지는 낮은 쪽에 몰려 있어서, 선형으로
+# 나누면 저역 한 칸에 대부분이 들어가고 나머지 두 칸이 거의 비기 때문이다.
+BAND_LOW_HZ = 0.5   # 분석 대역 하한(AD8232의 고역통과와 같다)
+
+
+def frequency_bands(f, low=BAND_LOW_HZ):
+    """주파수축 f 에서 저/중/고 대역 경계를 만든다. (저, 중, 고) 각각 (lo, hi) 튜플."""
+    hi = float(np.max(f))
+    if hi <= low:
+        return (low, low), (low, low), (low, low)
+    r = hi / low
+    a = low * r ** (1.0 / 3.0)
+    b = low * r ** (2.0 / 3.0)
+    return (low, a), (a, b), (b, hi + 1e-9)
 
 
 def extract_features(signal, Sxx_db, f, t, fs=None):
@@ -67,9 +83,10 @@ def extract_features(signal, Sxx_db, f, t, fs=None):
         return float(power_per_freq[mask].sum()) if np.any(mask) else 0.0
 
     total_energy = total_power
-    band_power_low = band_power(*BAND_LOW)
-    band_power_mid = band_power(*BAND_MID)
-    band_power_high = band_power(*BAND_HIGH)
+    b_low, b_mid, b_high = frequency_bands(f)
+    band_power_low = band_power(*b_low)
+    band_power_mid = band_power(*b_mid)
+    band_power_high = band_power(*b_high)
 
     if total_power > 1e-12:
         spectral_centroid = float(np.sum(f * power_per_freq) / total_power)
