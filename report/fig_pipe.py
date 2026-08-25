@@ -2,63 +2,44 @@
 """그림4 — 신호 처리 및 학습 파이프라인."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from figlib import C, txt, rect, line, svg
+from figlib import P, paper_svg, pbox, parrow, esc
 
-W, H = 900, 300
+W, H = 900, 250
+MID = 104
 b = []
 
-
-def stage(x, y, w, h, title, lines, accent=None, strong=False):
-    acc = accent or C["line"]
-    o = [rect(x, y, w, h, "#fff", rx=7),
-         rect(x, y, w, h, "none", rx=7, stroke=acc, sw=1.8 if strong else 1.2),
-         txt(x + w / 2, y + 26, title, 13.5, C["ink"], "middle", 700)]
-    for i, s in enumerate(lines):
-        o.append(txt(x + w / 2, y + 46 + i * 16, s, 11, C["muted"], "middle"))
-    return "".join(o)
-
-
-def arrow(x0, y, x1, col=None):
-    c = col or C["line"]
-    return (line(x0, y, x1 - 8, y, c, 2) +
-            f'<path d="M{x1-9},{y-4.5} L{x1},{y} L{x1-9},{y+4.5} Z" fill="{c}"/>')
-
-
-MID = 128
-b.append(stage(20, MID - 38, 116, 76, "원시 CSV", ["250 Hz", "전압 시계열"]))
-b.append(arrow(136, MID, 168))
-b.append(stage(168, MID - 38, 130, 76, "대역통과 + 노치",
-               ["0.5 – 20 Hz", "50/60 Hz 자동판별"], C["pass"]))
-b.append(arrow(298, MID, 330))
-b.append(stage(330, MID - 38, 124, 76, "품질 게이트",
-               ["레일 포화 제거", "이벤트 창 선별"], C["warn"]))
+b.append(pbox(26, MID - 32, 106, 64, "원시 CSV", ["250 Hz", "전압 시계열"]))
+b.append(parrow(132, MID, 168))
+b.append(pbox(168, MID - 32, 122, 64, "대역통과 + 노치",
+              ["0.5 – 20 Hz", "50/60 Hz 자동판별"]))
+b.append(parrow(290, MID, 326))
+b.append(pbox(326, MID - 32, 112, 64, "품질 게이트",
+              ["레일 포화 제거", "이벤트 창 선별"]))
 
 # 두 갈래
-b.append(line(454, MID, 476, MID, C["line"], 2))
-b.append(line(476, 60, 476, 196, C["line"], 2))
-for yy in (60, 196):
-    b.append(arrow(476, yy, 506))
-b.append(stage(506, 24, 152, 72, "스펙트로그램",
-               ["224 × 224 px", "→ 50,176 차원"]))
-b.append(stage(506, 160, 152, 72, "명시적 특징",
-               ["통계 7 + 주파수 7", "→ 14 차원"]))
+b.append(f'<line x1="438" y1="{MID}" x2="456" y2="{MID}" stroke="{P["ink"]}" stroke-width="0.9"/>')
+b.append(f'<line x1="456" y1="48" x2="456" y2="160" stroke="{P["ink"]}" stroke-width="0.9"/>')
+for yy in (48, 160):
+    b.append(parrow(456, yy, 486))
+b.append(pbox(486, 20, 138, 56, "스펙트로그램", ["224 × 224 px → 50,176 차원"]))
+b.append(pbox(486, 132, 138, 56, "명시적 특징", ["통계 7 + 주파수 7 → 14 차원"]))
 
 # 합류
-b.append(line(658, 60, 686, 60, C["line"], 2))
-b.append(line(658, 196, 686, 196, C["line"], 2))
-b.append(line(686, 60, 686, 196, C["line"], 2))
-b.append(arrow(686, MID, 716))
-b.append(stage(716, MID - 38, 164, 76, "SVM · RandomForest",
-               ["GridSearchCV", "세션 단위 분할"], C["pass"], strong=True))
+b.append(f'<line x1="624" y1="48" x2="646" y2="48" stroke="{P["ink"]}" stroke-width="0.9"/>')
+b.append(f'<line x1="624" y1="160" x2="646" y2="160" stroke="{P["ink"]}" stroke-width="0.9"/>')
+b.append(f'<line x1="646" y1="48" x2="646" y2="160" stroke="{P["ink"]}" stroke-width="0.9"/>')
+b.append(parrow(646, MID, 682))
+b.append(pbox(682, MID - 32, 150, 64, "SVM · RandomForest",
+              ["GridSearchCV", "세션 단위 분할"], accent=P["accent2"], sw=1.4))
 
-# 창 설정은 두 갈래가 갈리기 전에 정해진다 — 그 자리에만 한 번 적는다
-b.append(txt(392, 248, "10초 창 · 2초 이동 (80 % 중첩)", 11.5, C["muted"], "middle"))
-b.append(line(20, 268, 880, 268, C["line"], 1))
-b.append(txt(20, 288,
-             "학습과 실시간 추론이 같은 변환 함수를 공유한다 — 학습할 때와 서빙할 때 "
-             "처리가 달라지는 문제가 구조적으로 생기지 않는다.",
-             11.5, C["muted"]))
+b.append(f'<text x="382" y="212" font-size="9" fill="{P["gray"]}" text-anchor="middle">'
+         f'10초 창 · 2초 이동 (80 % 중첩)</text>')
+b.append(f'<line x1="26" y1="222" x2="874" y2="222" stroke="{P["light"]}" stroke-width="0.7"/>')
+b.append(f'<text x="26" y="240" font-size="9" fill="{P["gray"]}">'
+         f'학습과 실시간 추론이 같은 변환 함수를 공유하므로, 학습할 때와 서빙할 때 '
+         f'처리가 달라지는 문제가 구조적으로 생기지 않는다.</text>')
 
-open("FIG_PIPE.svg", "w", encoding="utf-8").write(
-    svg(W, H, "".join(b), "신호 처리 및 학습 파이프라인"))
+open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "FIG_PIPE.svg"),
+     "w", encoding="utf-8").write(
+    paper_svg(W, H, "".join(b), "신호 처리 및 학습 파이프라인"))
 print("FIG_PIPE.svg")

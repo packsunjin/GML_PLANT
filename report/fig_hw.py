@@ -6,72 +6,45 @@
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from figlib import C, txt, rect, line, svg
+from figlib import P, paper_svg, pbox, parrow, esc
 
-W, H = 900, 300
+W, H = 900, 250
+MID = 108
 b = []
 
-
-def box(x, y, w, h, title, lines, accent, fill):
-    o = [rect(x, y, w, h, fill, rx=7),
-         rect(x, y, w, h, "none", rx=7, stroke=accent, sw=1.6),
-         rect(x, y, w, 4, accent, rx=2),
-         txt(x + w / 2, y + 30, title, 15, C["ink"], "middle", 700)]
-    for i, s in enumerate(lines):
-        o.append(txt(x + w / 2, y + 52 + i * 18, s, 11.5, C["muted"], "middle"))
-    return "".join(o)
-
-
-def arrow(x0, y, x1, label=None, color=None):
-    col = color or C["muted"]
-    o = [line(x0, y, x1 - 9, y, col, 2),
-         f'<path d="M{x1-10},{y-5} L{x1},{y} L{x1-10},{y+5} Z" fill="{col}"/>']
-    if label:
-        o.append(txt((x0 + x1) / 2, y - 10, label, 11, col, "middle", 700))
-    return "".join(o)
-
-
 # 전극 3개
-EL = [("RA", "줄기 상부", C["pass"]),
-      ("LA", "줄기 하부", C["pass"]),
-      ("RL", "흙 (기준)", C["warn"])]
-for i, (n, sub, col) in enumerate(EL):
-    y = 60 + i * 62
-    b.append(rect(24, y, 132, 46, C["slab"], rx=7))
-    b.append(rect(24, y, 4, 46, col, rx=2))
-    b.append(txt(40, y + 22, n, 14, C["ink"], "start", 700))
-    b.append(txt(40, y + 38, sub, 11, C["muted"]))
-    b.append(arrow(156, y + 23, 214))
+EL = [("RA", "줄기 상부"), ("LA", "줄기 하부"), ("RL", "흙 · 기준")]
+for i, (n, sub) in enumerate(EL):
+    y = 44 + i * 46
+    b.append(f'<rect x="26" y="{y}" width="104" height="34" fill="none" '
+             f'stroke="{P["gray"]}" stroke-width="0.9"/>')
+    b.append(f'<text x="38" y="{y+15}" font-size="10.5" font-weight="700">{n}</text>')
+    b.append(f'<text x="38" y="{y+27}" font-size="8.8" fill="{P["gray"]}">{esc(sub)}</text>')
+    b.append(parrow(130, y + 17, 176))
 
-b.append(box(214, 60, 196, 170, "AD8232",
-             ["생체전위 증폭기",
-              "이득 1100배",
-              "= 계측증폭기 100 × 필터단 11",
-              "아날로그 대역 0.5 – 40 Hz",
-              "RLD 능동 피드백 내장"],
-             C["block"], "#fff"))
+b.append(pbox(176, 44, 168, 138, "AD8232",
+              ["생체전위 증폭기",
+               "이득 1100 배",
+               "(계측증폭기 100 × 필터단 11)",
+               "아날로그 대역 0.5 – 40 Hz",
+               "RLD 능동 피드백 내장"],
+              accent=P["accent"], sw=1.4))
 
-b.append(arrow(410, 145, 508, "OUTPUT 0–3.3 V"))
-b.append(box(508, 84, 168, 122, "ADS1115",
-             ["16비트 ADC · A0 채널",
-              "860 SPS · 연속변환",
-              "PGA ±4.096 V"],
-             C["pass"], "#fff"))
+b.append(parrow(344, MID, 438, "OUTPUT 0–3.3 V"))
+b.append(pbox(438, 66, 150, 94, "ADS1115",
+              ["16 bit ADC · A0", "860 SPS · 연속변환", "PGA ±4.096 V"]))
 
-b.append(arrow(676, 145, 762, "I²C 400 kHz"))
-b.append(box(762, 84, 114, 122, "라즈베리파이 5",
-             ["I2C1 · 3·5번 핀",
-              "Flask 대시보드",
-              "250 Hz 수집"],
-             C["pass"], "#fff"))
+b.append(parrow(588, MID, 674, "I²C 400 kHz"))
+b.append(pbox(674, 66, 150, 94, "라즈베리파이 5",
+              ["I2C1 · 3·5번 핀", "250 Hz 수집", "Flask 대시보드"]))
 
-# 아래 한 줄 — 이 그림에서 가장 중요한 제약
-b.append(line(24, 258, 876, 258, C["line"], 1))
-b.append(txt(24, 280,
-             "RL은 단순 접지가 아니라 RLD 피드백의 출력단이다. 이 전극이 기준 전위를 못 잡으면 "
-             "증폭기 출력이 전원 레일에 붙어 측정 자체가 성립하지 않는다.",
-             11.5, C["muted"]))
+b.append(f'<line x1="26" y1="212" x2="874" y2="212" stroke="{P["light"]}" '
+         f'stroke-width="0.7"/>')
+b.append(f'<text x="26" y="230" font-size="9" fill="{P["gray"]}">'
+         f'RL 은 단순 접지가 아니라 RLD 피드백의 출력단이다. 이 전극이 기준 전위를 '
+         f'잡지 못하면 증폭기 출력이 전원 레일에 붙어 측정이 성립하지 않는다.</text>')
 
-open("FIG_HW.svg", "w", encoding="utf-8").write(
-    svg(W, H, "".join(b), "측정 시스템 하드웨어 구성"))
+open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "FIG_HW.svg"),
+     "w", encoding="utf-8").write(
+    paper_svg(W, H, "".join(b), "측정 시스템 하드웨어 구성"))
 print("FIG_HW.svg")
