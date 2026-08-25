@@ -46,6 +46,16 @@ RAIL_HIGH_V = 3.0   # 이 위로 평균이 올라간 창은 버림
 RAIL_LOW_V = 0.3    # 이 아래로 내려간 창도 버림
 MIN_STD_V = 0.0005  # 필터 후 표준편차가 이보다 작으면 신호가 없다고 본다
 
+# 위의 절대 문턱만으로는 포화를 못 잡는 경우가 있다. 실제로 이 프로젝트에서 수집한
+# CSV 6개를 조사한 결과가 그랬다. 모든 파일의 최댓값이 2.57~2.60V, 최솟값이 -0.59~-0.61V로
+# 일정했는데, 이는 이 보드의 실제 출력 한계다. 그런데 위 문턱은 3.0V/0.3V라서,
+# 전 구간이 2.56~2.60V에 붙어 있던 파일(= 완전히 상단 포화)이 100% 통과해 버렸다.
+#
+# 그래서 문턱을 짐작하지 않고 신호에서 직접 찾는다. 증폭기가 포화하면 출력이 한 값에
+# 머무르므로, 파일의 극값 근처에 샘플이 눈에 띄게 몰린다. 그 몰림이 보이면 그 극값을
+# 레일로 인정하고, 창별로 레일에 붙은 샘플 비율을 재서 버린다.
+# 포화되지 않은 파일은 극값을 한두 번만 스치므로 레일이 검출되지 않고, 따라서 아무것도
+# 버리지 않는다(실측 6개 파일로 확인: 깨끗한 2개는 검출 0건, 포화된 2개는 전량 제외).
 # AD8232의 fast-restore 는 전극 임피던스가 높으면 계속 재작동하면서 출력을 순간적으로
 # 0V 근처까지 떨어뜨린다(실측: 168ms마다 약 20ms). 이건 식물 신호가 아니라 회로 동작이고,
 # 2초 창마다 10여 번씩 들어가 모든 창을 오염시키므로 창 단위로 거를 수가 없다.
@@ -59,12 +69,45 @@ DROPOUT_MAX = 0.15   # 전체의 이 비율을 넘게 걸리면 신호 자체가
 # 모델이 사실상 "자극 = 아무 신호"라고 배우고 실사용에서 계속 자극만 예측하게 된다.
 # -> 자극 파일에서는 그 파일 안에서 상대적으로 튀는 창만 남기고 나머지 조용한 창은 버린다.
 #    정상/수분부족은 지속 상태라 이 필터를 적용하지 않는다.
-# std가 아니라 peak-to-peak(최대-최소)으로 판단한다: 반응 스파이크는 보통 창(2초) 안에서
+# std가 아니라 peak-to-peak(최대-최소)으로 판단한다: 반응 스파이크는 보통 창 안에서
 # 아주 짧게(수십 ms) 튀므로, std는 나머지 조용한 구간에 묻혀 거의 안 움직이지만 p2p는
 # 그 짧은 스파이크 하나만으로도 확 뛴다.
 EVENT_ONLY_STATE = "자극"
 EVENT_P2P_MULT = 2.0
 EVENT_MIN_WINDOWS = 10  # 이 미만이면 파일 내 편차가 별로 없다는 뜻이라 거르지 않는다
+
+
+RAIL_BAND_V = 0.03       # 극값에서 이 안이면 '레일에 붙었다'로 본다
+RAIL_PILE_FRAC = 0.005   # 극값 근처에 이 비율 이상 몰려 있으면 그 극값은 레일이다
+RAIL_WIN_FRAC = 0.20     # 창의 이 비율 이상이 레일에 붙어 있으면 그 창은 버린다
+
+
+def detect_rails(signal, band=RAIL_BAND_V, pile=RAIL_PILE_FRAC):
+    """신호에서 증폭기 출력 한계(레일)를 찾아 (하단, 상단)으로 돌려준다.
+
+    포화가 없으면 해당 쪽은 None이다. 보드마다 다른 레일 전압을 미리 몰라도 되고,
+    시뮬레이션처럼 0V 중심인 신호에도 잘못 걸리지 않는다."""
+    v = np.asarray(signal, dtype=float)
+    if len(v) < 100:
+        return None, None
+    mx = float(v.max()); mn = float(v.min())
+    hi = mx if float((v >= mx - band).mean()) >= pile else None
+    lo = mn if float((v <= mn + band).mean()) >= pile else None
+    return lo, hi
+
+
+def rail_fraction(win, lo, hi, band=RAIL_BAND_V):
+    """창에서 레일에 붙어 있는 샘플의 비율.
+
+    상단·하단을 각각 세어 더하면, 신호가 레일 폭보다 좁은 띠에 갇혔을 때 같은 샘플을
+    두 번 세어 100%를 넘어 버린다(실측에서 190%가 나왔다). 합집합으로 센다."""
+    w = np.asarray(win, dtype=float)
+    mask = np.zeros(len(w), dtype=bool)
+    if hi is not None:
+        mask |= (w >= hi - band)
+    if lo is not None:
+        mask |= (w <= lo + band)
+    return float(mask.mean())
 
 
 def repair_dropouts(raw_win):
@@ -134,6 +177,7 @@ def make_spectrogram_image(Sxx_db, out_path, img_size=IMG_SIZE):
 def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, step_sec=STEP_SEC,
                  low=0.5, high=20.0, notch_freq=60.0,
                  quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V,
+                 rail_frac=RAIL_WIN_FRAC,
                  repair=True):
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고,
     (이미지 수, 특징 행 리스트, 실제로 사용한 노치 주파수)를 반환한다.
@@ -197,11 +241,21 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     hw_like = float(np.median(raw_signal)) > 0.5
     rail_check = quality and hw_like
 
+    rail_lo = rail_hi = None
+    if rail_check:
+        rail_lo, rail_hi = detect_rails(raw_signal)
+        if rail_lo is not None or rail_hi is not None:
+            at = 100.0 * rail_fraction(raw_signal, rail_lo, rail_hi)
+            print(f"    [레일 검출] 하단 {('%.2fV' % rail_lo) if rail_lo is not None else '—'} / "
+                  f"상단 {('%.2fV' % rail_hi) if rail_hi is not None else '—'} "
+                  f"— 전체 샘플의 {at:.1f}%가 레일에 붙어 있습니다.")
+
     win_len = int(round(window_sec * fs))
     step_len = int(round(step_sec * fs))
 
     count = 0
     skipped_rail = 0
+    skipped_clip = 0
     skipped_flat = 0
     skipped_quiet = 0
     repaired_samples = 0
@@ -209,7 +263,7 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
     feature_rows = []
     base_name = os.path.splitext(fname)[0]
     # 필터는 각 윈도우를 개별적으로 적용한다. 실시간 추론(inference.py)은 스트리밍으로 들어온
-    # 2초 버퍼만 필터링할 수 있으므로, 학습 특징도 반드시 "윈도우 단위 필터링"으로 만들어야
+    # 버퍼 하나만 필터링할 수 있으므로, 학습 특징도 반드시 "윈도우 단위 필터링"으로 만들어야
     # 필터 과도응답까지 포함해 학습/추론 특징이 일치한다. (전체 신호를 한 번에 필터링한 뒤
     # 잘라내면 윈도우 경계의 과도응답이 서로 달라 train/serve skew가 생긴다 — 특히 통계/주파수
     # 특징 14개는 이 차이에 민감하다.)
@@ -227,6 +281,11 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             m = float(np.mean(raw_win))
             if m > rail_high or m < rail_low:
                 skipped_rail += 1
+                continue
+            # 평균이 정상 범위여도 파형이 레일에 붙어 있을 수 있다(위 RAIL_* 주석 참고).
+            if (rail_lo is not None or rail_hi is not None) and \
+                    rail_fraction(raw_win, rail_lo, rail_hi) > rail_frac:
+                skipped_clip += 1
                 continue
 
         # fast-restore 강하를 먼저 지우고 필터를 건다(필터 전에 지워야 링잉이 안 남는다).
@@ -280,11 +339,12 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
         print(f"    [보정] fast-restore 강하 제거 — {repaired_windows}창에서 {repaired_samples}샘플 보간")
     if quality and not hw_like:
         print("    [품질] 0V 중심 신호라 레일 포화 검사는 건너뜁니다(시뮬레이션 데이터).")
-    total_win = count + skipped_rail + skipped_flat + skipped_quiet
+    total_win = count + skipped_rail + skipped_clip + skipped_flat + skipped_quiet
     print(f"  {fname} -> 클래스 '{cls}': {count}개 스펙트로그램 이미지 생성"
           + (f"  (전체 {total_win}창 중 {100.0*count/total_win:.0f}% 사용)" if total_win else ""))
-    if skipped_rail or skipped_flat:
+    if skipped_rail or skipped_flat or skipped_clip:
         print(f"    [품질] 건너뜀 — 전원 레일 포화 {skipped_rail}창"
+              f"{f', 파형 잘림 {skipped_clip}창' if skipped_clip else ''}"
               f"{f', 신호 없음 {skipped_flat}창' if skipped_flat else ''}")
         if count == 0:
             print("    ⚠️  쓸 수 있는 구간이 하나도 없습니다. 전극 접촉을 확인하고 다시 수집하세요.")
@@ -316,6 +376,8 @@ def main():
                         help="품질 검사를 끄고 모든 창을 그대로 변환한다(포화 구간 포함)")
     parser.add_argument("--rail-high", type=float, default=RAIL_HIGH_V,
                         help=f"평균이 이 값보다 높은 창은 포화로 보고 버림(기본 {RAIL_HIGH_V}V)")
+    parser.add_argument("--rail-frac", type=float, default=RAIL_WIN_FRAC,
+                        help=f"창의 이 비율 이상이 증폭기 출력 한계에 붙어 있으면 버림(기본 {RAIL_WIN_FRAC})")
     parser.add_argument("--min-std", type=float, default=MIN_STD_V,
                         help=f"필터 후 표준편차가 이보다 작으면 신호 없음으로 보고 버림(기본 {MIN_STD_V}V)")
     parser.add_argument("--window_sec", type=float, default=WINDOW_SEC,
@@ -367,7 +429,7 @@ def main():
                                                window_sec=args.window_sec, step_sec=args.step_sec,
                                                low=args.lowcut, high=args.highcut, notch_freq=args.notch,
                                                quality=not args.no_quality,
-                                               rail_high=args.rail_high, min_std=args.min_std,
+                                               rail_high=args.rail_high, min_std=args.min_std, rail_frac=args.rail_frac,
                                                repair=not args.no_repair)
             total += count
             all_feature_rows.extend(feature_rows)
