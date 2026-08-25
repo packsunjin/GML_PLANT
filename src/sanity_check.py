@@ -25,6 +25,10 @@ import shutil
 import tempfile
 import subprocess
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # venv 를 안 켜도 알아서 갈아탄다
+
 import numpy as np
 
 STATES = ["정상", "수분부족", "자극"]

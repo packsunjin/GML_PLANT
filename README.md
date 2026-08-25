@@ -31,18 +31,16 @@ git pull                       # GitHub 최신 코드 받기
 ```
 > 그냥 실행만 할 거면 인터넷/이 단계는 건너뛰어도 됩니다. 노트북 Wi-Fi 인터넷을 파이에 나눠주는 방법은 아래 "설치 및 업데이트" 참고.
 
-**3. 가상환경 켜기**
+**3. 대시보드 실행 (웹이 가장 편함)**
 ```bash
 cd ~/project
-source venv/bin/activate       # 앞에 (venv) 가 뜨면 OK
-```
-
-**4. 대시보드 실행 (웹이 가장 편함)**
-```bash
 python3 main.py --web --sim_csv data/raw/수분부족.csv   # 센서 있으면 --sim_csv 빼기
 ```
 
-**5. 브라우저로 보기** — 노트북/폰 브라우저 주소창에:
+> **`source venv/bin/activate` 안 쳐도 됩니다.** 스크립트가 `venv/` 를 찾아서
+> 알아서 그 파이썬으로 갈아탑니다(`src/venv_boot.py`). 켜 놓고 실행해도 그대로 동작합니다.
+
+**4. 브라우저로 보기** — 노트북/폰 브라우저 주소창에:
 ```
 http://<파이 IP>:5000        # 예: http://192.168.0.23:5000
 ```
@@ -50,9 +48,8 @@ http://<파이 IP>:5000        # 예: http://192.168.0.23:5000
 
 ```
 요약:  ① SD카드+전원  →  ② ssh <사용자명>@<호스트명>.local
-       ③ cd ~/project && source venv/bin/activate
-       ④ python3 main.py --web --sim_csv data/raw/수분부족.csv
-       ⑤ 브라우저 http://<파이 IP>:5000
+       ③ cd ~/project && python3 main.py --web --sim_csv data/raw/수분부족.csv
+       ④ 브라우저 http://<파이 IP>:5000
 ```
 
 > 실측 데이터를 새로 모은 게 아니라면 **다시 학습(preprocess/train)할 필요 없이 바로 실행**하면 됩니다. 모델은 이미 저장돼 있어요.
@@ -188,6 +185,36 @@ python3 -m venv --system-site-packages venv   # apt로 깐 라이브러리를 ve
 source venv/bin/activate
 pip install adafruit-circuitpython-ads1x15 adafruit-blinka   # 하드웨어용(선택)
 ```
+
+> 위 `source venv/bin/activate` 는 **설치할 때 한 번만** 필요합니다.
+> 설치가 끝난 뒤에는 켜지 않고 `python3 main.py …` 로 바로 실행하면 됩니다 — 아래 참고.
+
+### 가상환경을 매번 켜지 않아도 되는 이유 (`src/venv_boot.py`)
+
+`source venv/bin/activate` 를 깜빡하고 시스템 파이썬으로 실행하면, numpy 를 못 찾아
+`ModuleNotFoundError` 로 바로 죽습니다. 이걸 매번 신경 쓰지 않도록 진입점 스크립트들이
+맨 위에서 이렇게 합니다.
+
+```python
+import venv_boot; venv_boot.ensure()
+```
+
+`ensure()` 는 저장소 안에 `venv/` 가 있으면 **그 파이썬으로 프로세스를 갈아탄 뒤
+같은 명령을 다시 실행**합니다(`os.execv`). 인자도 그대로 넘어가므로 사용자 입장에서는
+그냥 실행된 것처럼 보입니다.
+
+```bash
+python3 main.py --web            # venv 안 켜도 동작
+python3 src/train.py --task 3종  # 이것도
+```
+
+- 이미 가상환경 안이면(`sys.prefix != sys.base_prefix`) 아무것도 하지 않습니다.
+- 한 번 갈아탄 뒤에는 `GML_VENV_REEXEC` 표시가 남아 다시 갈아타지 않습니다(무한 반복 방지).
+- `venv/` 가 없으면 그냥 시스템 파이썬으로 진행합니다 — apt 로만 깔아 쓰는 구성도 그대로 됩니다.
+- 일부러 시스템 파이썬을 쓰고 싶으면 `GML_NO_VENV=1 python3 main.py …`.
+
+적용된 진입점: `main.py`, `src/preprocess.py`, `src/train.py`, `src/sensor_control.py`,
+`src/sanity_check.py`, `src/check_sensors.py`.
 
 ### 3. 업데이트 (코드가 바뀌었을 때, git pull)
 

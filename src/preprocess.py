@@ -23,6 +23,10 @@ import argparse
 import json
 import os
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # venv 를 안 켜도 알아서 갈아탄다
+
 import numpy as np
 import pandas as pd
 from scipy.signal import butter, filtfilt, iirnotch

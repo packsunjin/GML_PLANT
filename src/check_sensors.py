@@ -14,6 +14,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # 진단은 실제로 쓰는 파이썬에서 해야 맞다
+
 
 def line(title):
     print(f"\n=== {title} " + "=" * max(0, 44 - len(title)))
