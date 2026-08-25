@@ -1,1 +1,1 @@
-{"lowcut": 0.5, "highcut": 20.0, "notch_freq": 50.0, "notch_q": 30.0, "sample_rate": 250.0, "window_sec": 10.0, "step_sec": 2.0}
+{"lowcut": 0.5, "highcut": 20.0, "notch_freq": 50.0, "notch_q": 30.0, "sample_rate": 250.0, "window_sec": 10.0, "step_sec": 2.0, "by_state": {"수분부족": {"lowcut": 0.5, "highcut": 20.0, "notch_freq": 50.0, "window_sec": 10.0, "step_sec": 2.0}, "자극": {"lowcut": 0.5, "highcut": 20.0, "notch_freq": 50.0, "window_sec": 10.0, "step_sec": 2.0}, "정상": {"lowcut": 0.5, "highcut": 20.0, "notch_freq": 50.0, "window_sec": 10.0, "step_sec": 2.0}}}

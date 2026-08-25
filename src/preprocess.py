@@ -449,11 +449,43 @@ def main():
 
     # 사용한 필터 대역을 사이드카로 기록 -> train.py가 읽어 모델 번들에 저장 -> inference가 동일 필터 사용.
     meta_path = os.path.join(os.path.dirname(args.features_csv) or ".", "preprocess_meta.json")
+
+    # --only 로 한 상태만 다시 변환하면, 다른 상태의 스펙트로그램은 이전 설정으로 만들어진
+    # 채로 남는다. 그런데 메타는 이번 실행 값으로 덮어써지므로, 학습·추론은 그 값을 쓴다.
+    # 즉 데이터셋 안에 서로 다른 필터로 만든 이미지가 섞이는데 아무도 모르는 상태가 된다.
+    # -> 상태별로 실제 사용한 설정을 누적해 두고, 서로 다르면 크게 경고한다.
+    prev = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, encoding="utf-8") as mf:
+                prev = json.load(mf)
+        except Exception:
+            prev = {}
+
+    by_state = dict(prev.get("by_state") or {})
+    this_run = {"lowcut": args.lowcut, "highcut": args.highcut, "notch_freq": meta_notch,
+                "window_sec": args.window_sec, "step_sec": args.step_sec}
+    for fname in sorted(targets):
+        st = FILE_TO_STATE.get(fname)
+        if st:
+            by_state[st] = dict(this_run)
+
+    # 상태마다 설정이 다르면 데이터셋이 섞인 것이다.
+    distinct = {json.dumps(v, sort_keys=True, ensure_ascii=False) for v in by_state.values()}
+    if len(distinct) > 1:
+        print("⚠️  상태마다 다른 설정으로 변환된 스펙트로그램이 섞여 있습니다.")
+        for st, v in sorted(by_state.items()):
+            print(f"     {st}: 대역 {v['lowcut']}~{v['highcut']}Hz, 노치 {v['notch_freq']:.0f}Hz, "
+                  f"창 {v['window_sec']}초/{v['step_sec']}초")
+        print("     이 상태로 학습하면 모델이 상태 차이가 아니라 '전처리 설정 차이'를 배울 수 있습니다.")
+        print("     전체를 다시 변환하세요:  python preprocess.py   (--only 없이)")
+
     with open(meta_path, "w", encoding="utf-8") as mf:
         json.dump({"lowcut": args.lowcut, "highcut": args.highcut,
                    "notch_freq": meta_notch, "notch_q": 30.0,
                    "sample_rate": SAMPLE_RATE_HZ,
-                   "window_sec": args.window_sec, "step_sec": args.step_sec}, mf)
+                   "window_sec": args.window_sec, "step_sec": args.step_sec,
+                   "by_state": by_state}, mf, ensure_ascii=False)
     print(f"[preprocess] 필터 메타 저장 -> {meta_path}")
 
     print(f"[preprocess] 총 {total}개 스펙트로그램 이미지 생성 완료")
