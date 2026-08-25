@@ -667,6 +667,45 @@ AD8232의 총 이득은 **1100배**입니다(계측증폭기 100배 × 저역통
 > 재는 겁니다. 호일은 "생물이 아닌 도체", 마른 가지는 "생물이었지만 지금은 죽은 것"이라
 > 서로 다른 각도에서 같은 질문에 답합니다.
 
+**명령어 — 식물 데이터를 건드리지 않고 따로 돌립니다**
+
+```bash
+cd src
+
+# 1) 호일에 전극을 붙이고 세 상태를 수집 (저장 위치를 따로 지정)
+python3 sensor_control.py --state 정상     --duration 120 --out ../data/foil/raw
+python3 sensor_control.py --state 수분부족  --duration 120 --out ../data/foil/raw
+python3 sensor_control.py --state 자극     --duration 120 --out ../data/foil/raw
+
+# 2) 변환 (식물 쪽 data/spectrogram 은 그대로 둡니다)
+python3 preprocess.py \
+  --raw_dir ../data/foil/raw \
+  --out_dir ../data/foil/spec \
+  --features_csv ../data/foil/features.csv
+
+# 3) 학습
+python3 train.py --task 3종 \
+  --spectrogram_dir ../data/foil/spec \
+  --features_csv ../data/foil/features.csv \
+  --models_dir ../models/foil
+```
+
+마지막 줄의 `Accuracy` 를 식물 데이터의 정확도와 비교하면 됩니다.
+
+**파이프라인 자체가 우연 이상을 만들어내지는 않는지 미리 확인했습니다.** 세 상태가
+통계적으로 완전히 동일한(= 식물 기여가 전혀 없는) 모사 데이터를 만들어 위 절차를
+그대로 돌린 결과입니다.
+
+```
+[train] (픽셀·3종) Train=105, Test=51 (시간순 그룹 분할, 경계에서 겹치는 4창 제거)
+Accuracy : 0.3137     (SVM)
+Accuracy : 0.3922     (RandomForest)
+⚠️ Accuracy가 70% 미만입니다.
+```
+
+**31~39% — 3분류 우연 수준(33%)입니다.** 즉 호일 대조군에서 높은 정확도가 나온다면
+그건 파이프라인이 만들어낸 값이 아니라 **측정계·환경에서 실제로 온 신호**라는 뜻입니다.
+
 #### 전극을 어디에 붙일 것인가 — 선행연구의 배치
 
 AD8232로 식물 신호를 측정한 선행연구는 **측정 전극 두 개를 잎 두 장에, 기준 전극을
