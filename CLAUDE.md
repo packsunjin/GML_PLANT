@@ -176,7 +176,17 @@ python3 parse2.py                 # tpl.html → blocks.json
 python3 build_docx.py --compact   # 20쪽 판
 python3 pagecount.py GML_결과보고서_20쪽판.docx
 python3 make_figs.py              # 그림 SVG → PNG (300dpi 이상)
+python3 renumber.py               # 표·그림 번호 검사 (--write 로 적용)
 ```
+
+그림을 추가할 때는 **세 곳**을 같이 고쳐야 한다 — `make_figs.py` 의 `FIGS`,
+`build_docx.py` 의 `PLATES`(본문 등장 순서대로!), 그리고 `tpl.html` 의 `{{FIG_*}}`.
+하나라도 빠지면 `IndexError` 가 나거나 엉뚱한 그림이 들어간다.
+
+분량이 넘칠 때는 본문을 깎기 전에 **그림의 가로세로비**를 먼저 본다. 본문 폭이
+고정이라 같은 내용도 그림을 넓게 그리면 세로가 줄어든다(그림9를 760→940 으로
+넓혀 170pt→137pt). 회로도에서 **선은 곧 연결**이므로 묶음 표시 같은 장식에
+선을 쓰면 안 된다 — 글자로 쓴다.
 
 양식이 못박은 값 — **바꾸면 안 된다**:
 - 전체 **20페이지 이내**
