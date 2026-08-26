@@ -32,6 +32,7 @@ import pandas as pd
 from scipy.signal import butter, filtfilt, iirnotch
 
 from spectro_render import render_rgb_image, compute_spectrogram
+import sensor_control
 from sensor_control import ANALOG_HPF_HZ, ANALOG_LPF_HZ, FRONTEND_GAIN, FRONTEND
 from feature_extraction import extract_features, FEATURE_NAMES
 
@@ -482,6 +483,19 @@ def main():
     total = 0
     all_feature_rows = []
     used_notches = []
+    # 시뮬레이터 출력이 실측으로 오해된 채 학습·보고서까지 올라간 적이 있다.
+    # 수집기가 CSV 옆에 남긴 출처 파일을 여기서 읽어, 가짜가 섞이면 크게 알린다.
+    simulated = [f for f in sorted(targets) if f.endswith(".csv")
+                 and sensor_control.is_simulated(os.path.join(args.raw_dir, f)) is True]
+    unknown = [f for f in sorted(targets) if f.endswith(".csv")
+               and sensor_control.is_simulated(os.path.join(args.raw_dir, f)) is None]
+    if simulated:
+        print(f"[preprocess] ⛔ 시뮬레이터 출력이 섞여 있습니다: {', '.join(simulated)}")
+        print("    실측 데이터가 아니므로 여기서 나온 정확도는 식물과 아무 관계가 없습니다.")
+    if unknown:
+        print(f"[preprocess] ⚠️  출처를 알 수 없는 파일: {', '.join(unknown)}")
+        print("    .meta.json 이 없습니다. 수집기를 거치지 않았거나 옛 코드로 모은 파일입니다.")
+
     for fname in sorted(targets):
         if fname.endswith(".csv"):
             csv_path = os.path.join(args.raw_dir, fname)

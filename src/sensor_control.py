@@ -17,6 +17,8 @@ AD8232(생체 전위 증폭기) + ADS1115(16비트 ADC)를 이용하여
 
 import argparse
 import csv
+import datetime
+import json
 import os
 import signal
 import threading
@@ -563,6 +565,61 @@ def _settle(settle_sec, sample_rate_hz, max_sec=SETTLE_MAX_SEC):
         print("    파형이 통째로 잘립니다. 전극 접촉을 고치고 다시 시작하세요.")
 
 
+def _git_rev():
+    """수집에 쓰인 코드가 어느 커밋이었는지. 알 수 없으면 None."""
+    try:
+        import subprocess
+        here = os.path.dirname(os.path.abspath(__file__))
+        return subprocess.run(["git", "-C", here, "rev-parse", "--short", "HEAD"],
+                              capture_output=True, text=True, timeout=5
+                              ).stdout.strip() or None
+    except Exception:
+        return None
+
+
+def meta_path(csv_path):
+    """CSV 옆에 놓이는 출처 파일 경로."""
+    return os.path.splitext(csv_path)[0] + ".meta.json"
+
+
+def load_meta(csv_path):
+    """출처 정보를 읽는다. 파일이 없으면 None — '출처 불명'이라는 뜻이다."""
+    try:
+        with open(meta_path(csv_path), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def is_simulated(csv_path):
+    """이 CSV 가 시뮬레이터 출력인가.
+    True=시뮬레이터, False=실측, None=출처 파일이 없어 알 수 없음."""
+    m = load_meta(csv_path)
+    return None if m is None else (m.get("mode") != "hardware")
+
+
+def _write_meta(out_path, state, session, sample_rate_hz, rows):
+    span = float(rows[-1][0]) if rows else 0.0
+    meta = {
+        "mode": "hardware" if HARDWARE_AVAILABLE else "simulation",
+        "hardware_error": None if HARDWARE_AVAILABLE else _HW_ERR,
+        "frontend": FRONTEND.describe(),
+        "state": state,
+        "session": session,
+        "requested_rate_hz": float(sample_rate_hz),
+        "actual_rate_hz": (len(rows) / span) if span > 0 else None,
+        "n_samples": len(rows),
+        "duration_sec": span,
+        "recorded_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "git_rev": _git_rev(),
+    }
+    with open(meta_path(out_path), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    if not HARDWARE_AVAILABLE:
+        print(f"[sensor_control] ⚠️  이 파일은 시뮬레이터 출력입니다 — 실측 데이터가 아닙니다.")
+        print(f"    {meta_path(out_path)} 에 기록해 두었습니다.")
+
+
 def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
             settle_sec=SETTLE_SEC, settle_max_sec=SETTLE_MAX_SEC, session=None):
     """
@@ -660,6 +717,13 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
         writer = csv.writer(f)
         writer.writerow(["timestamp_sec", "voltage"])
         writer.writerows(rows)
+
+    # ── 출처를 파일 옆에 같이 남긴다 ──────────────────────────────
+    # 예전에는 HARDWARE/SIMULATION 을 화면에 print 만 하고 버렸다. 그래서 나중에
+    # CSV 만 보고는 그게 식물에서 온 값인지 시뮬레이터가 만든 값인지 구분할
+    # 방법이 아예 없었고, 실제로 시뮬레이터 출력이 실측 데이터로 오해된 채
+    # 보고서까지 올라갔다. 신호 처리로 사후에 알아내려 하지 말고 수집할 때 적는다.
+    _write_meta(out_path, state, session, sample_rate_hz, rows)
 
     _report_artifacts([r[1] for r in rows], sample_rate_hz)
     _report_motion_artifacts([r[1] for r in rows], sample_rate_hz)
