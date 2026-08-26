@@ -12,7 +12,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from figlib import P, paper_svg, esc
 
-W, H = 726, 262
+W, H = 812, 262
 K = P["ink"]
 SW = 0.85
 b = []
@@ -71,22 +71,47 @@ for cy, name, sub in ROWS:
 b.append(t(6, 15, "plant pair", 8.6, "start", "i"))
 b.append(t(6, 139, "reference pair — dummy electrodes", 8.6, "start", "i"))
 
-# ── ADS1115 ────────────────────────────────────────────────────
-b.append(f'<rect x="{AX}" y="22" width="146" height="206" fill="none" '
+# ── ADS1115 — 안을 비워 두지 않는다. 내부 경로를 그리면 '차동쌍 두 개'와
+#    'PGA 16' 이 무엇인지가 그림에서 바로 읽힌다.
+ADS_W = 196
+b.append(f'<rect x="{AX}" y="20" width="{ADS_W}" height="212" fill="none" '
          f'stroke="{K}" stroke-width="{SW}"/>')
-b.append(t(AX + 73, 42, "ADS1115", 9.6, "middle"))
+b.append(t(AX + ADS_W / 2, 34, "ADS1115", 9.6, "middle"))
+
+MX, MW = AX + 22, 38                      # 멀티플렉서
+b.append(f'<rect x="{MX}" y="42" width="{MW}" height="174" fill="none" '
+         f'stroke="{K}" stroke-width="{SW}"/>')
+for i, ch in enumerate("MUX"):
+    b.append(t(MX + MW / 2, 118 + i * 11, ch, 8, "middle"))
+
 for cy, pin in zip([r[0] for r in ROWS], ["A0", "A1", "A2", "A3"]):
-    b.append(t(AX + 6, cy + 3, pin, 8.2))
-b += [t(AX + 73, 123, "16-bit, differential", 8.2, "middle"),
-      t(AX + 73, 135, "PGA 16   ±256 mV", 8.2, "middle"),
-      t(AX + 73, 147, "7.81 µV / LSB", 8.2, "middle")]
-b.append(w(AX + 146, 129, AX + 186))
-b.append(f'<path d="M{AX+180},126 L{AX+186},129 L{AX+180},132 Z" fill="{K}"/>')
-b.append(t(AX + 154, 123, "I²C", 8.2))
-b.append(t(AX + 152, 145, "Raspberry Pi 5", 8.2))
+    b.append(t(AX + 5, cy + 3, pin, 8.2))
+    b.append(w(AX, cy, MX))               # 핀에서 멀티플렉서까지
+
+# 차동쌍은 왼쪽의 plant / reference 표기로 이미 드러난다. 여기에 또 괄호를
+# 그리면 핀 이름과 겹치기만 한다.
+
+PX, PW = MX + MW + 16, 48                 # 이득단
+b.append(f'<rect x="{PX}" y="110" width="{PW}" height="38" fill="none" '
+         f'stroke="{K}" stroke-width="{SW}"/>')
+b += [t(PX + PW / 2, 124, "PGA", 8, "middle"), t(PX + PW / 2, 136, "× 16", 8, "middle")]
+b.append(w(MX + MW, 129, PX))
+
+CVX, CVW = PX + PW + 14, 48               # 변환기
+b.append(f'<rect x="{CVX}" y="110" width="{CVW}" height="38" fill="none" '
+         f'stroke="{K}" stroke-width="{SW}"/>')
+b += [t(CVX + CVW / 2, 124, "ΔΣ", 8, "middle"), t(CVX + CVW / 2, 136, "16-bit", 8, "middle")]
+b.append(w(PX + PW, 129, CVX))
+
+b.append(t(AX + ADS_W / 2, 224, "±256 mV full scale · 7.81 µV / LSB", 7.8, "middle"))
+
+b.append(w(CVX + CVW, 129, AX + ADS_W + 40))
+b.append(f'<path d="M{AX+ADS_W+34},126 L{AX+ADS_W+40},129 L{AX+ADS_W+34},132 Z" fill="{K}"/>')
+b.append(t(AX + ADS_W + 6, 123, "I²C", 8.2))
+b.append(t(AX + ADS_W + 4, 145, "Raspberry Pi 5", 8.2))
 
 # ── 중간 전위 바이어스 ─────────────────────────────────────────
-BX, TOP, GND = 588, 40, 224
+BX, TOP, GND = 668, 40, 224
 MY = 128
 b.append(w(BX - 26, TOP, BX + 26, TOP))
 b.append(t(BX - 26, TOP - 6, "3.3 V", 8.6))
