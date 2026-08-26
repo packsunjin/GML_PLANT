@@ -49,10 +49,21 @@ class Frontend:
     rail_low_v = None
     available = False
     error = None
+    # 참조(더미) 채널 — 식물 없이 전극쌍만 담근 채널을 동시에 읽는가.
+    # 이게 있어야 '식물 반응'과 '전극이 그냥 표류한 것'을 나눌 수 있다.
+    has_ref = False
 
     def read(self):
         """전극 신호 한 샘플(V, ADC 가 본 값)."""
         raise NotImplementedError
+
+    def read_ref(self):
+        """참조 채널 한 샘플(V). 참조 채널이 없으면 None."""
+        return None
+
+    def read_pair(self):
+        """(식물, 참조) 한 쌍. 참조가 없으면 (식물, None)."""
+        return self.read(), self.read_ref()
 
     def to_input_mv(self, v):
         """ADC 가 본 값(V) -> 전극 사이 전압(mV).
@@ -68,6 +79,7 @@ class Frontend:
             "rail": [self.rail_low_v, self.rail_high_v],
             "resolution_uv": self.resolution_uv,
             "available": self.available, "error": self.error,
+            "has_ref": self.has_ref,
         }
 
 
@@ -153,8 +165,10 @@ class DCFrontend(Frontend):
     # ADS1115 PGA 설정별 측정 범위(V). 16배가 이 용도에 맞다.
     PGA_RANGE_V = {1: 4.096, 2: 2.048, 4: 1.024, 8: 0.512, 16: 0.256}
 
-    def __init__(self, pga=16):
+    def __init__(self, pga=16, ref=False):
         self._chan = None
+        self._chan_ref = None
+        self.has_ref = bool(ref)
         self.pga = pga if pga in self.PGA_RANGE_V else 16
         span_v = self.PGA_RANGE_V[self.pga]
         self.input_span_mv = span_v * 1000.0
@@ -184,6 +198,14 @@ class DCFrontend(Frontend):
             p0 = getattr(ADS, "P0", 0)
             p1 = getattr(ADS, "P1", 1)
             self._chan = AnalogIn(ads, p0, p1)
+            if self.has_ref:
+                # 참조쌍은 A2-A3. ADS1115 는 차동쌍이 둘뿐이라 이게 마지막 하나다.
+                # ⚠️ 두 쌍을 번갈아 읽으면 멀티플렉서를 매번 바꿔야 해서 채널당
+                #    실효 샘플레이트가 절반으로 떨어진다. 느린 실험(5Hz)에서는
+                #    문제가 없지만, 자극처럼 빠른 신호를 볼 때는 참조를 끄는 게 낫다.
+                p2 = getattr(ADS, "P2", 2)
+                p3 = getattr(ADS, "P3", 3)
+                self._chan_ref = AnalogIn(ads, p2, p3)
             self.available = True
         except Exception as e:
             self.error = str(e)
@@ -191,6 +213,20 @@ class DCFrontend(Frontend):
     def read(self):
         with _i2c_lock:
             return self._chan.voltage
+
+    def read_ref(self):
+        if self._chan_ref is None:
+            return None
+        with _i2c_lock:
+            return self._chan_ref.voltage
+
+    def read_pair(self):
+        """한 번의 잠금 안에서 두 채널을 연달아 읽는다.
+        따로 읽으면 사이에 다른 스레드가 멀티플렉서를 바꿔 놓을 수 있다."""
+        if self._chan_ref is None:
+            return self.read(), None
+        with _i2c_lock:
+            return self._chan.voltage, self._chan_ref.voltage
 
     def describe(self):
         d = super().describe()
@@ -203,13 +239,19 @@ DEFAULT = "ad8232"
 _active = None
 
 
-def choose(name=None):
-    """앞단을 고른다. 이름이 없으면 GML_FRONTEND 환경변수, 그것도 없으면 ad8232."""
+def choose(name=None, **opts):
+    """앞단을 고른다. 이름이 없으면 GML_FRONTEND 환경변수, 그것도 없으면 ad8232.
+
+    opts 는 해당 앞단 생성자가 받는 것만 넘어간다(예: dc 앞단의 ref=True).
+    앞단이 모르는 옵션은 조용히 버린다 — ad8232 에 ref 를 줘도 터지지 않게."""
     global _active
     name = (name or os.environ.get("GML_FRONTEND") or DEFAULT).lower()
     if name not in _REGISTRY:
         raise ValueError(f"모르는 앞단: {name} (가능: {', '.join(_REGISTRY)})")
-    _active = _REGISTRY[name]()
+    cls = _REGISTRY[name]
+    import inspect
+    accepted = set(inspect.signature(cls.__init__).parameters) - {"self"}
+    _active = cls(**{k: v for k, v in opts.items() if k in accepted})
     return _active
 
 

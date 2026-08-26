@@ -216,7 +216,7 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
                  low=0.5, high=20.0, notch_freq=60.0,
                  quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V,
                  rail_frac=RAIL_WIN_FRAC,
-                 repair=True):
+                 repair=True, ref_subtract=True):
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고,
     (이미지 수, 특징 행 리스트, 실제로 사용한 노치 주파수)를 반환한다.
     노치는 신호에서 50/60Hz를 재서 자동 보정하므로 파일마다 다를 수 있고,
@@ -241,6 +241,23 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
 
     df = pd.read_csv(csv_path)
     raw_signal = df["voltage"].to_numpy(dtype=float)
+
+    # ── 참조(더미) 채널 빼기 ────────────────────────────────────────
+    # voltage_ref 는 식물 없이 전극쌍만 담근 채널이다. 거기 담긴 것은 전극 표류와
+    # 주변 잡음뿐이므로, 빼고 남는 것이 식물에서 온 성분이다. 수분부족처럼 느린
+    # 신호는 전극 표류와 대역이 완전히 겹쳐서, 이 빼기 없이는 '식물이 마른 것'과
+    # '전극이 오래 붙어 있던 것'을 원리적으로 구분할 수 없다.
+    if "voltage_ref" in df.columns:
+        ref = df["voltage_ref"].to_numpy(dtype=float)
+        if ref_subtract:
+            before = float(np.std(raw_signal))
+            raw_signal = raw_signal - ref
+            print(f"  참조 채널 차감: 표준편차 {before*1e3:.3f} -> "
+                  f"{float(np.std(raw_signal))*1e3:.3f} mV "
+                  f"(참조 자체 {float(np.std(ref))*1e3:.3f} mV)")
+        else:
+            print(f"  참조 채널이 있으나 차감하지 않음(--no-ref-subtract). "
+                  f"표류가 그대로 남아 있어 느린 신호 분류는 믿을 수 없다.")
 
     # 샘플레이트는 가정하지 않고 CSV의 timestamp 에서 실제로 계산한다.
     # 하드웨어가 목표 속도를 못 따라가면(ADS1115 가 느릴 때) 실제 250Hz가 아닌데,
@@ -414,6 +431,9 @@ def main():
                         help="노치 주파수(Hz). 기본 60Hz — 한국 상용 전원 주파수. 0이면 노치 끔. "
                              "신호에서 50/60Hz를 직접 재서 센 쪽으로 자동 보정하므로 "
                              "보통 그대로 두면 됩니다")
+    parser.add_argument("--no-ref-subtract", action="store_true",
+                        help="voltage_ref 열이 있어도 빼지 않는다. 참조 채널이 제대로 "
+                             "동작하는지 따로 보고 싶을 때만 쓴다.")
     parser.add_argument("--no-repair", action="store_true",
                         help="fast-restore 강하 보간을 끄고 원신호 그대로 사용한다")
     parser.add_argument("--no-quality", action="store_true",
@@ -503,6 +523,7 @@ def main():
                                                window_sec=args.window_sec, step_sec=args.step_sec,
                                                low=args.lowcut, high=args.highcut, notch_freq=args.notch,
                                                quality=not args.no_quality,
+                                               ref_subtract=not args.no_ref_subtract,
                                                rail_high=args.rail_high, min_std=args.min_std, rail_frac=args.rail_frac,
                                                repair=not args.no_repair)
             total += count

@@ -77,13 +77,13 @@ def read_sample_hardware():
     return FRONTEND.read()
 
 
-def use_frontend(name):
+def use_frontend(name, **opts):
     """앞단을 바꾼다. 모듈을 가져올 때 한 번 정해지므로, CLI 인자로 바꾸려면
     여기서 관련 값들을 다시 묶어 줘야 한다(안 그러면 옛 앞단의 이득·레일이 남는다)."""
     global FRONTEND, FRONTEND_GAIN, ANALOG_HPF_HZ, ANALOG_LPF_HZ, INPUT_SPAN_MV
     global RAIL_HIGH_V, RAIL_LOW_V, AD8232_GAIN, AD8232_HPF_HZ, AD8232_LPF_HZ
     global HARDWARE_AVAILABLE, _HW_ERR
-    FRONTEND = frontend.choose(name)
+    FRONTEND = frontend.choose(name, **opts)
     FRONTEND_GAIN = FRONTEND.gain
     ANALOG_HPF_HZ = FRONTEND.hpf_hz
     ANALOG_LPF_HZ = FRONTEND.lpf_hz
@@ -203,6 +203,23 @@ def count_sessions(out_dir, state):
 ELECTRODE_DRIFT_V_PER_RTS = 0.001 / np.sqrt(1800.0)
 
 
+# 온도·습도처럼 **두 채널에 똑같이** 실리는 표류의 크기(V). 참조 채널을 빼면
+# 사라지는 성분이 이것이고, 참조 채널을 두는 이유 자체다.
+COMMON_DRIFT_V = 0.002
+
+
+def _common_drift(t):
+    """식물 채널과 참조 채널에 공통으로 실리는 느린 표류.
+
+    t 만의 함수라 두 채널이 정확히 같은 값을 받는다 — 빼면 그대로 사라진다.
+    실제로는 온도·습도·전원 변동처럼 두 전극쌍이 같은 환경에 놓여서 생긴다.
+    독립 성분(각 채널의 random walk)은 빼도 안 사라지고 오히려 √2 배로 커지므로,
+    참조 차감이 이득인지는 '공통 성분이 독립 성분보다 큰가'에 달려 있다."""
+    t = np.asarray(t, dtype=float)
+    return COMMON_DRIFT_V * (np.sin(2 * np.pi * t / 2400.0)
+                             + 0.6 * np.sin(2 * np.pi * t / 700.0 + 1.1))
+
+
 def _sim_core(t, state, rng=None):
     """상태별 합성 신호를 **전극에서 나오는 전압(V)** 으로 만든다.
 
@@ -237,7 +254,7 @@ def _sim_core(t, state, rng=None):
     # 가짜 결과가 나온다. 실제로는 이 표류에 묻힌다.
     dt = float(np.median(np.diff(t))) if t.size > 1 else 0.004
     walk = np.cumsum(randn) * ELECTRODE_DRIFT_V_PER_RTS * np.sqrt(dt)
-    background = 0.0004 * np.sin(2 * np.pi * 0.2 * t) + walk
+    background = 0.0004 * np.sin(2 * np.pi * 0.2 * t) + walk + _common_drift(t)
 
     if state == "정상":
         sig = 0.0
@@ -608,6 +625,7 @@ def _write_meta(out_path, state, session, sample_rate_hz, rows):
         "session": session,
         "requested_rate_hz": float(sample_rate_hz),
         "actual_rate_hz": (len(rows) / span) if span > 0 else None,
+        "has_ref": FRONTEND.has_ref,
         "n_samples": len(rows),
         "duration_sec": span,
         "recorded_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -649,6 +667,8 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
     mode_str = (f"HARDWARE ({FRONTEND.title})" if HARDWARE_AVAILABLE
                 else f"SIMULATION (no I2C hardware detected) · 앞단 가정: {FRONTEND.title}")
     length_str = "무제한 (중지할 때까지)" if unlimited else f"{duration_sec}s (총 {n_samples} 샘플)"
+    if FRONTEND.has_ref:
+        mode_str += " · 참조채널 A2-A3 동시 기록"
     print(f"[sensor_control] 모드: {mode_str}")
     print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={length_str} -> {out_path}")
 
@@ -679,7 +699,11 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
                 # 하드웨어가 목표 속도를 못 따라가도 CSV의 시간이 거짓말하지 않게 하기 위함.
                 # (i/fs 로 적으면 100Hz로 잰 것을 250Hz라고 우기게 되어 주파수가 다 틀어진다)
                 now_t = time.time() - start
-                rows.append((round(now_t, 6), read_sample_hardware()))
+                if FRONTEND.has_ref:
+                    v, vref = FRONTEND.read_pair()
+                    rows.append((round(now_t, 6), v, vref))
+                else:
+                    rows.append((round(now_t, 6), read_sample_hardware()))
                 i += 1
                 # 실제 하드웨어 샘플링 주기에 맞춰 페이싱
                 elapsed = time.time() - start
@@ -698,7 +722,14 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
                 take = chunk if unlimited else min(chunk, n_samples - i)
                 t_array = (np.arange(i, i + take)) * interval
                 v_array = simulate_batch(t_array, state)
-                rows.extend(zip(np.round(t_array, 6), v_array))
+                if FRONTEND.has_ref:
+                    # 참조 채널은 같은 전극·같은 앞단이지만 식물이 없다. 그래서
+                    # 표류·잡음·전원성분은 있고 상태 신호만 없다. 이 차이가 곧
+                    # '식물 반응'과 '전극이 그냥 표류한 것'을 가르는 근거다.
+                    r_array = simulate_batch(t_array, "정상")
+                    rows.extend(zip(np.round(t_array, 6), v_array, r_array))
+                else:
+                    rows.extend(zip(np.round(t_array, 6), v_array))
                 i += take
                 report(i, i * interval)
                 if unlimited:
@@ -715,7 +746,10 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["timestamp_sec", "voltage"])
+        header = ["timestamp_sec", "voltage"]
+        if FRONTEND.has_ref:
+            header.append("voltage_ref")      # 참조(더미) 채널 — 표류만 담긴 값
+        writer.writerow(header)
         writer.writerows(rows)
 
     # ── 출처를 파일 옆에 같이 남긴다 ──────────────────────────────
@@ -764,6 +798,10 @@ def main():
                         help="아날로그 앞단. ad8232=지금까지의 구성, dc=버퍼+차동입력(DC 결합). "
                              "GML_FRONTEND 환경변수로도 지정할 수 있습니다.")
     parser.add_argument("--out", default="../data/raw", help="저장 폴더")
+    parser.add_argument("--ref", action="store_true",
+                        help="참조(더미) 채널 A2-A3 를 같이 기록한다. 식물 없이 전극쌍만 "
+                             "담근 채널이라, 여기서 나온 표류는 식물 반응이 아니다. "
+                             "차동쌍을 번갈아 읽으므로 채널당 샘플레이트가 절반이 된다.")
     parser.add_argument("--session", type=int, default=None,
                         help="회차 번호. 안 주면 비어 있는 다음 회차로 저장합니다. "
                              "상태마다 2회 이상 나눠 재야 전극 조건과 식물 상태를 가를 수 있습니다.")
@@ -773,8 +811,12 @@ def main():
                         help=f"안정화 최대 대기(초), 기본 {SETTLE_MAX_SEC:.0f}초. "
                              "기준점이 잠잠해지면 이보다 일찍 넘어간다")
     args = parser.parse_args()
-    if args.frontend:
-        use_frontend(args.frontend)
+    if args.frontend or args.ref:
+        # --ref 만 주고 --frontend 를 안 주면 지금 앞단을 그대로 다시 만든다.
+        use_frontend(args.frontend or FRONTEND.name, ref=args.ref)
+    if args.ref and not FRONTEND.has_ref:
+        print(f"[sensor_control] ⚠️  {FRONTEND.title} 은(는) 참조 채널을 지원하지 않습니다 "
+              "— 참조 없이 수집합니다. (DC 결합 앞단에서만 됩니다: --frontend dc --ref)")
 
     _install_stop_handler()
     collect(args.state, args.duration, args.rate, args.out,
