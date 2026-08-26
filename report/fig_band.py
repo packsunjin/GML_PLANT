@@ -18,8 +18,8 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from figlib import P, paper_svg, axes, esc
 
-W, H = 760, 302
-X0, X1 = 62, 620
+W, H = 940, 268
+X0, X1 = 62, 782
 Y0, Y1 = 20, 200
 FH, FL = 0.5, 40.0
 EXP_LO, EXP_HI = -5.0, 2.4

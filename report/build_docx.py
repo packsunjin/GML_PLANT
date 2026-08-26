@@ -7,7 +7,7 @@ import sys
 COMPACT = '--compact' in sys.argv          # 20쪽 판: 정보 손실이 적은 항목만 덜어낸다
 BLK=json.load(open('blocks.json',encoding='utf-8'))
 FONT='휴먼명조'
-PLATES=['FIG_HW.png','FIG_PIPE.png','FIG_BAND.png','FIG_OFFSET.png']
+PLATES=['FIG_HW.png','FIG_PIPE.png','FIG_BAND.png','FIG_OFFSET.png','FIG_DC.png']
 EMU_W=4950000                      # 그림 폭 — 본문 폭의 약 81%.
                                    # 원본이 2700px 이라 이 폭에서도 약 470dpi 로, 서식이 요구하는 300dpi 를 넘는다.
 TW=9360                            # 표 전체 폭(dxa)

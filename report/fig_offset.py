@@ -9,8 +9,8 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from figlib import P, paper_svg, axes, esc
 
-W, H = 760, 262
-X0, X1 = 76, 560
+W, H = 940, 232
+X0, X1 = 76, 726
 Y0, Y1 = 20, 206
 
 I_OS = 25e-12          # 입력 오프셋 전류 (A, typ) [1]
