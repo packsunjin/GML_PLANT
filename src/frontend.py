@@ -20,10 +20,14 @@ AD8232 의 0.5Hz 고역통과는 수분 스트레스(수 시간 규모, 10⁻⁴
 
 고르는 법
 ---------
-    GML_FRONTEND=dc python3 main.py --web
+    python3 main.py --web                          # 기본값 dc
+    GML_FRONTEND=ad8232 python3 main.py --web      # 옛 구성으로 되돌릴 때
     python3 sensor_control.py --frontend dc --state 정상
 
-지정하지 않으면 ad8232 (지금까지의 구성) 이다.
+지정하지 않으면 **dc** 다. 이 브랜치(claude/dc-frontend)의 하드웨어가 DC 결합
+앞단이기 때문이다. 기본값이 ad8232 이던 시절에는 웹을 그냥 켜면 같은 회로를
+이득 1100배로 읽어 "레일 포화"라는 헛판정이 났다(0절 ⑨). AD8232 구성은
+main 브랜치에 있다.
 """
 
 import os
@@ -235,12 +239,17 @@ class DCFrontend(Frontend):
 
 
 _REGISTRY = {"ad8232": AD8232Frontend, "dc": DCFrontend}
-DEFAULT = "ad8232"
+
+# 이 브랜치(claude/dc-frontend)의 하드웨어는 DC 결합 앞단이다. 기본값이 ad8232 면
+# 웹을 그냥 켰을 때 같은 회로를 이득 1100배·포화 문턱 0.8 mV 로 읽어서
+# "레일 포화"라는 헛판정이 난다(0절 ⑨). AD8232 를 쓰려면 main 브랜치를 쓰거나
+# GML_FRONTEND=ad8232 를 준다.
+DEFAULT = "dc"
 _active = None
 
 
 def choose(name=None, **opts):
-    """앞단을 고른다. 이름이 없으면 GML_FRONTEND 환경변수, 그것도 없으면 ad8232.
+    """앞단을 고른다. 이름이 없으면 GML_FRONTEND 환경변수, 그것도 없으면 DEFAULT(dc).
 
     opts 는 해당 앞단 생성자가 받는 것만 넘어간다(예: dc 앞단의 ref=True).
     앞단이 모르는 옵션은 조용히 버린다 — ad8232 에 ref 를 줘도 터지지 않게."""
