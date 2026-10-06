@@ -246,21 +246,32 @@ _REGISTRY = {"ad8232": AD8232Frontend, "dc": DCFrontend}
 # GML_FRONTEND=ad8232 를 준다.
 DEFAULT = "dc"
 _active = None
+_active_key = None     # 지금 살아 있는 앞단을 만들 때 쓴 (이름, 옵션). 재사용 판정용
 
 
 def choose(name=None, **opts):
     """앞단을 고른다. 이름이 없으면 GML_FRONTEND 환경변수, 그것도 없으면 DEFAULT(dc).
 
     opts 는 해당 앞단 생성자가 받는 것만 넘어간다(예: dc 앞단의 ref=True).
-    앞단이 모르는 옵션은 조용히 버린다 — ad8232 에 ref 를 줘도 터지지 않게."""
-    global _active
+    앞단이 모르는 옵션은 조용히 버린다 — ad8232 에 ref 를 줘도 터지지 않게.
+
+    ⚠️ **같은 앞단을 두 번 만들지 않는다.** 같은 설정으로 또 부르면 이미 만든 것을
+    그대로 돌려준다. 새로 만들면 같은 ADS1115 칩에 I2C 객체가 둘 붙고, 둘 다
+    연속모드로 설정하면서 레지스터를 서로 덮어써 읽은 값이 풀스케일로 굳는다
+    (0절 ⑫ — 30분 측정 하나를 통째로 날렸다)."""
+    global _active, _active_key
     name = (name or os.environ.get("GML_FRONTEND") or DEFAULT).lower()
     if name not in _REGISTRY:
         raise ValueError(f"모르는 앞단: {name} (가능: {', '.join(_REGISTRY)})")
     cls = _REGISTRY[name]
     import inspect
     accepted = set(inspect.signature(cls.__init__).parameters) - {"self"}
-    _active = cls(**{k: v for k, v in opts.items() if k in accepted})
+    used = {k: v for k, v in opts.items() if k in accepted}
+    key = (name, tuple(sorted(used.items())))
+    if _active is not None and _active_key == key:
+        return _active          # 이미 같은 설정으로 살아 있다. 또 만들면 칩이 꼬인다
+    _active = cls(**used)
+    _active_key = key
     return _active
 
 
