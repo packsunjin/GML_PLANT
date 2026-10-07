@@ -26,7 +26,20 @@ def rpr(sz=22, b=False, i=False, color=None):
 def run(t, **kw):
     return f'<w:r>{rpr(**kw)}<w:t xml:space="preserve">{escape(t)}</w:t></w:r>'
 
-def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, keep=False, color=None):
+CITE = re.compile(r'\[(\d+)\]')
+
+def runs(t, **kw):
+    """본문의 [n] 을 참고문헌 n 번으로 가는 내부 링크로 만든다(책갈피 ref<n>)."""
+    out, pos = [], 0
+    for m in CITE.finditer(t):
+        if m.start() > pos: out.append(run(t[pos:m.start()], **kw))
+        out.append(f'<w:hyperlink w:anchor="ref{m.group(1)}" w:history="1">'
+                   + run(m.group(0), **dict(kw, color='1F4E79')) + '</w:hyperlink>')
+        pos = m.end()
+    if pos < len(t): out.append(run(t[pos:], **kw))
+    return ''.join(out)
+
+def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, keep=False, color=None, mark=None):
     pr='<w:pPr>'
     if keep: pr+='<w:keepNext/>'
     pr+=f'<w:spacing w:before="{before}" w:after="{after}" w:line="{line}" w:lineRule="auto"/>'
@@ -34,7 +47,11 @@ def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, 
     if align: pr+=f'<w:jc w:val="{align}"/>'
     pr+=rpr(sz,b,color=color).replace('<w:rPr>','<w:rPr>').replace('</w:rPr>','</w:rPr>')
     pr+='</w:pPr>'
-    body=run(t, sz=sz, b=b, color=color) if t else ''
+    body=runs(t, sz=sz, b=b, color=color) if t else ''
+    if mark:                      # 참고문헌 항목: 본문 [n] 링크가 도착할 책갈피
+        bid = int(mark[3:])
+        body = (f'<w:bookmarkStart w:id="{bid}" w:name="{mark}"/>'
+                + run(t, sz=sz, b=b, color=color) + f'<w:bookmarkEnd w:id="{bid}"/>')
     return f'<w:p>{pr}{body}</w:p>'
 
 def pagebreak():
@@ -166,7 +183,7 @@ while i < len(BLK):
             li_n+=1
             ref = t.split(' — ')[0] if COMPACT else t
             # 참고문헌은 학술 표기법대로 주석 없이, 9pt·줄간격 1.15로 촘촘하게 싣는다
-            body.append(para(f'[{li_n}] {ref}', sz=18, ind=340, after=20, line=276))
+            body.append(para(f'[{li_n}] {ref}', sz=18, ind=340, after=20, line=276, mark=f'ref{li_n}'))
         elif b.get('ord'):
             li_n+=1; body.append(para(f'{CIRC[(li_n-1)%15]} {t}', sz=22, ind=440, after=60))
         else:
