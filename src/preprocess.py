@@ -233,7 +233,11 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
 
     # 이전에 만든 이미지를 먼저 지운다. 새로 수집한 CSV가 더 짧으면 예전 이미지가
     # 남아 학습 데이터에 섞이기 때문이다(파일명이 시작 인덱스라 덮어쓰기가 안 됨).
-    stale = [n for n in os.listdir(out_dir) if n.lower().endswith(".png")]
+    # 이 CSV 의 이미지만 지운다. 폴더 전체를 지우면 같은 상태의 다른 세션 파일이
+    # 만든 이미지까지 사라져 마지막 파일 것만 남는다(0절 ⑲).
+    base_name = os.path.splitext(fname)[0]
+    stale = [n for n in os.listdir(out_dir)
+             if n.lower().endswith(".png") and n.startswith(base_name + "_")]
     for n in stale:
         os.remove(os.path.join(out_dir, n))
     if stale:
