@@ -37,6 +37,33 @@ import threading
 _i2c_lock = threading.Lock()
 
 
+def _start_continuous(ads, chan):
+    """ADS1115 를 연속 모드로 바꾸되, 칩의 채널(MUX)을 chan 으로 맞춘 뒤에 바꾼다.
+
+    ⚠️ adafruit_ads1x15 의 _write_config() 는 **연속 모드일 때 넘겨받은 채널을 버리고
+    칩에 이미 들어 있는 채널을 다시 써 넣는다**(else 쪽에서 config 레지스터의 MUX 를
+    읽어 덮어씀). 그래서 연속 모드로 읽으면 "직전에 다른 프로그램이 마지막으로 읽은
+    채널"을 계속 읽는다. 단극 진단(bias_check 등)이 A0 나 A3 를 읽고 끝난 뒤 수집기를
+    돌리면 차동 A0−A1 대신 그 채널의 절대 전압(약 1.65 V)이 기록된다(0절 ⑯).
+
+    단발 모드에서는 채널이 제대로 써진다. 그래서 단발로 한 번 읽어 칩의 MUX 를
+    맞춘 다음 연속 모드로 바꾼다 — 모드 setter 는 칩의 현재 MUX 를 보존한다.
+    """
+    try:
+        from adafruit_ads1x15.ads1x15 import Mode
+    except Exception:
+        return
+    ads.mode = Mode.SINGLE
+    chan.value                      # 단발 변환 1회 → 칩 MUX 가 chan 으로 바뀐다
+    ads.mode = Mode.CONTINUOUS
+    # 연속 모드의 "빠른 읽기"는 레지스터 포인터가 변환 레지스터에 있다고 가정하고
+    # 포인터를 다시 쓰지 않는다. 그런데 모드를 바꾸며 설정 레지스터를 썼으니 지금
+    # 포인터는 설정 레지스터에 있다. 그대로 두면 설정값(0x04E3 → 78.2 mV)이 매번
+    # 읽힌다. 마지막 핀 기록을 지워 다음 읽기가 정식 경로(포인터 복귀)를 타게 한다.
+    ads._last_pin_read = None
+    chan.value
+
+
 class Frontend:
     """앞단 하나가 갖춰야 할 것. 하위 클래스가 read() 와 사양 값을 채운다."""
 
@@ -126,11 +153,8 @@ class AD8232Frontend(Frontend):
             # 싱글샷 128SPS 로는 250Hz 를 못 채운다(한 샘플에 8ms 이상).
             try: ads.data_rate = 860
             except Exception: pass
-            try:
-                from adafruit_ads1x15.ads1x15 import Mode
-                ads.mode = Mode.CONTINUOUS
-            except Exception: pass
             self._chan = AnalogIn(ads, getattr(ADS, "P0", 0))   # 증폭기 출력 -> A0
+            _start_continuous(ads, self._chan)
             self.available = True
         except Exception as e:
             self.error = str(e)
@@ -202,15 +226,15 @@ class DCFrontend(Frontend):
             ads.gain = self.pga
             try: ads.data_rate = 860
             except Exception: pass
-            try:
-                from adafruit_ads1x15.ads1x15 import Mode
-                ads.mode = Mode.CONTINUOUS
-            except Exception: pass
             # 차동 입력: A0 와 A1 의 **차이**를 잰다. 공통으로 들어오는 잡음은
             # 양쪽에 똑같이 실리므로 빼면서 사라진다(계측증폭기가 하던 일).
             p0 = getattr(ADS, "P0", 0)
             p1 = getattr(ADS, "P1", 1)
             self._chan = AnalogIn(ads, p0, p1)
+            if not self.has_ref:
+                # 참조쌍을 번갈아 읽을 때는 채널을 계속 바꿔야 하므로 단발 모드로 둔다.
+                # 연속 모드에서는 라이브러리가 채널을 못 바꾼다(_start_continuous 참조).
+                _start_continuous(ads, self._chan)
             if self.has_ref:
                 # 참조쌍은 A2-A3. ADS1115 는 차동쌍이 둘뿐이라 이게 마지막 하나다.
                 # ⚠️ 두 쌍을 번갈아 읽으면 멀티플렉서를 매번 바꿔야 해서 채널당
