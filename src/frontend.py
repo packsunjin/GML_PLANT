@@ -169,7 +169,15 @@ class DCFrontend(Frontend):
     # ADS1115 PGA 설정별 측정 범위(V). 16배가 이 용도에 맞다.
     PGA_RANGE_V = {1: 4.096, 2: 2.048, 4: 1.024, 8: 0.512, 16: 0.256}
 
-    def __init__(self, pga=16, ref=False):
+    def __init__(self, pga=None, ref=False):
+        # PGA 는 환경변수로 받는다(GML_PGA=2). CLI 인자로 받아 use_frontend() 를
+        # 다시 부르면 앞단이 두 번 만들어져 ADS1115 가 꼬인다(0절 ⑫).
+        # 환경변수면 import 시점에 한 번만 만들어진다.
+        if pga is None:
+            try:
+                pga = int(os.environ.get("GML_PGA", "16"))
+            except ValueError:
+                pga = 16
         self._chan = None
         self._chan_ref = None
         self.has_ref = bool(ref)
