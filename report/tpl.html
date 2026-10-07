@@ -233,8 +233,7 @@
   <p>T초 동안 이어지는 신호의 주요 성분은 대략 <span class="n">1/T Hz</span> 근처에 놓인다. 이 환산으로 각 신호가 어느 필터에 걸리는지 판단할 수 있다(그림1). 수십 초짜리 활동전위는 약 <span class="n">0.01–0.1 Hz</span>, 수분 스트레스는 <span class="n">10⁻⁴ Hz</span> 이하에 놓인다.</p>
   <figure>
     <div class="plate">{{FIG_BAND}}</div>
-    <figcaption><span class="cap">그림1.</span> 식물 전기신호의 주파수 위치와 필터 통과대역
-      <span class="desc">신호 위치는 표1의 지속시간을 1/T로 환산한 대략값이다. AD8232(이전 측정계)와 기존 전처리(0.5–20 Hz)는 일반 식물의 활동전위 대역을 지운다.</span></figcaption>
+    <figcaption><span class="cap">그림1.</span> 식물 전기신호의 주파수 위치와 필터 통과대역</figcaption>
   </figure>
 
   <h3>3. 전극 계면과 표류</h3>
@@ -255,9 +254,9 @@
   <p>줄기에 꽂은 두 전극의 전압을 각각 전압 폴로어(MCP6002)로 받아 ADS1115의 A0·A1에 넣고, 두 채널의 차이(차동)를 <span class="n">250 S/s</span>로 기록한다(그림2). 폴로어는 증폭하지 않고 전극에서 전류를 거의 끌어오지 않으며(입력 바이어스 전류 <span class="n">±1 pA</span><sup>[2]</sup>), 고역통과 필터가 없어 느린 변화도 그대로 통과시킨다. 회로가 <span class="n">0–3.3 V</span> 단전원으로 동작하므로, <span class="n">10 kΩ</span> 저항 두 개로 만든 <span class="n">1.65 V</span>를 흙에 꽂은 기준 전극에 걸어 식물 전위가 그 위아래로 움직이게 했다.</p>
   <figure>
     <div class="plate">{{FIG_SYS}}</div>
-    <figcaption><span class="cap">그림2.</span> DC 결합 측정 시스템 구성
-      <span class="desc">두 신호선은 서로 꼬아 상용전원 유도를 줄였다. 측정 범위는 ADS1115의 PGA로 정하며, 회로만 잴 때 ±0.256 V, 전극을 단 측정에서는 표류가 커서 ±2.048 V를 썼다.</span></figcaption>
+    <figcaption><span class="cap">그림2.</span> DC 결합 측정 시스템 구성</figcaption>
   </figure>
+  <p>두 신호선은 서로 꼬아 상용전원 유도를 줄였다. 측정 범위는 ADS1115의 PGA로 정하며, 회로만 잴 때 ±0.256 V, 전극을 단 측정에서는 표류가 커서 ±2.048 V를 썼다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표2.</span> 측정 장비와 획득 설정</caption>
@@ -327,9 +326,9 @@
   <p>2026년 6월 8일 AD8232로 자극 측정을 했고, 스펙트로그램 그림 <span class="n">28</span>장이 남아 있다(그림3). 측정자는 자극하자 값이 <strong>튀었다가 다시 내려갔다</strong>고 기록했다. 원본 숫자 파일은 남아 있지 않아 다시 분석할 수 없다. AD8232의 <span class="n">0.5 Hz</span> 고역통과는 높아진 채 머무는 전압을 수 초 안에 0으로 끌어내리므로, 이 모양은 Ⅳ장 5절의 계단형 접촉 신호가 고역통과를 지난 결과일 수 있다. 같은 시기 예비 관찰에서 <strong>식물을 떼어 낸 채 선만 흔들어도</strong> 출력이 크게 요동쳤다.</p>
   <figure>
     <div class="plate">{{FIG_AD8232}}</div>
-    <figcaption><span class="cap">그림3.</span> AD8232 자극 측정 스펙트로그램 28장 (2026-06-08, 순서대로)
-      <span class="desc">측정자가 확인한 실측 자료이며 원본 CSV는 보존되지 않았다. 각 칸의 가로축은 시간, 세로축은 주파수, 밝을수록 세기가 크다.</span></figcaption>
+    <figcaption><span class="cap">그림3.</span> AD8232 자극 측정 스펙트로그램 28장 (2026-06-08, 순서대로)</figcaption>
   </figure>
+  <p>그림3의 각 칸은 가로축이 시간, 세로축이 주파수이며 밝을수록 세기가 크다.</p>
 
   <h3>2. 측정계 결함의 발견과 수정</h3>
   <h4>(1) 기준 전압 자리에 꽂힌 커패시터</h4>
@@ -363,7 +362,7 @@
 
 
   <h3>3. 1단계 — 회로 자체의 잡음과 표류</h3>
-  <p>기준 전압을 고친 뒤 두 입력을 기준 전압에 직결하고 <span class="n">30</span>분을 측정했다(그림4(a), 표6). <span class="n">30</span>분 표류는 <span class="n">−0.0003 mV</span>로 ADC 한 칸(<span class="n">7.8125 µV</span>)의 약 <span class="n">1/26</span>이다. 기록값의 최소 간격 <span class="n">7.812 µV</span>가 ADC 한 칸과 일치하는 것은 이 파일이 실제 ADC 출력이라는 증거다. 평균 <span class="n">−0.549 mV</span>는 두 폴로어의 오프셋 차이로 규격(±4.5 mV)<sup>[2]</sup> 안이다. <strong>회로는 표류의 원인이 아니다.</strong> 다만 <span class="n">121–122</span>초 간격으로 규칙적으로 튀는 구간이 <span class="n">18</span>개(최대 <span class="n">9.78 mV</span>) 있었다. 간격이 일정해 사람이 건드린 것이 아닌 주기적 외부 간섭으로 보이나 원인은 확인하지 못했다.</p>
+  <p>기준 전압을 고친 뒤 두 입력을 기준 전압에 직결하고 <span class="n">30</span>분을 측정했다(그림4(가), 표6). <span class="n">30</span>분 표류는 <span class="n">−0.0003 mV</span>로 ADC 한 칸(<span class="n">7.8125 µV</span>)의 약 <span class="n">1/26</span>이다. 기록값의 최소 간격 <span class="n">7.812 µV</span>가 ADC 한 칸과 일치하는 것은 이 파일이 실제 ADC 출력이라는 증거다. 평균 <span class="n">−0.549 mV</span>는 두 폴로어의 오프셋 차이로 규격(±4.5 mV)<sup>[2]</sup> 안이다. <strong>회로는 표류의 원인이 아니다.</strong> 다만 <span class="n">121–122</span>초 간격으로 규칙적으로 튀는 구간이 <span class="n">18</span>개(최대 <span class="n">9.78 mV</span>) 있었다. 간격이 일정해 사람이 건드린 것이 아닌 주기적 외부 간섭으로 보이나 원인은 확인하지 못했다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표6.</span> 1단계 측정 결과 (2026-10-06, ±0.256 V, 250 S/s, 450,000 표본)</caption>
@@ -379,12 +378,12 @@
   </div>
 
   <h3>4. 2단계 — 전극이 더하는 표류</h3>
-  <p>황동 핀 세 개(측정 2, 기준 1)를 수돗물 한 컵에 약 <span class="n">3 cm</span> 간격으로 담그고 <span class="n">2</span>시간을 측정했다(그림4(b)). 기준점은 <span class="n">182.00 mV</span>에서 <span class="n">728.48 mV</span>로 <span class="n">546.48 mV</span> 이동했다. 그러나 곡선은 <span class="n">30</span>분 부근에서 성격이 바뀐다. 처음 <span class="n">30</span>분은 분 단위 변화의 오르내림이 <span class="n">15</span>/<span class="n">14</span>로 반반이고 <span class="n">1</span>분 sd 중앙값이 <span class="n">12.29 mV</span>인 반면, <span class="n">52</span>분 이후는 <span class="n">62</span>/<span class="n">5</span>로 거의 한 방향이고 sd가 <span class="n">1.37 mV</span>로 줄었다. 전기화학적 표류는 한 방향으로 진행하므로, 처음 <span class="n">30</span>분은 <strong>핀이 덜 젖어 접촉 면적이 들쭉날쭉했던 구간</strong>으로 해석했다. 측정 직후 같은 핀을 다시 담가 <span class="n">30</span>초를 재자 처음부터 <span class="n">5</span>초 구간 sd가 약 <span class="n">1.5 mV</span>로 작아 이 해석과 맞았다.</p>
+  <p>황동 핀 세 개(측정 2, 기준 1)를 수돗물 한 컵에 약 <span class="n">3 cm</span> 간격으로 담그고 <span class="n">2</span>시간을 측정했다(그림4(나)). 기준점은 <span class="n">182.00 mV</span>에서 <span class="n">728.48 mV</span>로 <span class="n">546.48 mV</span> 이동했다. 그러나 곡선은 <span class="n">30</span>분 부근에서 성격이 바뀐다. 처음 <span class="n">30</span>분은 분 단위 변화의 오르내림이 <span class="n">15</span>/<span class="n">14</span>로 반반이고 <span class="n">1</span>분 sd 중앙값이 <span class="n">12.29 mV</span>인 반면, <span class="n">52</span>분 이후는 <span class="n">62</span>/<span class="n">5</span>로 거의 한 방향이고 sd가 <span class="n">1.37 mV</span>로 줄었다. 전기화학적 표류는 한 방향으로 진행하므로, 처음 <span class="n">30</span>분은 <strong>핀이 덜 젖어 접촉 면적이 들쭉날쭉했던 구간</strong>으로 해석했다. 측정 직후 같은 핀을 다시 담가 <span class="n">30</span>초를 재자 처음부터 <span class="n">5</span>초 구간 sd가 약 <span class="n">1.5 mV</span>로 작아 이 해석과 맞았다.</p>
   <figure>
     <div class="plate">{{FIG_STAGE}}</div>
-    <figcaption><span class="cap">그림4.</span> (a) 1단계 회로 영점 30분, (b) 2단계 전극 표류 2시간 (1분 평균)
-      <span class="desc">(a)의 세로축 전체 폭은 약 0.006 mV, (b)는 약 550 mV다. 같은 회로에서 전극을 단 것만으로 표류가 수만 배 커졌다. (b)의 49–51분 급락은 외부 교란이다.</span></figcaption>
+    <figcaption><span class="cap">그림4.</span> 1단계 회로 영점과 2단계 전극 표류 (1분 평균)</figcaption>
   </figure>
+  <p>그림4(가)의 세로축 전체 폭은 약 <span class="n">0.006 mV</span>, (나)는 약 <span class="n">550 mV</span>다. 같은 회로에서 전극을 단 것만으로 표류가 수만 배 커졌다. (나)의 <span class="n">49–51</span>분 급락은 외부 교란이다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표7.</span> 2단계 구간별 표류와 대역별 잡음</caption>
@@ -403,9 +402,9 @@
   <p>황동 핀 두 개를 줄기에 <span class="n">3 cm</span> 간격으로 관통시키고 기준 핀을 흙에 꽂았다. 첫 <span class="n">30</span>초 측정에서 전체 흔들림의 <span class="n">66.2 %</span>가 <span class="n">55–65 Hz</span> 상용전원 성분이었고, <span class="n">1 Hz</span> 이하만 남기면 sd는 <span class="n">2.1 mV</span>였다. 이어서 실시간 화면으로 기록하며 손으로 줄기와 잎을 만졌다(그림5).</p>
   <figure>
     <div class="plate">{{FIG_TOUCH}}</div>
-    <figcaption><span class="cap">그림5.</span> 식물 기록과 손 접촉 신호
-      <span class="desc">(a) 기록 앞 1719초의 0.1초 평균. 점선은 평상시 기준선(−49.9 mV). (b) 한 번의 접촉 확대. 손이 닿는 순간 솟고 떼면 기준선 아래로 내려갔다가 수 초에 걸쳐 돌아온다. (c) 접촉 43건의 상승 폭 분포. 파란 띠는 문헌의 접촉 유발 활동전위 사분위 범위(26.8–39.8 mV)[7].</span></figcaption>
+    <figcaption><span class="cap">그림5.</span> 식물 기록과 손 접촉 신호</figcaption>
   </figure>
+  <p>그림5(가)는 기록 앞 <span class="n">1719</span>초의 <span class="n">0.1</span>초 평균이며, 점선은 평상시 기준선(<span class="n">−49.9 mV</span>)이다. (나)에서 손이 닿는 순간 전압이 솟고, 떼면 기준선 아래로 내려갔다가 수 초에 걸쳐 돌아온다. (다)의 파란 띠는 문헌의 접촉 유발 활동전위 사분위 범위(<span class="n">26.8–39.8 mV</span>)<sup>[7]</sup>다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표8.</span> 손 접촉 신호 (기록 앞 1719초, 0.1초 평균)</caption>
@@ -424,11 +423,10 @@
 
   <h3>6. 자극 반응을 분리할 수 없다는 한계</h3>
   <p>식물을 칠 때마다 값이 크게 튀었다(실시간 화면, 측정자 확인). 그러나 치려면 손이 닿고 줄기와 핀이 흔들린다. 손 접촉 신호(중앙값 <span class="n">275 mV</span>)는 문헌 활동전위(<span class="n">33.9 mV</span>)의 약 <span class="n">8</span>배이고, 핀의 움직임도 전극 전위를 바꾼다<sup>[8]</sup>. 문헌<sup>[7]</sup>의 기준으로 보면 접촉과 <strong>동시에</strong> 생기는 변화는 잡음 쪽에 해당하는데, 본 연구의 계단은 손이 닿자마자 생겼다.</p>
-  <p>스펙트로그램에서도 구분되지 않는다(그림6). <span class="n">0.5–20 Hz</span> 대역통과 후의 스펙트로그램은 손을 대는 순간과 떼는 순간에 밝은 세로 띠를 만들고, 핀이나 선을 흔들 때도 같은 띠가 나타났다(측정자 관찰). 각 창에서 평균을 빼므로 높게 머무는 구간은 오히려 어둡다. 분류기에 들어가는 <span class="n">10</span>초 창(그림6(c))도 접촉 창은 가장자리 띠, 비접촉 창은 가로 줄무늬만 보인다. 모든 창에 보이는 <span class="n">10 Hz</span> 가로줄은 상용전원의 <span class="n">4</span>배 고조파 <span class="n">240 Hz</span>가 <span class="n">250 S/s</span> 표본화에서 <span class="n">|240 − 250| = 10 Hz</span>로 접힌 것으로 보인다.</p>
+  <p>스펙트로그램에서도 구분되지 않는다. 그림6(가)는 손 접촉이 이어진 <span class="n">90</span>초의 전압, (나)는 같은 구간의 스펙트로그램이다. <span class="n">0.5–20 Hz</span> 대역통과 후의 스펙트로그램은 손을 대는 순간과 떼는 순간에 밝은 세로 띠를 만들고, 핀이나 선을 흔들 때도 같은 띠가 나타났다(측정자 관찰). 각 창에서 평균을 빼므로 높게 머무는 구간은 오히려 어둡다. 분류기에 들어가는 <span class="n">10</span>초 창(그림6(다))도 접촉 창은 가장자리 띠, 비접촉 창은 가로 줄무늬만 보인다. 모든 창에 보이는 <span class="n">10 Hz</span> 가로줄은 상용전원의 <span class="n">4</span>배 고조파 <span class="n">240 Hz</span>가 <span class="n">250 S/s</span> 표본화에서 <span class="n">|240 − 250| = 10 Hz</span>로 접힌 것으로 보인다.</p>
   <figure>
     <div class="plate">{{FIG_SPEC}}</div>
-    <figcaption><span class="cap">그림6.</span> DC 측정계의 식물 스펙트로그램
-      <span class="desc">(a) 손 접촉이 이어진 90초의 전압(0.1초 평균). (b) 같은 구간의 0.5–20 Hz 스펙트로그램. 손을 대고 뗄 때마다 밝은 세로 띠가 생긴다. (c) 분류기 입력 10초 창 예시 — 왼쪽 7장 접촉, 오른쪽 7장 비접촉.</span></figcaption>
+    <figcaption><span class="cap">그림6.</span> DC 측정계의 식물 스펙트로그램</figcaption>
   </figure>
   <div class="note crit">
     <span class="lbl">찾아낸 한계</span>

@@ -4,7 +4,7 @@
     cd ~/GML_PLANT/report && ../venv/bin/python3 figs.py            # 파이에서
     ../venv/bin/python3 figs.py --ad8232 /tmp/ad8232                # 그림4 도 다시 만들 때
 
-데이터가 파이에만 있으므로 파이에서 돌린다. 그림 라벨은 영어(3절 양식).
+데이터가 파이에만 있으므로 파이에서 돌린다. 그림 라벨은 한글(서식2: 그림 안 내용·캡션 모두 한글 원칙).
 값을 손으로 옮기지 않는다 — 본문 숫자와 그림이 어긋나지 않게 원본 CSV 에서 다시 계산한다.
 
 FIG_AD8232.png 는 측정자가 준 AD8232 스펙트로그램 28장(2026-06-08, 원본 CSV 없음)을
@@ -22,7 +22,8 @@ from scipy import signal
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DPI = 400
-plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 8, "axes.linewidth": 0.6,
+# 한글: Noto Sans CJK 의 .ttc 를 matplotlib 은 첫 글꼴 이름(JP)으로 등록한다. 한글 글리프는 같다.
+plt.rcParams.update({"font.family": "Noto Sans CJK JP", "axes.unicode_minus": False, "font.size": 8, "axes.linewidth": 0.6,
                      "xtick.major.width": 0.6, "ytick.major.width": 0.6, "axes.titlesize": 8.5})
 INK, GRAY, GREEN, RED, BLUE = "#1b1b1b", "#6b6b6b", "#2e7d4f", "#c0392b", "#1f5f8b"
 FS = 250.0
@@ -69,17 +70,17 @@ def fig_sys():
     def arrow(x0, y0, x1, y1):
         ax.annotate("", (x1, y1), (x0, y0), arrowprops=dict(arrowstyle="-|>", lw=0.8, color=INK))
 
-    box(0, 17, 19, 15, "Tomato stem", "E1 upper / E2 lower\nbrass pins, 3 cm apart\npierced through stem")
-    box(25, 17, 18, 15, "MCP6002 x 2", "unity-gain followers\nIB 1 pA, 10^13 ohm\nno high-pass filter")
-    box(49, 17, 21, 15, "ADS1115", "16-bit, A0 - A1 differential\nPGA +-0.256 V (bench)\nPGA +-2.048 V (electrodes)")
-    box(76, 17, 23, 15, "Raspberry Pi 5", "250 S/s recording\nlive spectrogram page\nSVM / RandomForest", edge=BLUE)
+    box(0, 17, 19, 15, "토마토 줄기", "전극1(위) · 전극2(아래)\n황동 핀, 간격 3 cm\n줄기 관통")
+    box(25, 17, 18, 15, "MCP6002 × 2", "전압 폴로어(이득 1배)\n입력 전류 1 pA\n고역통과 필터 없음")
+    box(49, 17, 21, 15, "ADS1115", "16비트, A0 − A1 차동\n회로 점검: ±0.256 V\n전극 측정: ±2.048 V")
+    box(76, 17, 23, 15, "라즈베리파이 5", "초당 250회 기록\n실시간 스펙트로그램\nSVM · 랜덤포레스트", edge=BLUE)
     arrow(19.6, 24.5, 24.4, 24.5); arrow(43.6, 24.5, 48.4, 24.5); arrow(70.6, 24.5, 75.4, 24.5)
     ax.text(72.5, 25.5, "I2C", ha="center", fontsize=6.5, color=GRAY)
 
-    box(1, 1, 30, 12, "Bias divider", "3.3 V - 10 kohm - 10 kohm - GND\nmid-point 1.65 V -> soil electrode")
+    box(1, 1, 30, 12, "기준 전압 분압", "3.3 V – 10 kΩ – 10 kΩ – 접지\n중점 1.65 V → 흙 기준 전극")
     arrow(16, 13.3, 9.5, 16.4)
-    ax.text(33, 7, "Both inputs share the 1.65 V bias, so the stem potential can swing\n"
-                   "above and below it on a 0-3.3 V single supply.", fontsize=6.6, color=GRAY, va="center")
+    ax.text(33, 7, "0–3.3 V 단전원 회로에서 식물 전위가 1.65 V를\n"
+                   "중심으로 위아래로 움직일 수 있게 한다.", fontsize=6.6, color=GRAY, va="center")
     save(fig, "FIG_SYS.png")
 
 
@@ -87,7 +88,7 @@ def fig_sys():
 def fig_band():
     fig, ax = plt.subplots(figsize=(7.2, 2.7))
     ax.set_xscale("log"); ax.set_xlim(1e-5, 3e3); ax.set_ylim(-0.4, 7.2)
-    ax.set_yticks([]); ax.set_xlabel("Frequency (Hz, log scale)")
+    ax.set_yticks([]); ax.set_xlabel("주파수 (Hz, 로그 눈금)")
     for s in ("left", "right", "top"):
         ax.spines[s].set_visible(False)
     ax.grid(axis="x", which="major", lw=0.4, color="#dddddd")
@@ -100,16 +101,16 @@ def fig_band():
         if label:
             ax.text(f1 * 1.35, y + 0.35, label, ha="left", va="center", fontsize=6.8)
 
-    ax.text(1.2e-5, 6.75, "Signals (duration T -> f ~ 1/T)", fontsize=6.8, color=GRAY)
-    bar(1e-5, 1e-4, 5.8, "water stress (hours-days)", "#b5651d")
-    bar(3e-4, 3e-3, 4.9, "variation potential (<= tens of min)", "#b5651d")
-    bar(1e-2, 1e-1, 4.0, "AP, ordinary plants (tens of s)", GREEN)
-    bar(5e-2, 2e-1, 3.1, "AP, touch (~10 s) [Degli Agosti 2014]", GREEN)
-    bar(57, 63, 4.9, "mains 60 Hz", RED)
-    ax.text(1.2e-5, 2.45, "Pass bands", fontsize=6.8, color=GRAY)
-    bar(1e-2, 1, 1.6, "proposed (0.01-1 Hz)", GREEN, filled=False)
-    bar(0.5, 20, 0.7, "existing preprocess (0.5-20 Hz)", BLUE, filled=False)
-    bar(0.5, 40, -0.2, "AD8232 (0.5-40 Hz)", BLUE, filled=False)
+    ax.text(1.2e-5, 6.75, "신호 (지속시간 T → 주파수 약 1/T)", fontsize=6.8, color=GRAY)
+    bar(1e-5, 1e-4, 5.8, "수분 스트레스 (수 시간~수 일)", "#b5651d")
+    bar(3e-4, 3e-3, 4.9, "변동전위 (최대 수십 분)", "#b5651d")
+    bar(1e-2, 1e-1, 4.0, "활동전위, 일반 식물 (수십 초)", GREEN)
+    bar(5e-2, 2e-1, 3.1, "활동전위, 접촉 자극 (약 10초)", GREEN)
+    bar(57, 63, 4.9, "상용전원 60 Hz", RED)
+    ax.text(1.2e-5, 2.45, "필터가 남기는 범위", fontsize=6.8, color=GRAY)
+    bar(1e-2, 1, 1.6, "제안 대역 (0.01–1 Hz)", GREEN, filled=False)
+    bar(0.5, 20, 0.7, "기존 전처리 (0.5–20 Hz)", BLUE, filled=False)
+    bar(0.5, 40, -0.2, "AD8232 (0.5–40 Hz)", BLUE, filled=False)
     save(fig, "FIG_BAND.png")
 
 
@@ -119,15 +120,15 @@ def fig_stage():
     s2 = minute_means(load_bench("stage2_electrode_2h.csv"))
     fig, (a, b) = plt.subplots(1, 2, figsize=(7.2, 2.5), gridspec_kw={"width_ratios": [1, 1.6]})
     a.plot(np.arange(len(s1)) + 0.5, s1, color=BLUE, lw=1.1)
-    a.set_title("(a) Stage 1: inputs shorted, 30 min", loc="left")
-    a.set_xlabel("Time (min)"); a.set_ylabel("Voltage (mV, 1-min mean)")
+    a.set_title("(가) 1단계: 입력 단락, 30분", loc="left")
+    a.set_xlabel("시간 (분)"); a.set_ylabel("전압 (mV, 1분 평균)")
     a.ticklabel_format(axis="y", useOffset=False)
     b.plot(np.arange(len(s2)) + 0.5, s2, color=GREEN, lw=1.1)
     b.axhline(s2[0] + 5, color=RED, ls="--", lw=0.8)
-    b.text(2, s2[0] + 18, "pass limit (start + 5 mV)", color=RED, fontsize=6.6)
-    b.axvline(30, color=GRAY, ls=":", lw=0.8); b.text(31, s2.max() - 30, "wetting ends ~30 min", fontsize=6.6, color=GRAY)
-    b.set_title("(b) Stage 2: brass pins in tap water, 2 h", loc="left")
-    b.set_xlabel("Time (min)"); b.set_ylabel("Voltage (mV, 1-min mean)")
+    b.text(2, s2[0] + 18, "합격 기준 (시작값 + 5 mV)", color=RED, fontsize=6.6)
+    b.axvline(30, color=GRAY, ls=":", lw=0.8); b.text(31, s2.max() - 30, "약 30분: 젖음 끝", fontsize=6.6, color=GRAY)
+    b.set_title("(나) 2단계: 수돗물 속 황동 핀, 2시간", loc="left")
+    b.set_xlabel("시간 (분)"); b.set_ylabel("전압 (mV, 1분 평균)")
     for x in (a, b):
         x.grid(lw=0.3, color="#e3e3e3")
     fig.tight_layout(w_pad=2.0)
@@ -161,22 +162,22 @@ def fig_touch():
     a = fig.add_subplot(gs[0, :])
     a.plot(t10 / 60, a10, color=GREEN, lw=0.5)
     a.axhline(amps["base_mv"], color=GRAY, ls="--", lw=0.6)
-    a.set_title(f"(a) Plant recording, 0-{LIVE_SEC/60:.1f} min (0.1-s means); spikes = hand contact", loc="left")
-    a.set_xlabel("Time (min)"); a.set_ylabel("Voltage (mV)")
+    a.set_title(f"(가) 식물 기록 0–{LIVE_SEC/60:.1f}분 (0.1초 평균) — 솟은 곳이 손 접촉", loc="left")
+    a.set_xlabel("시간 (분)"); a.set_ylabel("전압 (mV)")
     # (b) 한 번 접촉 확대 — 1182.1 s 사건
     t0 = 1182.1
     sel = (t10 > t0 - 8) & (t10 < t0 + 9)
     b = fig.add_subplot(gs[1, 0])
     b.plot(t10[sel] - t0, a10[sel], color=GREEN, lw=1.0)
     b.axvspan(0, 0.7, color=RED, alpha=0.15, lw=0)
-    b.set_title("(b) One contact (shaded = hand on stem)", loc="left")
-    b.set_xlabel("Time from contact (s)"); b.set_ylabel("Voltage (mV)")
+    b.set_title("(나) 접촉 한 번 확대 (색칠 = 손이 닿은 동안)", loc="left")
+    b.set_xlabel("접촉 시점부터 (초)"); b.set_ylabel("전압 (mV)")
     c = fig.add_subplot(gs[1, 1])
     c.hist(amps["amps_mv"], bins=np.arange(0, 375, 25), color=GREEN, ec="white", lw=0.6)
     c.axvspan(26.8, 39.8, color=BLUE, alpha=0.25, lw=0)
-    c.text(45, c.get_ylim()[1] * 0.85, "touch AP\n(literature)", fontsize=6.2, color=BLUE)
-    c.set_title(f"(c) Step height, n = {len(amps['amps_mv'])}", loc="left")
-    c.set_xlabel("Rise on contact (mV)"); c.set_ylabel("Count")
+    c.text(45, c.get_ylim()[1] * 0.85, "문헌 접촉\n활동전위", fontsize=6.2, color=BLUE)
+    c.set_title(f"(다) 계단 높이, {len(amps['amps_mv'])}건", loc="left")
+    c.set_xlabel("접촉 시 상승 폭 (mV)"); c.set_ylabel("횟수")
     for x in (a, b, c):
         x.grid(lw=0.3, color="#e3e3e3")
     save(fig, "FIG_TOUCH.png")
@@ -200,12 +201,12 @@ def fig_spec():
     a10 = raw[: len(raw) // m * m].reshape(-1, m).mean(axis=1)
     a.plot(np.arange(len(a10)) * 0.1, a10, color=GREEN, lw=0.7)
     a.set_xlim(0, t1 - t0); a.set_ylabel("mV"); a.set_xticklabels([])
-    a.set_title(f"(a) Voltage, {t0/60:.1f}-{t1/60:.1f} min of the plant recording", loc="left")
+    a.set_title(f"(가) 전압, 식물 기록 {t0/60:.1f}–{t1/60:.1f}분", loc="left")
     a.grid(lw=0.3, color="#e3e3e3")
     b = fig.add_subplot(gs[1, :])
     b.pcolormesh(tt, f[keep], 10 * np.log10(S[keep] + 1e-12), shading="auto", cmap="viridis")
-    b.set_xlim(0, t1 - t0); b.set_xlabel("Time (s)"); b.set_ylabel("Frequency (Hz)")
-    b.set_title("(b) Spectrogram after 0.5-20 Hz band-pass (classifier input band)", loc="left")
+    b.set_xlim(0, t1 - t0); b.set_xlabel("시간 (초)"); b.set_ylabel("주파수 (Hz)")
+    b.set_title("(나) 0.5–20 Hz 대역통과 후 스펙트로그램 (분류기 입력 대역)", loc="left")
     tiles = {k: sorted(glob.glob(os.path.join(ROOT, "data", "touch", "spectrogram", k, "*.png")))
              for k in ("자극", "정상")}
     pick = []
@@ -216,7 +217,7 @@ def fig_spec():
     for j, (k, p) in enumerate(pick):
         ax = fig.add_subplot(gs[2, j]); ax.axis("off")
         ax.imshow(Image.open(p).convert("RGB"))
-    fig.text(0.125, 0.285, "(c) 10-s windows fed to the classifier — left 7: contact,  right 7: no contact",
+    fig.text(0.125, 0.285, "(다) 분류기에 넣는 10초 창 — 왼쪽 7장 접촉, 오른쪽 7장 비접촉",
              fontsize=8.5)
     save(fig, "FIG_SPEC.png")
 

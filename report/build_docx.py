@@ -27,6 +27,7 @@ def run(t, **kw):
     return f'<w:r>{rpr(**kw)}<w:t xml:space="preserve">{escape(t)}</w:t></w:r>'
 
 CITE = re.compile(r'\[(\d+)\]')
+CAPNO = re.compile(r'((?:그림|표)\d+\.)(.*)', re.S)
 
 def runs(t, **kw):
     """본문의 [n] 을 참고문헌 n 번으로 가는 내부 링크로 만든다(책갈피 ref<n>)."""
@@ -39,7 +40,7 @@ def runs(t, **kw):
     if pos < len(t): out.append(run(t[pos:], **kw))
     return ''.join(out)
 
-def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, keep=False, color=None, mark=None):
+def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, keep=False, color=None, mark=None, cap=False):
     pr='<w:pPr>'
     if keep: pr+='<w:keepNext/>'
     pr+=f'<w:spacing w:before="{before}" w:after="{after}" w:line="{line}" w:lineRule="auto"/>'
@@ -48,6 +49,9 @@ def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, 
     pr+=rpr(sz,b,color=color).replace('<w:rPr>','<w:rPr>').replace('</w:rPr>','</w:rPr>')
     pr+='</w:pPr>'
     body=runs(t, sz=sz, b=b, color=color) if t else ''
+    m = CAPNO.match(t) if cap else None
+    if m:                         # 서식2: "그림1." · "표1." 번호만 굵게, 제목은 보통
+        body = run(m.group(1), sz=sz, b=True) + runs(m.group(2), sz=sz, b=b, color=color)
     if mark:                      # 참고문헌 항목: 본문 [n] 링크가 도착할 책갈피
         bid = int(mark[3:])
         body = (f'<w:bookmarkStart w:id="{bid}" w:name="{mark}"/>'
@@ -192,16 +196,15 @@ while i < len(BLK):
         if not in_ref: li_n=0
     elif k=='tblcap':
         # 양식: 표 제목은 표 상단 중앙, 휴먼명조 11pt
-        body.append(para(t, sz=22, align='center', after=60, keep=True))
+        body.append(para(t, sz=22, align='center', after=60, keep=True, cap=True))
     elif k=='table':
         if not (COMPACT and skip_section): body.append(table(t['head'], t['body']))
     elif k=='plate':
         body.append(image(plate_i, f'rId{100+plate_i}')); plate_i+=1
     elif k=='figcap':
         parts=[x.strip() for x in t.split('\n') if x.strip()]
-        body.append(para(parts[0], sz=22, align='center', after=40))
-        for extra in parts[1:]:
-            body.append(para(extra, sz=18, align='center', after=100, color='555555'))
+        # 서식2: 그림 제목만 그림 아래 가운데, 휴먼명조 11pt. 설명은 본문으로 옮겼다.
+        body.append(para(' '.join(parts), sz=22, align='center', after=100, cap=True))
     i+=1
 if box_open is not None: body.append(box(box_open))
 print("본문 요소", len(body))
