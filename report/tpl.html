@@ -173,7 +173,6 @@
         <li>라즈베리파이 5 + 16비트 ADC(ADS1115) + 전압 폴로어(MCP6002)로 <strong>DC 결합 측정계</strong>를 직접 제작</li>
         <li>오차의 출처를 가르기 위해 <strong>회로만(1단계) → 회로+전극(2단계) → 회로+전극+식물(3단계)</strong> 순으로 하나씩 더해 측정</li>
         <li>실시간 스펙트로그램 페이지를 만들어 식물 접촉·자극 반응을 관찰하고, 그 기록으로 <strong>접촉 감지 분류기</strong>를 학습</li>
-        <li>보고서가 인용한 문헌 수치를 원문과 대조</li>
       </ul>
     </td></tr>
     <tr><th>연구 성과</th><td>
@@ -182,7 +181,7 @@
         <li><strong>측정 한계는 전극에 있음을 찾아냈다.</strong> 같은 회로에 황동 핀 전극을 달자 안정된 뒤에도 <span class="n">30</span>분에 <span class="n">14.28 mV</span>가 표류했다. 이에 따라 수 시간 규모의 <strong>수분부족은 본 측정계로 판별할 수 없다</strong>.</li>
         <li>식물에 손이 닿으면 중앙값 <span class="n">275 mV</span>의 계단형 전압이 생겼다. 문헌의 접촉 유발 활동전위(중앙값 <span class="n">33.9 mV</span>)의 약 <span class="n">8</span>배이며, 핀·선의 움직임도 같은 모양을 만들어 <strong>자극 반응을 분리할 수 없다는 한계를 확인했다</strong>.</li>
         <li><strong>접촉 감지 분류기</strong>는 학습에 쓰지 않은 <span class="n">251</span>개 창을 모두 맞혔다. 단, 특징 하나의 문턱값으로도 <span class="n">250</span>개를 맞혀 과제가 쉬웠음을 함께 보고한다.</li>
-        <li>측정계 결함 <span class="n">3</span>건(기준 전압 소자 오삽입, 라이브러리 채널 선택 오류, 전처리 이미지 삭제 오류)과 인용 오류 <span class="n">3</span>건을 찾아 정정했다.</li>
+        <li>측정을 무효로 만든 결함 <span class="n">2</span>건(기준 전압 자리의 커패시터, 라이브러리의 채널 선택 오류)을 단극 측정과 교차 확인으로 찾아 고쳤다.</li>
       </ul>
     </td></tr>
   </tbody></table>
@@ -242,10 +241,10 @@
   <p>금속이 전해질에 닿으면 경계에서 산화·환원 반응이 시작되어 전극 고유의 전압인 <strong>반쪽전지 전위</strong>가 생긴다<sup>[8]</sup>. 측정은 두 전극의 차이로 하므로 두 전극이 똑같다면 이 전압은 상쇄되지만, 표면 상태와 접촉 면적이 달라 차이가 남고 그 차이가 시간에 따라 변한다. 이것이 <strong>전극 표류</strong>다. 또 전극이 전해질에 대해 움직이면 전하 이중층이 흐트러져 전위가 일시적으로 바뀐다(움직임 잡음)<sup>[8]</sup>. 같은 문헌은 주파수가 낮은 생체신호에는 비분극 전극(Ag/AgCl)을 쓰라고 권한다<sup>[8]</sup>. 본 연구는 Ag/AgCl 전극을 구하지 못해 <strong>점퍼선의 황동 핀</strong>을 전극으로 썼다.</p>
 
   <h3>4. 이전 측정계(AD8232)의 제약</h3>
-  <p>본 연구는 처음에 심전도용 증폭기 AD8232<sup>[10]</sup>를 썼다. 저장소 설정 기준으로 <span class="n">0.5 Hz</span> 고역통과·<span class="n">40 Hz</span> 저역통과·이득 <span class="n">1100</span>배이며, 고역통과가 칩 안에 고정되어 있어 그림1의 활동전위 대역(<span class="n">0.01–0.1 Hz</span>)을 지운다. 또 단전원 <span class="n">3.3 V</span>에서 입력 환산 범위가 약 <span class="n">±1.23 mV</span>(계산: (1.65 − 0.3) V ÷ 1100)에 그쳐 수십 mV 신호는 잘린다. 이 두 가지 이유로 DC 결합 측정계로 바꾸었다.</p>
+  <p>본 연구는 처음에 심전도용 증폭기 AD8232<sup>[9]</sup>를 썼다. 저장소 설정 기준으로 <span class="n">0.5 Hz</span> 고역통과·<span class="n">40 Hz</span> 저역통과·이득 <span class="n">1100</span>배이며, 고역통과가 칩 안에 고정되어 있어 그림1의 활동전위 대역(<span class="n">0.01–0.1 Hz</span>)을 지운다. 또 단전원 <span class="n">3.3 V</span>에서 입력 환산 범위가 약 <span class="n">±1.23 mV</span>(계산: (1.65 − 0.3) V ÷ 1100)에 그쳐 수십 mV 신호는 잘린다. 이 두 가지 이유로 DC 결합 측정계로 바꾸었다.</p>
 
   <h3>5. 스펙트로그램 기반 분류</h3>
-  <p>시계열을 짧은 창으로 잘라 주파수별 세기를 색으로 나타낸 것이 <strong>스펙트로그램</strong>이다. 본 연구의 전처리는 <span class="n">0.5–20 Hz</span> 대역통과와 <span class="n">60 Hz</span> 노치를 거친 신호를 <span class="n">10</span>초 창(<span class="n">2</span>초 이동)으로 잘라 <span class="n">224×224</span> 스펙트로그램 이미지와 <span class="n">17</span>개 명시적 특징(시간영역 <span class="n">7</span>, 주파수영역 <span class="n">7</span>, 느린 성분 <span class="n">3</span>)을 만든다<sup>[11]</sup>. 각 창에서 평균을 빼고 세기를 구하므로, 스펙트로그램은 전압이 <strong>머무는 높이가 아니라 변화</strong>를 보여 준다.</p>
+  <p>시계열을 짧은 창으로 잘라 주파수별 세기를 색으로 나타낸 것이 <strong>스펙트로그램</strong>이다. 본 연구의 전처리는 <span class="n">0.5–20 Hz</span> 대역통과와 <span class="n">60 Hz</span> 노치를 거친 신호를 <span class="n">10</span>초 창(<span class="n">2</span>초 이동)으로 잘라 <span class="n">224×224</span> 스펙트로그램 이미지와 <span class="n">17</span>개 명시적 특징(시간영역 <span class="n">7</span>, 주파수영역 <span class="n">7</span>, 느린 성분 <span class="n">3</span>)을 만든다<sup>[10]</sup>. 각 창에서 평균을 빼고 세기를 구하므로, 스펙트로그램은 전압이 <strong>머무는 높이가 아니라 변화</strong>를 보여 준다.</p>
 </section>
 
 <section>
@@ -300,7 +299,7 @@
   <h3>3. 분석 방법</h3>
   <ul>
     <li><strong>표류</strong> — 마지막 <span class="n">30</span>초 평균에서 처음 <span class="n">30</span>초 평균을 뺀 값</li>
-    <li><strong>잡음</strong> — 표준편차(sd). 대역 잡음은 버터워스 대역통과를 앞뒤로 한 번씩 걸어(위상 왜곡 없음) 해당 대역만 남긴 뒤의 sd(SciPy<sup>[13]</sup>)</li>
+    <li><strong>잡음</strong> — 표준편차(sd). 대역 잡음은 버터워스 대역통과를 앞뒤로 한 번씩 걸어(위상 왜곡 없음) 해당 대역만 남긴 뒤의 sd(SciPy<sup>[12]</sup>)</li>
     <li><strong>단극 점검</strong> — 차동 측정만으로는 기준 전압 결함이 드러나지 않으므로(Ⅳ장 2절), 각 채널을 GND 기준으로 따로 읽는 점검(<code>bias_check.py</code>)을 함께 했다</li>
     <li><strong>교차 확인</strong> — 기록값을 같은 순간 단극으로 잰 두 채널의 차이와 맞춰 보아 기록 경로의 오류를 확인했다</li>
   </ul>
@@ -310,10 +309,10 @@
 
   <h3>5. 접촉 감지 분류기 설계</h3>
   <p>식물 기록에서 손 접촉 구간을 자동으로 찾아 데이터셋을 만들었다(<code>build_touch_dataset.py</code>). <span class="n">0.1</span>초 평균이 주변 <span class="n">30</span>초 중앙값보다 <span class="n">60 mV</span> 넘게 오른 구간을 접촉으로 보고, <span class="n">8</span>초 안에 이어진 접촉은 한 덩어리로 묶었다. 덩어리 앞뒤 <span class="n">5</span>초를 포함한 구간을 접촉 파일로, 손을 뗀 뒤 <span class="n">10</span>초를 제외한 나머지를 최대 <span class="n">60</span>초씩 비접촉 파일로 저장했다.</p>
-  <p>창이 <span class="n">80 %</span> 겹치므로 무작위로 나누면 겹친 창이 학습과 평가에 동시에 들어가 정확도가 부풀려진다. 그래서 <strong>파일 단위로 평가용 파일을 따로 떼어</strong> 학습에 전혀 쓰지 않았다. 분류기는 SVM과 Random Forest(scikit-learn<sup>[12]</sup>)를 격자 탐색으로 학습했다. 또 결과를 해석하기 위해 <strong>특징 하나에 문턱값 하나</strong>만 쓰는 가장 단순한 규칙을 학습 데이터에서 찾아 같은 평가 데이터에 적용하고 비교했다.</p>
+  <p>창이 <span class="n">80 %</span> 겹치므로 무작위로 나누면 겹친 창이 학습과 평가에 동시에 들어가 정확도가 부풀려진다. 그래서 <strong>파일 단위로 평가용 파일을 따로 떼어</strong> 학습에 전혀 쓰지 않았다. 분류기는 SVM과 Random Forest(scikit-learn<sup>[11]</sup>)를 격자 탐색으로 학습했다. 또 결과를 해석하기 위해 <strong>특징 하나에 문턱값 하나</strong>만 쓰는 가장 단순한 규칙을 학습 데이터에서 찾아 같은 평가 데이터에 적용하고 비교했다.</p>
 
   <h3>6. 소스코드 공개</h3>
-  <p>수집·전처리·학습·실시간 화면의 전체 소스코드와 단계별 측정 기록은 GitHub 저장소<sup>[11]</sup>에 공개되어 있다. 측정 파일마다 실측인지 시뮬레이션인지를 적은 <code>.meta.json</code>을 함께 저장한다.</p>
+  <p>수집·전처리·학습·실시간 화면의 전체 소스코드와 단계별 측정 기록은 GitHub 저장소<sup>[10]</sup>에 공개되어 있다. 측정 파일마다 실측인지 시뮬레이션인지를 적은 <code>.meta.json</code>을 함께 저장한다.</p>
 </section>
 
 <section>
@@ -346,10 +345,9 @@
       </tbody>
     </table>
   </div>
-  <p>수리 과정에서 브레드보드의 끊긴 자리를 세 번 밟았다(저항이 중앙 홈 양쪽에 따로 꽂힘, 점퍼 미삽입, 칩 전원선이 반대쪽 레일에 꽂힘). 연결이 끊겨 떠 있는 채널은 단극으로 재면 <span class="n">100 mV</span> 이상 방황하고, 제대로 연결된 채널은 <span class="n">1 mV</span> 이하로 흔들려 몇 초 만에 구별된다.</p>
 
   <h4>(2) 라이브러리가 엉뚱한 채널을 읽은 오류</h4>
-  <p>식물 <span class="n">3</span>시간 기록이 처음부터 끝까지 <span class="n">1,609 mV</span>로 고정되어 있었다. 같은 순간 단극으로 잰 두 채널의 차이는 <span class="n">−148 mV</span>였고, 기록값은 기준 전압 채널의 단극 값과 같았다. 원인은 ADS1115 제어 라이브러리<sup>[14]</sup>의 설정 함수였다. <strong>연속 변환 모드에서는 요청한 채널을 버리고 칩에 남아 있던 채널을 다시 써 넣어</strong>, 직전에 점검 프로그램이 마지막으로 읽은 채널을 계속 읽은 것이다. 단발 모드로 한 번 읽어 채널을 맞춘 뒤 연속 모드로 바꾸도록 고쳤고, 일부러 다른 채널에 맞춰 둔 상태에서도 기록값(<span class="n">−70.4 mV</span>)이 같은 순간의 단극 차이(<span class="n">−55.9 mV</span>)와 맞는 것을 확인했다.</p>
+  <p>식물 <span class="n">3</span>시간 기록이 처음부터 끝까지 <span class="n">1,609 mV</span>로 고정되어 있었다. 같은 순간 단극으로 잰 두 채널의 차이는 <span class="n">−148 mV</span>였고, 기록값은 기준 전압 채널의 단극 값과 같았다. 원인은 ADS1115 제어 라이브러리<sup>[13]</sup>의 설정 함수였다. <strong>연속 변환 모드에서는 요청한 채널을 버리고 칩에 남아 있던 채널을 다시 써 넣어</strong>, 직전에 점검 프로그램이 마지막으로 읽은 채널을 계속 읽은 것이다. 단발 모드로 한 번 읽어 채널을 맞춘 뒤 연속 모드로 바꾸도록 고쳤고, 일부러 다른 채널에 맞춰 둔 상태에서도 기록값(<span class="n">−70.4 mV</span>)이 같은 순간의 단극 차이(<span class="n">−55.9 mV</span>)와 맞는 것을 확인했다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표5.</span> 채널 선택 오류의 영향을 받은 측정</caption>
@@ -363,8 +361,6 @@
     </table>
   </div>
 
-  <h4>(3) 전처리가 같은 상태의 이미지를 지운 오류</h4>
-  <p>전처리 코드는 파일 하나를 처리할 때마다 같은 상태 폴더의 이미지를 <strong>모두</strong> 지우고 있어, 상태마다 마지막 파일의 이미지만 남았다. 접촉 데이터셋에서 접촉 <span class="n">52</span>창 중 이미지는 <span class="n">1</span>장만 남아 있었다. 해당 파일의 이미지만 지우도록 고친 뒤 <span class="n">738</span>장이 모두 남는 것을 확인했다. 본 연구의 분류기는 이미지가 아닌 특징 파일로 학습했으므로 결과에는 영향이 없었다.</p>
 
   <h3>3. 1단계 — 회로 자체의 잡음과 표류</h3>
   <p>기준 전압을 고친 뒤 두 입력을 기준 전압에 직결하고 <span class="n">30</span>분을 측정했다(그림4(a), 표6). <span class="n">30</span>분 표류는 <span class="n">−0.0003 mV</span>로 ADC 한 칸(<span class="n">7.8125 µV</span>)의 약 <span class="n">1/26</span>이다. 기록값의 최소 간격 <span class="n">7.812 µV</span>가 ADC 한 칸과 일치하는 것은 이 파일이 실제 ADC 출력이라는 증거다. 평균 <span class="n">−0.549 mV</span>는 두 폴로어의 오프셋 차이로 규격(±4.5 mV)<sup>[2]</sup> 안이다. <strong>회로는 표류의 원인이 아니다.</strong> 다만 <span class="n">121–122</span>초 간격으로 규칙적으로 튀는 구간이 <span class="n">18</span>개(최대 <span class="n">9.78 mV</span>) 있었다. 간격이 일정해 사람이 건드린 것이 아닌 주기적 외부 간섭으로 보이나 원인은 확인하지 못했다.</p>
@@ -454,24 +450,11 @@
   </div>
   <p>SVM은 평가 파일을 바꾸어 <span class="n">5</span>회 반복한 세션 교차검증에서도 모두 <span class="n">100 %</span>였다. 그러나 <strong>중간 대역 파워 하나에 문턱값 하나만 써도 250창을 맞혔다.</strong> 손이 닿으면 약 <span class="n">280 mV</span>, 평상시 흔들림은 약 <span class="n">17 mV</span>라 두 상태가 크게 달라 쉬운 과제였다. 또 라벨 자체를 같은 신호에 문턱을 대어 정했으므로, 분류기는 그 규칙을 다시 배운 것에 가깝다. 하루, 식물 한 그루, 측정자 한 명의 데이터이며, 선·핀을 흔들 때와는 구분하지 못한다. 따라서 이 분류기가 판별하는 것은 <strong>식물의 반응이 아니라 접촉 여부</strong>다(연구문제 3).</p>
 
-  <h3>8. 인용 수치의 원문 대조</h3>
-  <p>보고서 초안이 인용한 수치를 원문과 대조해 다음 불일치를 찾고 정정했다(표10). 특히 활동전위 지속시간을 <span class="n">0.025–2</span>초로 본 초안의 근거가 원문에 없어, 분석 대역을 <span class="n">0.01–1 Hz</span>로 다시 잡았다(그림1).</p>
-  <div class="tbl-wrap">
-    <table>
-      <caption><span class="cap">표10.</span> 인용 수치의 원문 대조 결과</caption>
-      <thead><tr><th>초안의 인용</th><th>초안이 쓴 값</th><th>원문 확인 결과</th></tr></thead>
-      <tbody>
-        <tr><td>Volkov &amp; Shtessel (2018)</td><td>토마토 AP 21.2 mV, 5.6 cm/min</td><td>원문에 없음. 실제 출처는 Macedo 외(2015)[5], 전류 자극 후의 값</td></tr>
-        <tr><td>Volkov 특허</td><td>과도 신호 1 mV 미만, 지속 0.025–2초</td><td>원문에 없음. 원문 수치는 파리지옥 AP 약 0.1 V, 1.0–1.4 ms[9]</td></tr>
-        <tr><td>"Sukhov 외 (2021)"</td><td>변동전위 수십 mV, 수십 분</td><td>값은 맞음. 제1저자는 Mudrilov[4]</td></tr>
-      </tbody>
-    </table>
-  </div>
 
-  <h3>9. 종합</h3>
+  <h3>8. 종합</h3>
   <div class="tbl-wrap">
     <table>
-      <caption><span class="cap">표11.</span> 측정 대상별 판정</caption>
+      <caption><span class="cap">표10.</span> 측정 대상별 판정</caption>
       <thead><tr><th>대상</th><th>판정</th><th>근거</th></tr></thead>
       <tbody>
         <tr><td>측정 회로</td><td class="good">충분</td><td>30분 표류 0.0003 mV (1단계)</td></tr>
@@ -533,7 +516,6 @@
     <li>Volkov, A. G., &amp; Shtessel, Y. B. (2018). Electrical signal propagation within and between tomato plants. <i>Bioelectrochemistry</i>, 124, 195–205. doi:10.1016/j.bioelechem.2018.08.001 — 9 V 자극 시 40 mV, 3.5–4.5 mm/s.</li>
     <li>Degli Agosti, R. (2014). Touch-induced action potentials in <i>Arabidopsis thaliana</i>. <i>Archives des Sciences</i>, 67, 125–138. — 붓 접촉 AP 중앙값 −33.9 mV, 약 10.7초.</li>
     <li>Ademoglu, A. <i>Bioelectrodes</i> (Lecture Notes). Institute of Biomedical Engineering, Boğaziçi University. — 반쪽전지 전위, 움직임 잡음, 비분극 전극.</li>
-    <li>Volkov, A. G. <i>Plant biosensor and method</i>. U.S. Patent 8,893,551 B2; U.S. Patent 8,205,502 B2. — 원문 대조용.</li>
     <li>Analog Devices. <i>AD8232: Single-Lead, Heart Rate Monitor Front End</i> (Data Sheet).</li>
     <li>Green Mind Lab. <i>GML_PLANT</i>. GitHub. https://github.com/packsunjin/GML_PLANT</li>
     <li>Pedregosa, F., Varoquaux, G., Gramfort, A., et al. (2011). Scikit-learn: Machine Learning in Python. <i>Journal of Machine Learning Research</i>, 12, 2825–2830.</li>
@@ -546,7 +528,7 @@
   <h2>부 록</h2>
 
   <h3>1. 개발 소스코드 구성</h3>
-  <p>전체 소스코드는 GitHub 저장소<sup>[11]</sup>에 공개되어 있다. <code>frontend.py</code>(측정 회로별 설정과 ADC 읽기), <code>sensor_control.py</code>(수집), <code>bias_check.py</code>(기준 전압 단극 점검), <code>live_spectrogram.py</code>(실시간 스펙트로그램 페이지), <code>build_touch_dataset.py</code>(접촉 데이터셋 생성), <code>preprocess.py</code>·<code>feature_extraction.py</code>(필터·스펙트로그램·특징), <code>train.py</code>(학습·평가), <code>web_dashboard.py</code>(브라우저 화면)로 구성된다.</p>
+  <p>전체 소스코드는 GitHub 저장소<sup>[10]</sup>에 공개되어 있다. <code>frontend.py</code>(측정 회로별 설정과 ADC 읽기), <code>sensor_control.py</code>(수집), <code>bias_check.py</code>(기준 전압 단극 점검), <code>live_spectrogram.py</code>(실시간 스펙트로그램 페이지), <code>build_touch_dataset.py</code>(접촉 데이터셋 생성), <code>preprocess.py</code>·<code>feature_extraction.py</code>(필터·스펙트로그램·특징), <code>train.py</code>(학습·평가), <code>web_dashboard.py</code>(브라우저 화면)로 구성된다.</p>
 
   <h3>2. 재현 시 반드시 지킬 것</h3>
   <ul>
