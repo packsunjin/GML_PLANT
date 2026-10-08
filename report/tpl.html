@@ -178,7 +178,7 @@
     <tr><th>연구 성과</th><td>
       <ul>
         <li>저가 부품으로 DC 결합 측정계를 제작하고, 실시간 스펙트로그램 화면과 수집–전처리–학습–추론 전 과정을 브라우저에서 수행하는 시스템을 구현했다. 그 시스템으로 측정 오차를 회로·전극·식물 순으로 분리해 실측한 결과, 회로 자체의 <span class="n">30</span>분 표류는 <span class="n">−0.0003 mV</span>로 ADC 최소 단위보다 작았다.</li>
-        <li><strong>측정 한계는 전극에 있음을 찾아냈다.</strong> 같은 회로에 황동 핀 전극을 달자 안정된 뒤에도 <span class="n">30</span>분에 <span class="n">14.28 mV</span>가 표류했다. 이에 따라 수 시간 규모의 <strong>수분부족은 본 측정계로 판별할 수 없다</strong>.</li>
+        <li><strong>측정 한계는 전극에 있음을 찾아냈다.</strong> 같은 회로에 점퍼선 핀 전극을 달자 안정된 뒤에도 <span class="n">30</span>분에 <span class="n">14.28 mV</span>가 표류했다. 이에 따라 수 시간 규모의 <strong>수분부족은 본 측정계로 판별할 수 없다</strong>.</li>
         <li>식물에 손이 닿으면 중앙값 <span class="n">275 mV</span>의 계단형 전압이 생겼다. 문헌의 접촉 유발 활동전위(중앙값 <span class="n">33.9 mV</span>)의 약 <span class="n">8</span>배이며, 핀·선의 움직임도 같은 모양을 만들어 <strong>자극 반응을 분리할 수 없다는 한계를 확인했다</strong>.</li>
         <li><strong>접촉 감지 분류기</strong>는 학습에 쓰지 않은 <span class="n">251</span>개 창을 모두 맞혔다. 단, 특징 하나의 문턱값으로도 <span class="n">250</span>개를 맞혀 과제가 쉬웠음을 함께 보고한다.</li>
         <li>측정을 무효로 만든 결함 <span class="n">2</span>건(기준 전압 자리의 커패시터, 라이브러리의 채널 선택 오류)을 단극 측정과 교차 확인으로 찾아 고쳤다.</li>
@@ -244,7 +244,7 @@
   </figure>
 
   <h3>3. 전극 계면과 표류</h3>
-  <p>금속이 전해질에 닿으면 경계에서 산화·환원 반응이 시작되어 전극 고유의 전압인 <strong>반쪽전지 전위</strong>가 생긴다<sup>[8]</sup>. 측정은 두 전극의 차이로 하므로 두 전극이 똑같다면 이 전압은 상쇄되지만, 표면 상태와 접촉 면적이 달라 차이가 남고 그 차이가 시간에 따라 변한다. 이것이 <strong>전극 표류</strong>다. 또 전극이 전해질에 대해 움직이면 전하 이중층이 흐트러져 전위가 일시적으로 바뀐다(움직임 잡음)<sup>[8]</sup>. 같은 문헌은 주파수가 낮은 생체신호에는 비분극 전극(Ag/AgCl)을 쓰라고 권한다<sup>[8]</sup>. 본 연구는 Ag/AgCl 전극을 구하지 못해 <strong>점퍼선의 황동 핀</strong>을 전극으로 썼다.</p>
+  <p>금속이 전해질에 닿으면 경계에서 산화·환원 반응이 시작되어 전극 고유의 전압인 <strong>반쪽전지 전위</strong>가 생긴다<sup>[8]</sup>. 측정은 두 전극의 차이로 하므로 두 전극이 똑같다면 이 전압은 상쇄되지만, 표면 상태와 접촉 면적이 달라 차이가 남고 그 차이가 시간에 따라 변한다. 이것이 <strong>전극 표류</strong>다. 또 전극이 전해질에 대해 움직이면 전하 이중층이 흐트러져 전위가 일시적으로 바뀐다(움직임 잡음)<sup>[8]</sup>. 같은 문헌은 주파수가 낮은 생체신호에는 비분극 전극(Ag/AgCl)을 쓰라고 권한다<sup>[8]</sup>. 본 연구는 Ag/AgCl 전극을 구하지 못해 <strong>점퍼선 핀</strong>을 전극으로 썼다.</p>
 
   <h3>4. 이전 측정계(AD8232)의 제약</h3>
   <p>본 연구는 처음에 심전도용 증폭기 AD8232<sup>[9]</sup>를 썼다. 저장소 설정 기준으로 <span class="n">0.5 Hz</span> 고역통과·<span class="n">40 Hz</span> 저역통과·이득 <span class="n">1100</span>배이며, 고역통과가 칩 안에 고정되어 있어 그림1의 활동전위 대역(<span class="n">0.01–0.1 Hz</span>)을 지운다. 또 단전원 <span class="n">3.3 V</span>에서 입력 환산 범위가 약 <span class="n">±1.23 mV</span>(계산: (1.65 − 0.3) V ÷ 1100)에 그쳐 수십 mV 신호는 잘린다. 이 두 가지 이유로 DC 결합 측정계로 바꾸었다.</p>
@@ -274,7 +274,7 @@
         <tr><td>측정 범위 · 분해능</td><td>±0.256 V · 7.8125 µV / ±2.048 V · 62.5 µV</td><td>범위 ÷ 2¹⁵</td></tr>
         <tr><td>버퍼</td><td>MCP6002, 오프셋 ±4.5 mV, 바이어스 ±1 pA</td><td>데이터시트[2]</td></tr>
         <tr><td>기준 전압</td><td>10 kΩ × 2 분압, 1.65 V</td><td>같은 값 두 개의 분압</td></tr>
-        <tr><td>전극</td><td>점퍼선 황동 핀, 줄기 관통, 간격 3 cm</td><td>보유 부품</td></tr>
+        <tr><td>전극</td><td>점퍼선 핀, 줄기 관통, 간격 3 cm</td><td>보유 부품</td></tr>
         <tr><td>표본화</td><td>250 S/s, 차동 A0 − A1</td><td>실측 250.0001 S/s</td></tr>
       </tbody>
     </table>
@@ -286,7 +286,7 @@
   <figure><figcaption><span class="cap">사진1.</span> 실험 장치 전체</figcaption></figure>
   <div class="photo slim">
     <p class="tag">■ 직접 촬영 삽입 · 사진2</p>
-    <p>전극 상태 근접 — 줄기를 관통한 황동 핀 두 개와 흙에 꽂은 기준 핀</p>
+    <p>전극 상태 근접 — 줄기를 관통한 점퍼선 핀 두 개와 흙에 꽂은 기준 핀</p>
   </div>
   <figure><figcaption><span class="cap">사진2.</span> 줄기에 꽂은 전극</figcaption></figure>
 
@@ -298,17 +298,17 @@
       <thead><tr><th>단계</th><th>구성</th><th>알고자 하는 것</th><th>시간</th><th>합격 기준</th></tr></thead>
       <tbody>
         <tr><td>1단계</td><td>두 입력을 기준 전압에 직결 (전극·식물 없음)</td><td>회로 자체의 잡음·표류</td><td class="n">30분</td><td>표류 0.5 mV 미만</td></tr>
-        <tr><td>2단계</td><td>황동 핀 3개를 수돗물 한 컵에 담금</td><td>전극이 더하는 표류</td><td class="n">2시간</td><td>표류 5 mV 미만</td></tr>
-        <tr><td>3단계</td><td>황동 핀을 토마토 줄기에 관통, 기준 핀은 흙</td><td>식물 신호와 자극 반응</td><td class="n">약 35분</td><td>—</td></tr>
+        <tr><td>2단계</td><td>점퍼선 핀 3개를 수돗물 한 컵에 담금</td><td>전극이 더하는 표류</td><td class="n">2시간</td><td>표류 5 mV 미만</td></tr>
+        <tr><td>3단계</td><td>점퍼선 핀을 토마토 줄기에 관통, 기준 핀은 흙</td><td>식물 신호와 자극 반응</td><td class="n">약 35분</td><td>—</td></tr>
       </tbody>
     </table>
   </div>
   <p class="cap-hint">합격 기준은 연구 초기에 정한 값이며 문헌 근거가 있는 기준은 아니다.</p>
   <div class="photo slim">
     <p class="tag">■ 직접 촬영 삽입 · 사진3</p>
-    <p>2단계 장치를 다시 꾸며 촬영 — 수돗물 한 컵에 약 3 cm 간격으로 담근 황동 핀 3개(측정 2, 기준 1)</p>
+    <p>2단계 장치를 다시 꾸며 촬영 — 수돗물 한 컵에 약 3 cm 간격으로 담근 점퍼선 핀 3개(측정 2, 기준 1)</p>
   </div>
-  <figure><figcaption><span class="cap">사진3.</span> 2단계 측정 — 수돗물 한 컵에 담근 황동 핀 3개 (재현 촬영)</figcaption></figure>
+  <figure><figcaption><span class="cap">사진3.</span> 2단계 측정 — 수돗물 한 컵에 담근 점퍼선 핀 3개 (재현 촬영)</figcaption></figure>
 
   <h3>3. 분석 방법</h3>
   <ul>
@@ -393,7 +393,7 @@
   </div>
 
   <h3>4. 2단계 — 전극이 더하는 표류</h3>
-  <p>황동 핀 세 개(측정 2, 기준 1)를 수돗물 한 컵에 약 <span class="n">3 cm</span> 간격으로 담그고 <span class="n">2</span>시간을 측정했다(그림4(나)). 기준점은 <span class="n">182.00 mV</span>에서 <span class="n">728.48 mV</span>로 <span class="n">546.48 mV</span> 이동했다. 그러나 곡선은 <span class="n">30</span>분 부근에서 성격이 바뀐다. 처음 <span class="n">30</span>분은 분 단위 변화의 오르내림이 <span class="n">15</span>/<span class="n">14</span>로 반반이고 <span class="n">1</span>분 sd 중앙값이 <span class="n">12.29 mV</span>인 반면, <span class="n">52</span>분 이후는 <span class="n">62</span>/<span class="n">5</span>로 거의 한 방향이고 sd가 <span class="n">1.37 mV</span>로 줄었다. 전기화학적 표류는 한 방향으로 진행하므로, 처음 <span class="n">30</span>분은 <strong>핀이 덜 젖어 접촉 면적이 들쭉날쭉했던 구간</strong>으로 해석했다. 측정 직후 같은 핀을 다시 담가 <span class="n">30</span>초를 재자 처음부터 <span class="n">5</span>초 구간 sd가 약 <span class="n">1.5 mV</span>로 작아 이 해석과 맞았다.</p>
+  <p>점퍼선 핀 세 개(측정 2, 기준 1)를 수돗물 한 컵에 약 <span class="n">3 cm</span> 간격으로 담그고 <span class="n">2</span>시간을 측정했다(그림4(나)). 기준점은 <span class="n">182.00 mV</span>에서 <span class="n">728.48 mV</span>로 <span class="n">546.48 mV</span> 이동했다. 그러나 곡선은 <span class="n">30</span>분 부근에서 성격이 바뀐다. 처음 <span class="n">30</span>분은 분 단위 변화의 오르내림이 <span class="n">15</span>/<span class="n">14</span>로 반반이고 <span class="n">1</span>분 sd 중앙값이 <span class="n">12.29 mV</span>인 반면, <span class="n">52</span>분 이후는 <span class="n">62</span>/<span class="n">5</span>로 거의 한 방향이고 sd가 <span class="n">1.37 mV</span>로 줄었다. 전기화학적 표류는 한 방향으로 진행하므로, 처음 <span class="n">30</span>분은 <strong>핀이 덜 젖어 접촉 면적이 들쭉날쭉했던 구간</strong>으로 해석했다. 측정 직후 같은 핀을 다시 담가 <span class="n">30</span>초를 재자 처음부터 <span class="n">5</span>초 구간 sd가 약 <span class="n">1.5 mV</span>로 작아 이 해석과 맞았다.</p>
   <figure>
     <div class="plate">{{FIG_STAGE}}</div>
     <figcaption><span class="cap">그림4.</span> 1단계 회로 영점과 2단계 전극 표류 (1분 평균)</figcaption>
@@ -414,7 +414,7 @@
   <p>전극이 안정된 뒤의 표류는 <span class="n">30</span>분에 <span class="n">14.28 mV</span>, 시간당 약 <span class="n">28 mV</span>다. 1단계 회로 표류(<span class="n">−0.0003 mV</span>)와 비교하면 <strong>측정 한계는 회로가 아니라 전극에서 정해진다</strong>(연구문제 1). 수분부족 신호가 놓이는 수 시간 규모에서 전극은 수십~수백 <span class="n">mV</span>를 밀리므로, 같은 전극 한 쌍으로는 식물에서 온 느린 변화와 전극에서 온 표류를 가를 수 없다. 활동전위 대역 잡음 <span class="n">1.28 mV</span>는 문헌의 접촉 유발 활동전위(<span class="n">33.9 mV</span>)<sup>[7]</sup>보다 작지만, <span class="n">93.8</span>분에 원인 모를 <span class="n">58 mV</span> 단발 변동이 한 번 있었다. <strong>값이 튀었다는 사실만으로 자극 반응이라 판단할 수 없음</strong>을 보여 준다.</p>
 
   <h3>5. 3단계 — 식물 측정과 손 접촉</h3>
-  <p>황동 핀 두 개를 줄기에 <span class="n">3 cm</span> 간격으로 관통시키고 기준 핀을 흙에 꽂았다. 첫 <span class="n">30</span>초 측정에서 전체 흔들림의 <span class="n">66.2 %</span>가 <span class="n">55–65 Hz</span> 상용전원 성분이었고, <span class="n">1 Hz</span> 이하만 남기면 sd는 <span class="n">2.1 mV</span>였다. 이어서 실시간 화면으로 기록하며 손으로 줄기와 잎을 만졌다(그림5).</p>
+  <p>점퍼선 핀 두 개를 줄기에 <span class="n">3 cm</span> 간격으로 관통시키고 기준 핀을 흙에 꽂았다. 첫 <span class="n">30</span>초 측정에서 전체 흔들림의 <span class="n">66.2 %</span>가 <span class="n">55–65 Hz</span> 상용전원 성분이었고, <span class="n">1 Hz</span> 이하만 남기면 sd는 <span class="n">2.1 mV</span>였다. 이어서 실시간 화면으로 기록하며 손으로 줄기와 잎을 만졌다(그림5).</p>
   <figure>
     <div class="plate">{{FIG_TOUCH}}</div>
     <figcaption><span class="cap">그림5.</span> 식물 기록과 손 접촉 신호</figcaption>
@@ -485,7 +485,7 @@
   <h3>1. 결론</h3>
   <p>본 연구는 저가 부품으로 식물 전기신호 측정계를 만들고, 측정 오차를 회로·전극·식물 순서로 분리해 실측했다.</p>
   <ul>
-    <li><strong>연구문제 1</strong> — 회로 자체의 <span class="n">30</span>분 표류는 <span class="n">−0.0003 mV</span>였으나 황동 핀 전극을 달자 안정 후에도 <span class="n">30</span>분에 <span class="n">14.28 mV</span>가 표류했다. <strong>측정 한계는 전극에서 정해진다.</strong></li>
+    <li><strong>연구문제 1</strong> — 회로 자체의 <span class="n">30</span>분 표류는 <span class="n">−0.0003 mV</span>였으나 점퍼선 핀 전극을 달자 안정 후에도 <span class="n">30</span>분에 <span class="n">14.28 mV</span>가 표류했다. <strong>측정 한계는 전극에서 정해진다.</strong></li>
     <li><strong>연구문제 2</strong> — 수분부족은 수 시간 규모의 느린 변화이므로 전극 표류와 구별할 수 없어 <strong>본 측정계로 판별할 수 없다</strong>. 치기 자극에 대한 반응은 그보다 큰 손 접촉 신호(중앙값 <span class="n">275 mV</span>)와 선·핀 움직임에 섞여 <strong>분리할 수 없다</strong>.</li>
     <li><strong>연구문제 3</strong> — 측정 신호로 학습한 분류기는 손 접촉을 평가 <span class="n">251</span>창 모두 맞혔으나, 판별하는 것은 식물 반응이 아니라 <strong>접촉 여부</strong>다.</li>
   </ul>

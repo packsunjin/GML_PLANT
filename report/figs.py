@@ -70,7 +70,7 @@ def fig_sys():
     def arrow(x0, y0, x1, y1):
         ax.annotate("", (x1, y1), (x0, y0), arrowprops=dict(arrowstyle="-|>", lw=0.8, color=INK))
 
-    box(0, 17, 19, 15, "토마토 줄기", "전극1(위) · 전극2(아래)\n황동 핀, 간격 3 cm\n줄기 관통")
+    box(0, 17, 19, 15, "토마토 줄기", "전극1(위) · 전극2(아래)\n점퍼선 핀, 간격 3 cm\n줄기 관통")
     box(25, 17, 18, 15, "MCP6002 × 2", "전압 폴로어(이득 1배)\n입력 전류 1 pA\n고역통과 필터 없음")
     box(49, 17, 21, 15, "ADS1115", "16비트, A0 − A1 차동\n회로 점검: ±0.256 V\n전극 측정: ±2.048 V")
     box(76, 17, 23, 15, "라즈베리파이 5", "초당 250회 기록\n실시간 스펙트로그램\nSVM · 랜덤포레스트", edge=BLUE)
@@ -127,7 +127,7 @@ def fig_stage():
     b.axhline(s2[0] + 5, color=RED, ls="--", lw=0.8)
     b.text(2, s2[0] + 18, "합격 기준 (시작값 + 5 mV)", color=RED, fontsize=6.6)
     b.axvline(30, color=GRAY, ls=":", lw=0.8); b.text(31, s2.max() - 30, "약 30분: 젖음 끝", fontsize=6.6, color=GRAY)
-    b.set_title("(나) 2단계: 수돗물 속 황동 핀, 2시간", loc="left")
+    b.set_title("(나) 2단계: 수돗물 속 점퍼선 핀, 2시간", loc="left")
     b.set_xlabel("시간 (분)"); b.set_ylabel("전압 (mV, 1분 평균)")
     for x in (a, b):
         x.grid(lw=0.3, color="#e3e3e3")
