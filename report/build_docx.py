@@ -27,7 +27,7 @@ def run(t, **kw):
     return f'<w:r>{rpr(**kw)}<w:t xml:space="preserve">{escape(t)}</w:t></w:r>'
 
 CITE = re.compile(r'\[(\d+)\]')
-CAPNO = re.compile(r'((?:그림|표)\d+\.)(.*)', re.S)
+CAPNO = re.compile(r'((?:그림|표|사진)\d+\.)(.*)', re.S)
 
 def runs(t, **kw):
     """본문의 [n] 을 참고문헌 n 번으로 가는 내부 링크로 만든다(책갈피 ref<n>)."""
