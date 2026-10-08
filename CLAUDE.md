@@ -723,7 +723,7 @@ docx 를 열 때 이 링크가 살아 있는지는 확인하지 못했다(2026-1
 | `claude/gml-plant` | 웹 대시보드 작업 |
 | `claude/dc-frontend` | **현재 작업 브랜치.** DC 결합 앞단 + 보고서 |
 
-원격 저장소는 `packsunjin/GML_PLANT` 다. 보고서 참고문헌 [7]과 README 의 clone
+원격 저장소는 `packsunjin/GML_PLANT` 다. 보고서 참고문헌 [9](2026-10-08 기준 번호)와 README 의 clone
 명령은 이 주소로 되어 있다 — 제출물에 나가는 값이니 건드리지 마라.
 
 ⚠️ 클라우드 세션에서는 `git remote` 를 새 이름으로 바꾸지 마라. 세션의 git

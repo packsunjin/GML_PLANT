@@ -193,8 +193,8 @@
   <p class="sec-note">※ 연구개요 및 내용 (연구 목적과 필요성 등 서술)</p>
 
   <h3>1. 연구의 필요성</h3>
-  <p>식물은 신경이 없지만 상처·온도 변화 같은 자극을 받으면 세포막 전위가 바뀌고, 그 변화가 줄기를 따라 전달된다<sup>[3][4]</sup>. 이 전기신호를 읽을 수 있다면 식물의 상태를 겉모습과 다른 방식으로 알 수 있다.</p>
-  <p>선행 연구는 은/염화은(Ag/AgCl) 전극과 고임피던스 전위계 같은 전용 장비로 측정한다<sup>[6][7]</sup>. 학생이 구할 수 있는 저가 부품으로 같은 측정을 할 때 <strong>어느 부분이 측정을 제한하는지</strong>는 직접 재 보아야 알 수 있다.</p>
+  <p>식물은 신경이 없지만 상처·온도 변화 같은 자극을 받으면 세포막 전위가 바뀌고, 그 변화가 줄기를 따라 전달된다<sup>[3]</sup>. 이 전기신호를 읽을 수 있다면 식물의 상태를 겉모습과 다른 방식으로 알 수 있다.</p>
+  <p>선행 연구는 은/염화은 전극<sup>[5]</sup>이나 식물에 꽂는 은선 전극<sup>[4][6]</sup>처럼 식물 측정용 전극과 장비로 측정한다. 학생이 구할 수 있는 저가 부품으로 같은 측정을 할 때 <strong>어느 부분이 측정을 제한하는지</strong>는 직접 재 보아야 알 수 있다.</p>
 
   <h3>2. 연구 목적</h3>
   <p>본 연구의 목표는 방울토마토의 전기신호로 정상·자극·수분부족 세 상태를 실시간 분류하는 시스템을 구현하는 것이었다. 처음 세운 세부 목표는 다음 넷이었다.</p>
@@ -219,24 +219,24 @@
   <p class="sec-note">※ 이론적 배경, 선행연구 등 서술</p>
 
   <h3>1. 식물의 전기신호</h3>
-  <p>식물 세포는 세포막을 사이에 둔 이온 농도 차로 막전위를 유지하며, 자극을 받으면 막전위가 잠시 무너졌다 돌아온다. 문헌은 이를 <strong>활동전위(AP)</strong>와 <strong>변동전위(VP)</strong>로 나눈다<sup>[4]</sup>. 활동전위는 일반 식물에서 <strong>수십 초</strong> 동안 지속되고, 변동전위는 상처 같은 손상으로 생겨 최대 수십 분 이어진다<sup>[4]</sup>. 측정 설계에 필요한 크기와 길이를 표1에 정리했다.</p>
+  <p>식물 세포는 세포막을 사이에 둔 이온 농도 차로 막전위를 유지하며, 자극을 받으면 막전위가 잠시 무너졌다 돌아온다. 문헌은 이를 <strong>활동전위(AP)</strong>와 <strong>변동전위(VP)</strong>로 나눈다<sup>[3]</sup>. 활동전위는 일반 식물에서 <strong>수십 초</strong> 동안 지속되고, 변동전위는 상처 같은 손상으로 생겨 최대 수십 분 이어진다<sup>[3]</sup>. 측정 설계에 필요한 크기와 길이를 표1에 정리했다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표1.</span> 식물 전기신호의 크기와 지속시간</caption>
       <thead><tr><th>신호 · 자극</th><th>대상</th><th>크기</th><th>지속 · 전파</th><th>출처</th></tr></thead>
       <tbody>
-        <tr><td>활동전위 (일반)</td><td>여러 종</td><td>수십~100 mV</td><td>수십 초 (일반 식물)</td><td>[4]</td></tr>
-        <tr><td>활동전위 (저온 자극)</td><td>비운동성 식물</td><td>약 60–70 mV</td><td>1분 이내</td><td>[4]</td></tr>
-        <tr><td>변동전위 (손상)</td><td>여러 종</td><td>수십 mV</td><td>최대 수십 분</td><td>[4]</td></tr>
-        <tr><td><strong>활동전위 (붓 접촉)</strong></td><td>애기장대</td><td><strong>중앙값 −33.9 mV</strong></td><td>약 10.7초, 1.32 mm/s</td><td>[7]</td></tr>
-        <tr><td>활동전위 (전류 자극)</td><td>토마토</td><td>21.2 ± 2.4 mV</td><td>5.6 ± 0.5 cm/min</td><td>[5]</td></tr>
-        <tr><td>전기신호 (9 V 전기 자극)</td><td>토마토</td><td>40 mV</td><td>3.5–4.5 mm/s</td><td>[6]</td></tr>
+        <tr><td>활동전위 (일반)</td><td>여러 종</td><td>수십~100 mV</td><td>수십 초 (일반 식물)</td><td>[3]</td></tr>
+        <tr><td>활동전위 (저온 자극)</td><td>비운동성 식물</td><td>약 60–70 mV</td><td>1분 이내</td><td>[3]</td></tr>
+        <tr><td>변동전위 (손상)</td><td>여러 종</td><td>수십 mV</td><td>최대 수십 분</td><td>[3]</td></tr>
+        <tr><td><strong>활동전위 (붓 접촉)</strong></td><td>애기장대</td><td><strong>중앙값 −33.9 mV</strong></td><td>약 10.7초, 1.32 mm/s</td><td>[6]</td></tr>
+        <tr><td>활동전위 (전류 자극)</td><td>토마토</td><td>21.2 ± 2.4 mV</td><td>5.6 ± 0.5 cm/min</td><td>[4]</td></tr>
+        <tr><td>전기신호 (9 V 전기 자극)</td><td>토마토</td><td>40 mV</td><td>3.5–4.5 mm/s</td><td>[5]</td></tr>
       </tbody>
     </table>
   </div>
-  <p>본 연구의 자극은 줄기를 <strong>치거나 만지는 기계적 자극</strong>이므로, 비교 기준으로 붓 접촉 실험<sup>[7]</sup>을 쓴다. 이 연구는 애기장대 잎을 붓으로 약 <span class="n">2</span>초 건드렸을 때 <span class="n">21</span>회 중 <span class="n">21</span>회 활동전위가 생겼다고 보고했다. 또 <strong>접촉하는 동안 전극이 밀려 생기는 잡음은 접촉과 동시에 나타나고, 실제 활동전위는 항상 늦게 도착한다</strong>는 점으로 둘을 구분했다<sup>[7]</sup>. 토마토의 두 값<sup>[5][6]</sup>은 모두 전기 자극에 대한 반응이며, 토마토를 기계적으로 자극한 문헌 값은 찾지 못했다.</p>
+  <p>본 연구의 자극은 줄기를 <strong>치거나 만지는 기계적 자극</strong>이므로, 비교 기준으로 붓 접촉 실험<sup>[6]</sup>을 쓴다. 이 연구는 애기장대 잎을 붓으로 약 <span class="n">2</span>초 건드렸을 때 <span class="n">21</span>회 중 <span class="n">21</span>회 활동전위가 생겼다고 보고했다. 또 <strong>접촉하는 동안 전극이 밀려 생기는 잡음은 접촉과 동시에 나타나고, 실제 활동전위는 항상 늦게 도착한다</strong>는 점으로 둘을 구분했다<sup>[6]</sup>. 토마토의 두 값<sup>[4][5]</sup>은 모두 전기 자극에 대한 반응이며, 토마토를 기계적으로 자극한 문헌 값은 찾지 못했다.</p>
 
-  <p>줄기에 꽂은 두 전극은 각 지점의 세포 밖 전위 차이를 잰다. 활동전위가 한 전극 근처를 지나가면 그 지점의 전위가 바뀌므로, 두 전극 사이 전압이 수 초에서 수십 초 동안 수십 mV 변한다. 붓 접촉 실험<sup>[7]</sup>도 잎과 잎자루에 꽂은 전극으로 세포 밖 전위를 재어, 신호가 접촉 지점에 가까운 전극에 먼저, 먼 전극에 나중에 도착하는 것을 기록했다.</p>
+  <p>줄기에 꽂은 두 전극은 각 지점의 세포 밖 전위 차이를 잰다. 활동전위가 한 전극 근처를 지나가면 그 지점의 전위가 바뀌므로, 두 전극 사이 전압이 수 초에서 수십 초 동안 수십 mV 변한다. 붓 접촉 실험<sup>[6]</sup>도 잎과 잎자루에 꽂은 전극으로 세포 밖 전위를 재어, 신호가 접촉 지점에 가까운 전극에 먼저, 먼 전극에 나중에 도착하는 것을 기록했다.</p>
 
   <h3>2. 신호의 시간 규모와 주파수</h3>
   <p>T초 동안 이어지는 신호의 주요 성분은 대략 <span class="n">1/T Hz</span> 근처에 놓인다. 이 환산으로 각 신호가 어느 필터에 걸리는지 판단할 수 있다(그림1). 수십 초짜리 활동전위는 약 <span class="n">0.01–0.1 Hz</span>, 수분 스트레스는 <span class="n">10⁻⁴ Hz</span> 이하에 놓인다.</p>
@@ -246,16 +246,16 @@
   </figure>
 
   <h3>3. 전극 계면과 표류</h3>
-  <p>금속이 전해질에 닿으면 경계에서 산화·환원 반응이 시작되어 전극 고유의 전압인 <strong>반쪽전지 전위</strong>가 생긴다<sup>[8]</sup>. 측정은 두 전극의 차이로 하므로 두 전극이 똑같다면 이 전압은 상쇄되지만, 표면 상태와 접촉 면적이 달라 차이가 남고 그 차이가 시간에 따라 변한다. 이것이 <strong>전극 표류</strong>다. 또 전극이 전해질에 대해 움직이면 전하 이중층이 흐트러져 전위가 일시적으로 바뀐다(움직임 잡음)<sup>[8]</sup>. 같은 문헌은 주파수가 낮은 생체신호에는 비분극 전극(Ag/AgCl)을 쓰라고 권한다<sup>[8]</sup>. 본 연구는 Ag/AgCl 전극을 구하지 못해 <strong>점퍼선 핀</strong>을 전극으로 썼다.</p>
+  <p>금속이 전해질에 닿으면 경계에서 산화·환원 반응이 시작되어 전극 고유의 전압인 <strong>반쪽전지 전위</strong>가 생긴다<sup>[7]</sup>. 측정은 두 전극의 차이로 하므로 두 전극이 똑같다면 이 전압은 상쇄되지만, 표면 상태와 접촉 면적이 달라 차이가 남고 그 차이가 시간에 따라 변한다. 이것이 <strong>전극 표류</strong>다. 또 전극이 전해질에 대해 움직이면 전하 이중층이 흐트러져 전위가 일시적으로 바뀐다(움직임 잡음)<sup>[7]</sup>. 같은 문헌은 주파수가 낮은 생체신호에는 비분극 전극(Ag/AgCl)을 쓰라고 권한다<sup>[7]</sup>. 본 연구는 Ag/AgCl 전극을 구하지 못해 <strong>점퍼선 핀</strong>을 전극으로 썼다.</p>
 
   <p>표류는 활동전위 측정에도 영향을 준다. 활동전위는 수 초에서 수십 초 동안 전압이 수십 mV 바뀌는 변화이므로, 같은 시간 동안 전극이 그만큼 밀리면 둘을 구분할 수 없다. 그래서 식물을 붙이기 전에 전극만 물에 담가 두 가지를 먼저 재야 한다. 하나는 오래 두었을 때 얼마나 밀리는지로, 수분부족을 판단하는 기준이 된다. 다른 하나는 활동전위 길이인 수십 초 안에서 얼마나 흔들리는지로, 자극 반응을 판단하는 기준이 된다. 2단계 측정은 이 두 값을 얻기 위한 것이다.</p>
 
   <h3>4. 이전 측정계(AD8232)의 제약</h3>
-  <p>본 연구는 처음에 심전도용 증폭기 AD8232<sup>[9]</sup>를 썼다. 저장소 설정 기준으로 <span class="n">0.5 Hz</span> 고역통과·<span class="n">40 Hz</span> 저역통과·이득 <span class="n">1100</span>배이며, 고역통과는 모듈 기판에 납땜된 부품으로 정해져 있어 바꾸기 어렵고, 그림1의 활동전위 대역(<span class="n">0.01–0.1 Hz</span>)을 지운다. 또 단전원 <span class="n">3.3 V</span>에서 입력 환산 범위가 약 <span class="n">±1.23 mV</span>(계산: (1.65 − 0.3) V ÷ 1100)에 그쳐 수십 mV 신호는 잘린다. 이 두 가지 이유로 DC 결합 측정계로 바꾸었다.</p>
+  <p>본 연구는 처음에 심전도용 증폭기 AD8232<sup>[8]</sup>를 썼다. 저장소 설정 기준으로 <span class="n">0.5 Hz</span> 고역통과·<span class="n">40 Hz</span> 저역통과·이득 <span class="n">1100</span>배이며, 고역통과는 모듈 기판에 납땜된 부품으로 정해져 있어 바꾸기 어렵고, 그림1의 활동전위 대역(<span class="n">0.01–0.1 Hz</span>)을 지운다. 또 단전원 <span class="n">3.3 V</span>에서 입력 환산 범위가 약 <span class="n">±1 mV</span> 안팎에 그쳐(실측 상단 레일 2.6 V로 계산하면 (2.6 − 1.65) V ÷ 1100 ≈ <span class="n">0.86 mV</span>) 수십 mV 신호는 잘린다. 이 두 가지 이유로 DC 결합 측정계로 바꾸었다.</p>
   <p>고역통과를 없앤 대가는 전극 표류가 그대로 들어온다는 것이다. 수분부족처럼 수 시간에 걸쳐 기준점이 옮겨 가는 신호를 보려면 느린 성분을 통과시켜야 하는데, 같은 경로로 3절의 전극 표류도 함께 들어온다. 둘은 모두 기준점이 천천히 이동하는 변화여서 같은 전극 한 쌍으로는 어느 쪽이 원인인지 가를 수 없다. 따라서 전극 표류의 크기가 이 측정계로 분간할 수 있는 느린 신호의 하한이 된다. 식물을 붙이기 전에 전극만의 표류를 따로 재는 이유가 이것이다.</p>
 
   <h3>5. 스펙트로그램 기반 분류</h3>
-  <p>시계열을 짧은 창으로 잘라 주파수별 세기를 색으로 나타낸 것이 <strong>스펙트로그램</strong>이다. 본 연구의 전처리는 <span class="n">0.5–20 Hz</span> 대역통과와 <span class="n">60 Hz</span> 노치를 거친 신호를 <span class="n">10</span>초 창(<span class="n">2</span>초 이동)으로 잘라 <span class="n">224×224</span> 스펙트로그램 이미지와 <span class="n">17</span>개 명시적 특징(시간영역 <span class="n">7</span>, 주파수영역 <span class="n">7</span>, 느린 성분 <span class="n">3</span>)을 만든다<sup>[10]</sup>. 0.5 Hz 미만을 지우는 대역통과 필터를 거치므로, 스펙트로그램은 전압이 <strong>머무는 높이가 아니라 변화</strong>를 보여 준다.</p>
+  <p>시계열을 짧은 창으로 잘라 주파수별 세기를 색으로 나타낸 것이 <strong>스펙트로그램</strong>이다. 본 연구의 전처리는 <span class="n">0.5–20 Hz</span> 대역통과와 <span class="n">60 Hz</span> 노치를 거친 신호를 <span class="n">10</span>초 창(<span class="n">2</span>초 이동)으로 잘라 <span class="n">224×224</span> 스펙트로그램 이미지와 <span class="n">17</span>개 명시적 특징(시간영역 <span class="n">7</span>, 주파수영역 <span class="n">7</span>, 느린 성분 <span class="n">3</span>)을 만든다<sup>[9]</sup>. 0.5 Hz 미만을 지우는 대역통과 필터를 거치므로, 스펙트로그램은 전압이 <strong>머무는 높이가 아니라 변화</strong>를 보여 준다.</p>
 </section>
 
 <section>
@@ -317,7 +317,7 @@
   <h3>3. 분석 방법</h3>
   <ul>
     <li><strong>표류</strong> — 마지막 <span class="n">30</span>초 평균에서 처음 <span class="n">30</span>초 평균을 뺀 값</li>
-    <li><strong>잡음</strong> — 표준편차(sd). 대역 잡음은 버터워스 대역통과를 앞뒤로 한 번씩 걸어(위상 왜곡 없음) 해당 대역만 남긴 뒤의 sd(SciPy<sup>[12]</sup>)</li>
+    <li><strong>잡음</strong> — 표준편차(sd). 대역 잡음은 버터워스 대역통과를 앞뒤로 한 번씩 걸어(위상 왜곡 없음) 해당 대역만 남긴 뒤의 sd(SciPy<sup>[11]</sup>)</li>
     <li><strong>단극 점검</strong> — 차동 측정만으로는 기준 전압 결함이 드러나지 않으므로(Ⅳ장 2절), 각 채널을 GND 기준으로 따로 읽는 점검(<code>bias_check.py</code>)을 함께 했다</li>
     <li><strong>교차 확인</strong> — 기록값을 같은 순간 단극으로 잰 두 채널의 차이와 맞춰 보아 기록 경로의 오류를 확인했다</li>
   </ul>
@@ -327,10 +327,10 @@
 
   <h3>5. 접촉 감지 분류기 설계</h3>
   <p>식물 기록에서 손 접촉 구간을 자동으로 찾아 데이터셋을 만들었다(<code>build_touch_dataset.py</code>). <span class="n">0.1</span>초 평균이 주변 <span class="n">30</span>초 중앙값보다 <span class="n">60 mV</span> 넘게 오른 구간을 접촉으로 보고, <span class="n">8</span>초 안에 이어진 접촉은 한 덩어리로 묶었다. 덩어리 앞뒤 <span class="n">5</span>초를 포함한 구간을 접촉 파일로, 손을 뗀 뒤 <span class="n">10</span>초를 제외한 나머지를 최대 <span class="n">60</span>초씩 비접촉 파일로 저장했다.</p>
-  <p>창이 <span class="n">80 %</span> 겹치므로 무작위로 나누면 겹친 창이 학습과 평가에 동시에 들어가 정확도가 부풀려진다. 그래서 <strong>파일 단위로 평가용 파일을 따로 떼어</strong> 학습에 전혀 쓰지 않았다. 분류기는 SVM과 Random Forest(scikit-learn<sup>[11]</sup>)를 격자 탐색으로 학습했다. 또 결과를 해석하기 위해 <strong>특징 하나에 문턱값 하나</strong>만 쓰는 가장 단순한 규칙을 학습 데이터에서 찾아 같은 평가 데이터에 적용하고 비교했다.</p>
+  <p>창이 <span class="n">80 %</span> 겹치므로 무작위로 나누면 겹친 창이 학습과 평가에 동시에 들어가 정확도가 부풀려진다. 그래서 <strong>파일 단위로 평가용 파일을 따로 떼어</strong> 학습에 전혀 쓰지 않았다. 분류기는 SVM과 Random Forest(scikit-learn<sup>[10]</sup>)를 격자 탐색으로 학습했다. 또 결과를 해석하기 위해 <strong>특징 하나에 문턱값 하나</strong>만 쓰는 가장 단순한 규칙을 학습 데이터에서 찾아 같은 평가 데이터에 적용하고 비교했다.</p>
 
   <h3>6. 소스코드 공개</h3>
-  <p>수집·전처리·학습·실시간 화면의 전체 소스코드와 단계별 측정 기록은 GitHub 저장소<sup>[10]</sup>에 공개되어 있다. 측정 파일마다 실측인지 시뮬레이션인지를 적은 <code>.meta.json</code>을 함께 저장한다.</p>
+  <p>수집·전처리·학습·실시간 화면의 전체 소스코드와 단계별 측정 기록은 GitHub 저장소<sup>[9]</sup>에 공개되어 있다. 측정 파일마다 실측인지 시뮬레이션인지를 적은 <code>.meta.json</code>을 함께 저장한다.</p>
 </section>
 
 <section>
@@ -342,7 +342,7 @@
   <p>초기에 정상·자극·수분부족으로 수집해 학습한 파일 세 개는 <strong>모두 시뮬레이터 출력</strong>이었다. 당시 코드는 하드웨어를 찾지 못하면 자동으로 모의 신호를 만들었고, 측정자도 그때 측정하지 않았음을 확인했다. 시뮬레이터는 상용전원을 <span class="n">50 Hz</span>로 넣었으나, 이후 실측에서는 스펙트럼 최대 피크가 한국 상용전원인 <span class="n">60.02 Hz</span>로 나와 구별의 단서가 되었다. 그 데이터로 학습한 모델과 정확도는 모두 폐기하였다. 이후 모든 측정 파일에 출처를 함께 기록하도록 수집 코드를 고쳤다.</p>
 
   <h4>(2) AD8232로 측정한 자극 기록</h4>
-  <p>2026년 6월 8일 AD8232로 자극 측정을 했고, 스펙트로그램 그림 <span class="n">28</span>장이 남아 있다(그림3). 측정자는 자극하자 값이 <strong>튀었다가 다시 내려갔다</strong>고 기록했다. 원본 숫자 파일은 남아 있지 않아 다시 분석할 수 없다. AD8232의 <span class="n">0.5 Hz</span> 고역통과는 높아진 채 머무는 전압을 수 초 안에 0으로 끌어내리므로, 이 모양은 Ⅳ장 5절의 계단형 접촉 신호가 고역통과를 지난 결과일 수 있다. 같은 시기 예비 관찰에서 <strong>식물을 떼어 낸 채 선만 흔들어도</strong> 출력이 크게 요동쳤다.</p>
+  <p>2026년 6월 8일 AD8232로 자극 측정을 했고, 스펙트로그램 그림 <span class="n">28</span>장이 남아 있다(그림3). 측정자는 자극하자 값이 <strong>튀었다가 다시 내려갔다</strong>고 기록했다. 원본 숫자 파일은 남아 있지 않아 다시 분석할 수 없다. AD8232의 <span class="n">0.5 Hz</span> 고역통과는 높아진 채 머무는 전압을 1초 안팎에 0으로 끌어내리므로, 이 모양은 Ⅳ장 5절의 계단형 접촉 신호가 고역통과를 지난 결과일 수 있다. AD8232를 쓰던 때의 예비 관찰에서 <strong>식물을 떼어 낸 채 선만 흔들어도</strong> 출력이 크게 요동쳤다.</p>
   <figure>
     <div class="plate">{{FIG_AD8232}}</div>
     <figcaption><span class="cap">그림3.</span> AD8232 자극 측정 스펙트로그램 28장 (2026-06-08, 순서대로)</figcaption>
@@ -365,7 +365,7 @@
   </div>
 
   <h4>(2) 라이브러리가 엉뚱한 채널을 읽은 오류</h4>
-  <p>식물 <span class="n">3</span>시간 기록이 처음부터 끝까지 <span class="n">1,609 mV</span>로 고정되어 있었다. 같은 순간 단극으로 잰 두 채널의 차이는 <span class="n">−148 mV</span>였고, 기록값은 기준 전압 채널의 단극 값과 같았다. 원인은 ADS1115 제어 라이브러리<sup>[13]</sup>의 설정 함수였다. <strong>연속 변환 모드에서는 요청한 채널을 버리고 칩에 남아 있던 채널을 다시 써 넣어</strong>, 직전에 점검 프로그램이 마지막으로 읽은 채널을 계속 읽은 것이다. 단발 모드로 한 번 읽어 채널을 맞춘 뒤 연속 모드로 바꾸도록 고쳤고, 일부러 다른 채널에 맞춰 둔 상태에서도 기록값(<span class="n">−70.4 mV</span>)이 같은 순간의 단극 차이(<span class="n">−55.9 mV</span>)와 맞는 것을 확인했다.</p>
+  <p>식물 <span class="n">3</span>시간 기록이 처음부터 끝까지 <span class="n">1,609 mV</span>로 고정되어 있었다. 같은 순간 단극으로 잰 두 채널의 차이는 <span class="n">−148 mV</span>였고, 기록값은 기준 전압 채널의 단극 값과 같았다. 원인은 ADS1115 제어 라이브러리<sup>[12]</sup>의 설정 함수였다. <strong>연속 변환 모드에서는 요청한 채널을 버리고 칩에 남아 있던 채널을 다시 써 넣어</strong>, 직전에 점검 프로그램이 마지막으로 읽은 채널을 계속 읽은 것이다. 단발 모드로 한 번 읽어 채널을 맞춘 뒤 연속 모드로 바꾸도록 고쳤고, 일부러 다른 채널에 맞춰 둔 상태에서도 기록값(<span class="n">−70.4 mV</span>)이 같은 순간의 단극 차이(<span class="n">−55.9 mV</span>)와 맞는 것을 확인했다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표5.</span> 채널 선택 오류의 영향을 받은 측정</caption>
@@ -415,8 +415,8 @@
       </tbody>
     </table>
   </div>
-  <p>전극이 안정된 뒤의 표류는 <span class="n">30</span>분에 <span class="n">14.28 mV</span>, 시간당 약 <span class="n">28 mV</span>다. 1단계 회로 표류(<span class="n">−0.0003 mV</span>)와 비교하면 <strong>측정 한계는 회로가 아니라 전극에서 정해진다</strong>(연구문제 1). 수분부족 신호가 놓이는 수 시간 규모에서 전극은 수십~수백 <span class="n">mV</span>를 밀리므로, 같은 전극 한 쌍으로는 식물에서 온 느린 변화와 전극에서 온 표류를 가를 수 없다. 활동전위 대역 잡음 <span class="n">1.28 mV</span>는 문헌의 접촉 유발 활동전위(<span class="n">33.9 mV</span>)<sup>[7]</sup>보다 작지만, <span class="n">93.8</span>분에 원인 모를 <span class="n">58 mV</span> 단발 변동이 한 번 있었다. <strong>값이 튀었다는 사실만으로 자극 반응이라 판단할 수 없음</strong>을 보여 준다.</p>
-  <p>안정된 뒤(<span class="n">90–120</span>분)의 표류 기울기는 분당 <span class="n">0.44 mV</span>로, 접촉 유발 활동전위 한 번(약 <span class="n">10</span>초) 동안 약 <span class="n">0.07 mV</span>만 움직인다. 문헌 진폭(<span class="n">33.9 mV</span>)<sup>[7]</sup>보다 훨씬 작으므로 짧은 자극 반응은 표류에 가려지지 않는다. 그러나 수 시간 규모에서는 수십~수백 mV가 되어 수분부족 신호와 섞인다.</p>
+  <p>전극이 안정된 뒤의 표류는 <span class="n">30</span>분에 <span class="n">14.28 mV</span>, 시간당 약 <span class="n">28 mV</span>다. 1단계 회로 표류(<span class="n">−0.0003 mV</span>)와 비교하면 <strong>측정 한계는 회로가 아니라 전극에서 정해진다</strong>(연구문제 1). 수분부족 신호가 놓이는 수 시간 규모에서 전극은 수십~수백 <span class="n">mV</span>를 밀리므로, 같은 전극 한 쌍으로는 식물에서 온 느린 변화와 전극에서 온 표류를 가를 수 없다. 활동전위 대역 잡음 <span class="n">1.28 mV</span>는 문헌의 접촉 유발 활동전위(<span class="n">33.9 mV</span>)<sup>[6]</sup>보다 작지만, <span class="n">93.8</span>분에 원인 모를 <span class="n">58 mV</span> 단발 변동이 한 번 있었다. <strong>값이 튀었다는 사실만으로 자극 반응이라 판단할 수 없음</strong>을 보여 준다.</p>
+  <p>안정된 뒤(<span class="n">90–120</span>분)의 표류 기울기는 분당 <span class="n">0.44 mV</span>로, 접촉 유발 활동전위 한 번(약 <span class="n">10</span>초) 동안 약 <span class="n">0.07 mV</span>만 움직인다. 문헌 진폭(<span class="n">33.9 mV</span>)<sup>[6]</sup>보다 훨씬 작으므로 짧은 자극 반응은 표류에 가려지지 않는다. 그러나 수 시간 규모에서는 수십~수백 mV가 되어 수분부족 신호와 섞인다.</p>
 
   <h3>5. 3단계 — 식물 측정과 손 접촉</h3>
   <p>점퍼선 핀 두 개를 줄기에 <span class="n">3 cm</span> 간격으로 관통시키고 기준 핀을 흙에 꽂았다. 첫 <span class="n">30</span>초 측정에서 전체 흔들림의 <span class="n">66.2 %</span>가 <span class="n">55–65 Hz</span> 상용전원 성분이었고, <span class="n">1 Hz</span> 이하만 남기면 sd는 <span class="n">2.1 mV</span>였다. 이어서 실시간 화면으로 기록하며 손으로 줄기와 잎을 만졌다(그림5).</p>
@@ -424,11 +424,11 @@
     <div class="plate">{{FIG_TOUCH}}</div>
     <figcaption><span class="cap">그림5.</span> 식물 기록과 손 접촉 신호</figcaption>
   </figure>
-  <p>그림5(가)는 기록 앞 <span class="n">1719</span>초의 <span class="n">0.1</span>초 평균이며, 점선은 평상시 기준선(<span class="n">−49.9 mV</span>)이다. (나)에서 손이 닿는 순간 전압이 솟고, 떼면 기준선 아래로 내려갔다가 수 초에 걸쳐 돌아온다. (다)의 파란 띠는 문헌의 접촉 유발 활동전위 사분위 범위(<span class="n">26.8–39.8 mV</span>)<sup>[7]</sup>다.</p>
+  <p>그림5(가)는 기록 앞 <span class="n">1719</span>초의 <span class="n">0.1</span>초 평균이며, 점선은 평상시 기준선(<span class="n">−49.9 mV</span>)이다. (나)에서 손이 닿는 순간 전압이 솟고, 떼면 기준선 아래로 내려갔다가 수 초에 걸쳐 돌아온다. (다)의 파란 띠는 문헌의 접촉 유발 활동전위 사분위 범위(<span class="n">26.8–39.8 mV</span>)<sup>[6]</sup>다.</p>
   <div class="tbl-wrap">
     <table>
       <caption><span class="cap">표8.</span> 손 접촉 신호 (기록 앞 1719초, 0.1초 평균)</caption>
-      <thead><tr><th>항목</th><th>본 연구</th><th>문헌 접촉 유발 활동전위[7]</th></tr></thead>
+      <thead><tr><th>항목</th><th>본 연구</th><th>문헌 접촉 유발 활동전위[6]</th></tr></thead>
       <tbody>
         <tr><td>사건 수</td><td class="n">43건</td><td class="n">21회 중 21회</td></tr>
         <tr><td>크기 (중앙값)</td><td class="n">275.4 mV</td><td class="n">33.9 mV</td></tr>
@@ -442,7 +442,7 @@
   <p>손 접촉 신호는 문헌 활동전위와 크기·길이·시작 시점이 모두 다르다. 손이 닿아 있는 동안만 높게 유지되고, 닿는 위치마다 크기가 달랐다(측정자 관찰). 사람 몸도 도체이므로 닿는 순간 몸의 전위가 전극 쪽에 더해지는 것으로 해석한다.</p>
 
   <h3>6. 자극 반응을 분리할 수 없다는 한계</h3>
-  <p>식물을 칠 때마다 값이 크게 튀었다(실시간 화면, 측정자 확인). 그러나 치려면 손이 닿고 줄기와 핀이 흔들린다. 손 접촉 신호(중앙값 <span class="n">275 mV</span>)는 문헌 활동전위(<span class="n">33.9 mV</span>)의 약 <span class="n">8</span>배이고, 핀의 움직임도 전극 전위를 바꾼다<sup>[8]</sup>. 문헌<sup>[7]</sup>의 기준으로 보면 접촉과 <strong>동시에</strong> 생기는 변화는 잡음 쪽에 해당하는데, 본 연구의 계단은 손이 닿자마자 생겼다.</p>
+  <p>식물을 칠 때마다 값이 크게 튀었다(실시간 화면, 측정자 확인). 그러나 치려면 손이 닿고 줄기와 핀이 흔들린다. 손 접촉 신호(중앙값 <span class="n">275 mV</span>)는 문헌 활동전위(<span class="n">33.9 mV</span>)의 약 <span class="n">8</span>배이고, 핀의 움직임도 전극 전위를 바꾼다<sup>[7]</sup>. 문헌<sup>[6]</sup>의 기준으로 보면 접촉과 <strong>동시에</strong> 생기는 변화는 잡음 쪽에 해당하는데, 본 연구의 계단은 손이 닿자마자 생겼다.</p>
   <p>스펙트로그램에서도 구분되지 않는다. 그림6(가)는 손 접촉이 이어진 <span class="n">90</span>초의 전압, (나)는 같은 구간의 스펙트로그램이다. <span class="n">0.5–20 Hz</span> 대역통과 후의 스펙트로그램은 손을 대는 순간과 떼는 순간에 밝은 세로 띠를 만들고, 핀이나 선을 흔들 때도 같은 띠가 나타났다(측정자 관찰). 0.5 Hz 미만을 지우는 필터 때문에 높게 머무는 구간은 오히려 어둡고, 변하는 순간만 밝다. 분류기에 들어가는 <span class="n">10</span>초 창(그림6(다))도 접촉 창은 가장자리 띠, 비접촉 창은 가로 줄무늬만 보인다. 모든 창에 보이는 <span class="n">10 Hz</span> 가로줄은 상용전원의 <span class="n">4</span>배 고조파 <span class="n">240 Hz</span>가 <span class="n">250 S/s</span> 표본화에서 <span class="n">|240 − 250| = 10 Hz</span>로 접힌 것으로 보인다.</p>
   <figure>
     <div class="plate">{{FIG_SPEC}}</div>
@@ -466,7 +466,7 @@
       </tbody>
     </table>
   </div>
-  <p>SVM은 평가 파일을 바꾸어 <span class="n">5</span>회 반복한 세션 교차검증에서도 모두 <span class="n">100 %</span>였다. 그러나 <strong>중간 대역 파워 하나에 문턱값 하나만 써도 250창을 맞혔다.</strong> 손이 닿으면 약 <span class="n">280 mV</span>, 평상시 흔들림은 약 <span class="n">17 mV</span>라 두 상태가 크게 달라 쉬운 과제였다. 또 라벨 자체를 같은 신호에 문턱을 대어 정했으므로, 분류기는 그 규칙을 다시 배운 것에 가깝다. 하루, 식물 한 그루, 측정자 한 명의 데이터이며, 선·핀을 흔들 때와는 구분하지 못한다. 따라서 이 분류기가 판별하는 것은 <strong>식물의 반응이 아니라 접촉 여부</strong>다(연구문제 3).</p>
+  <p>SVM은 평가 파일을 바꾸어 <span class="n">5</span>회 반복한 세션 교차검증에서도 모두 <span class="n">100 %</span>였다. 그러나 <strong>중간 대역 파워 하나에 문턱값 하나만 써도 250창을 맞혔다.</strong> 손이 닿으면 약 <span class="n">280 mV</span>, 평상시 흔들림은 약 <span class="n">17 mV</span>라 두 상태가 크게 달라 쉬운 과제였다. 또 라벨 자체를 같은 신호에 문턱을 대어 정했으므로, 분류기는 그 규칙을 다시 배운 것에 가깝다. 한 번의 기록(하루, 식물 한 그루)에서 얻은 데이터이며, 선·핀을 흔들 때와는 구분하지 못한다. 따라서 이 분류기가 판별하는 것은 <strong>식물의 반응이 아니라 접촉 여부</strong>다(연구문제 3).</p>
 
 
   <h3>8. 종합</h3>
@@ -500,13 +500,12 @@
   <h3>2. 연구의 의의</h3>
   <ol>
     <li><strong>저가 측정계의 한계를 숫자로 특정했다.</strong> 회로와 전극의 표류를 따로 재어, 개선해야 할 곳이 회로가 아니라 전극임을 보였다.</li>
-    <li><strong>측정값의 출처를 의심하고 확인하는 절차를 남겼다.</strong> 시뮬레이터 데이터, 기준 전압 결함, 라이브러리 채널 오류는 모두 그럴듯한 숫자를 냈고, 단극 측정과 교차 확인으로만 드러났다.</li>
+    <li><strong>측정값의 출처를 의심하고 확인하는 절차를 남겼다.</strong> 시뮬레이터 데이터, 기준 전압 결함, 라이브러리 채널 오류는 모두 그럴듯한 숫자를 냈다. 시뮬레이터 데이터는 상용전원 주파수(50 Hz와 60 Hz)의 차이로, 나머지 둘은 단극 측정과 교차 확인으로 드러났다.</li>
     <li><strong>높은 정확도를 비교 기준과 함께 읽었다.</strong> <span class="n">100 %</span> 정확도도 문턱 하나짜리 규칙과 비교하면 쉬운 과제였음을 알 수 있다.</li>
   </ol>
 
   <h3>3. 연구의 한계</h3>
   <ul>
-    <li>식물은 한 그루, 측정자는 한 명이다.</li>
     <li>전극 표류는 수돗물에서 재었으며 식물 수액에서는 다를 수 있다.</li>
     <li>1단계의 <span class="n">121</span>초 주기 간섭과 2단계의 <span class="n">58 mV</span> 단발 변동은 원인을 찾지 못했다.</li>
     <li>기준 전압 단극 측정, 2단계 직후 재측정, 식물 첫 <span class="n">30</span>초 측정은 화면 출력만 남아 있다.</li>
@@ -515,11 +514,11 @@
 
   <h3>4. 후속 연구 제언</h3>
   <ol>
-    <li><strong>Ag/AgCl 비분극 전극</strong>을 쓰면 표류가 줄어 느린 신호에 다시 도전할 수 있다<sup>[8]</sup>.</li>
+    <li><strong>Ag/AgCl 비분극 전극</strong>을 쓰면 표류가 줄어 느린 신호에 다시 도전할 수 있다<sup>[7]</sup>.</li>
     <li>자극은 <strong>손이 닿지 않는 방법</strong>(비전도성 도구, 멀리서 떨어뜨리는 물방울)으로 주고, 그 시각을 초 단위로 기록한다.</li>
-    <li>자극과 <strong>동시에</strong> 생긴 변화는 잡음으로 보고, 몇 초 뒤 도착하는 약 <span class="n">10</span>초짜리 변화를 찾는다<sup>[7]</sup>.</li>
+    <li>자극과 <strong>동시에</strong> 생긴 변화는 잡음으로 보고, 몇 초 뒤 도착하는 약 <span class="n">10</span>초짜리 변화를 찾는다<sup>[6]</sup>.</li>
     <li>호일·마른 가지에 같은 자극을 준 <strong>음성 대조군</strong>을 함께 측정한다.</li>
-    <li>전극을 꽂은 뒤 최소 <span class="n">40</span>분(관통이면 1시간 이상) 기다린 뒤 측정하고, 긴 측정 전에는 <span class="n">20–30</span>초 시험 측정으로 값을 확인한다.</li>
+    <li>전극을 꽂은 뒤 최소 <span class="n">40</span>분 기다린 뒤 측정하고, 긴 측정 전에는 <span class="n">20–30</span>초 시험 측정으로 값을 확인한다.</li>
     <li>분석 대역을 <span class="n">0.01–1 Hz</span>로, 분석 창을 수십 초 이상으로 바꾼다.</li>
   </ol>
 </section>
@@ -529,7 +528,6 @@
   <ol class="refs">
     <li>Texas Instruments. <i>ADS111x Ultra-Small, Low-Power, I2C-Compatible, 860-SPS, 16-Bit ADCs With Internal Reference</i> (Data Sheet). — 측정 범위 ±0.256–±6.144 V, 860 SPS.</li>
     <li>Microchip Technology. <i>MCP6001/1R/1U/2/4: 1 MHz, Low-Power Op Amp</i> (Data Sheet DS20001733L). — 오프셋 ±4.5 mV, 바이어스 ±1 pA.</li>
-    <li>Fromm, J., &amp; Lautner, S. (2007). Electrical signals and their physiological significance in plants. <i>Plant, Cell &amp; Environment</i>, 30(3), 249–257.</li>
     <li>Mudrilov, M. et al. (2021). Electrical Signaling of Plants under Abiotic Stressors: Transmission of Stimulus-Specific Information. <i>International Journal of Molecular Sciences</i>, 22(19), 10715. doi:10.3390/ijms221910715 — 활동전위 수십 초, 저온 AP 60–70 mV, 변동전위 수십 분.</li>
     <li>Macedo, F. C. O., Dziubinska, H., Trebacz, K., Oliveira, R. F., &amp; de Andrade Moral, R. (2015). Action potentials in abscisic acid-deficient tomato mutant generated spontaneously and evoked by electrical stimulation. <i>Acta Physiologiae Plantarum</i>, 37, 207. doi:10.1007/s11738-015-1950-4 — 전류 자극 후 21.2 ± 2.4 mV.</li>
     <li>Volkov, A. G., &amp; Shtessel, Y. B. (2018). Electrical signal propagation within and between tomato plants. <i>Bioelectrochemistry</i>, 124, 195–205. doi:10.1016/j.bioelechem.2018.08.001 — 9 V 자극 시 40 mV, 3.5–4.5 mm/s.</li>
@@ -547,7 +545,7 @@
   <h2>부 록</h2>
 
   <h3>1. 개발 소스코드 구성</h3>
-  <p>전체 소스코드는 GitHub 저장소<sup>[10]</sup>에 공개되어 있다. <code>frontend.py</code>(측정 회로별 설정과 ADC 읽기), <code>sensor_control.py</code>(수집), <code>bias_check.py</code>(기준 전압 단극 점검), <code>live_spectrogram.py</code>(실시간 스펙트로그램 페이지), <code>build_touch_dataset.py</code>(접촉 데이터셋 생성), <code>preprocess.py</code>·<code>feature_extraction.py</code>(필터·스펙트로그램·특징), <code>train.py</code>(학습·평가), <code>web_dashboard.py</code>(브라우저 화면)로 구성된다.</p>
+  <p>전체 소스코드는 GitHub 저장소<sup>[9]</sup>에 공개되어 있다. <code>frontend.py</code>(측정 회로별 설정과 ADC 읽기), <code>sensor_control.py</code>(수집), <code>bias_check.py</code>(기준 전압 단극 점검), <code>live_spectrogram.py</code>(실시간 스펙트로그램 페이지), <code>build_touch_dataset.py</code>(접촉 데이터셋 생성), <code>preprocess.py</code>·<code>feature_extraction.py</code>(필터·스펙트로그램·특징), <code>train.py</code>(학습·평가), <code>web_dashboard.py</code>(브라우저 화면)로 구성된다.</p>
 
   <h3>2. 재현 시 반드시 지킬 것</h3>
   <ul>
