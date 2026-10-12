@@ -38,7 +38,7 @@ mark_path = os.path.join(root, f"live_{stamp}.marks.csv")
 with open(csv_path, "w") as f:
     f.write("sample,voltage_mV\n")
 with open(mark_path, "w") as f:
-    f.write("sample,seconds,wallclock\n")
+    f.write("sample,seconds,wallclock,cond,kind\n")
 with open(os.path.join(root, f"live_{stamp}.meta.json"), "w", encoding="utf-8") as f:
     json.dump({"mode": "hardware", "frontend": fe.describe(), "fs": FS,
                "started": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -121,11 +121,16 @@ def frame():
 
 @app.post("/mark")
 def mark():
+    # 대조 측정(E)용 — 어떤 조건(cond)의 구간 시작(start)인지 자극(hit)인지 같이 남긴다.
+    body = request.get_json(silent=True) or {}
+    cond = str(body.get("cond", "")).replace(",", " ")[:40]
+    kind = "start" if body.get("kind") == "start" else "hit"
     with lock:
         idx = n_total - 1
-    marks.append(idx)
-    with open(mark_path, "a") as f:
-        f.write(f"{idx},{idx / FS:.2f},{datetime.datetime.now().isoformat(timespec='seconds')}\n")
+    if kind == "hit":
+        marks.append(idx)
+    with open(mark_path, "a", encoding="utf-8") as f:
+        f.write(f"{idx},{idx / FS:.2f},{datetime.datetime.now().isoformat(timespec='seconds')},{cond},{kind}\n")
     return jsonify({"ok": True, "sample": idx, "seconds": round(idx / FS, 2), "count": len(marks)})
 
 

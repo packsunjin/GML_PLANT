@@ -703,7 +703,8 @@ src/
   bias_check.py        바이어스 노드 점검. 단극으로 절대 전압을 읽는다(0절 ⑩).
                        차동만 보면 입력이 단락됐을 때 무조건 0 이라 못 잡는다
   live_spectrogram.py  실시간 스펙트로그램 페이지(+ .html). 표시와 저장을 한 프로세스가
-                       한다. "쳤어" 버튼 시각을 .marks.csv 에 표본 번호로 남긴다.
+                       한다. "쳤어" 버튼 시각을 .marks.csv 에 표본 번호로 남긴다. 대조 측정(E)용으로
+                       조건 선택 + "이 조건 시작" 버튼이 있어 marks.csv 에 cond·kind(start/hit) 열이 붙는다.
                        파이에서 실행 → PC 에서 ssh -N -L 8000:127.0.0.1:8000 gml →
                        http://localhost:8000 . 다른 수집기와 동시에 돌리지 마라(⑰)
   build_touch_dataset.py  live 기록에서 손 접촉 구간을 잘라 data/touch/raw 에
@@ -741,6 +742,8 @@ python3 src/sensor_control.py --state 수분부족 --frontend dc --ref --rate 5 
 > 직접 고친 판이라 `tpl.html → build_docx.py` 로 다시 만들면 그 수정이 날아간다. **아래 빌드는 돌리지 마라.**
 > hwpx 는 `report/hwpx_edit.py 원본 결과 편집.json` 으로 `<hp:t>` 글자만 바꾼다(바꾼 문단의 linesegarray 삭제,
 > header.xml 의 paraPr/charPr 추가 금지, mimetype 첫 항목·무압축). docx 로 바꾸지 마라(깨진다).
+> 그림·사진 넣기는 `report/hwpx_pics.py 원본 결과 "사진2 넣을 자리=파일=가로"`(기존 hp:pic 을 본보기로 복사, BinData·content.hpf 등록).
+> 2026-10-12 사진2(줄기, 10-12 촬영)·사진3(컵)·그림7(/live 캡처, 손 안 댄 상태)을 넣었다 → `~/Downloads/GML_결과보고서_최종_사진.hwpx`. 사진1 은 아직 없다.
 > 원본 수치 재검산은 `report/recheck.py`(파이에서).
 
 

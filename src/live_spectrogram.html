@@ -27,7 +27,18 @@ canvas{display:block;width:100%;background:#000;border-radius:4px}
 
 <div class="panel">
   <div class="row" style="justify-content:space-between">
-    <button class="big" id="mark">쳤어</button>
+    <div class="row">
+      <select id="cond" style="font:inherit;padding:8px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px">
+        <option>1 기준(아무것도 안 함)</option>
+        <option>2 맨손으로 줄기 접촉</option>
+        <option>3 장갑·막대로 줄기 치기</option>
+        <option>4 맨손으로 화분·흙만</option>
+        <option>5 선 피복만 흔들기</option>
+        <option>6 핀만 건드리기</option>
+      </select>
+      <button id="start">이 조건 시작</button>
+      <button class="big" id="mark">쳤어</button>
+    </div>
     <div class="row">
       <span class="lab" style="margin:0">주파수 범위</span>
       <button id="r10" class="on">0–10 Hz</button>
@@ -115,10 +126,14 @@ async function tick(){
   }catch(e){ stat.textContent='연결 끊김 — 다시 시도 중'; }
   setTimeout(tick,250);
 }
-document.getElementById('mark').onclick=async()=>{
-  try{ const r=await fetch('/mark',{method:'POST'}); const d=await r.json();
-    stat.textContent='표시함 — '+d.seconds+'초 (총 '+d.count+'개)'; }catch(e){}
-};
+async function sendMark(kind){
+  const cond=document.getElementById('cond').value;
+  try{ const r=await fetch('/mark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cond,kind})});
+    const d=await r.json();
+    stat.textContent=(kind==='start'?'조건 시작 — ':'표시함 — ')+cond+' · '+d.seconds+'초'; }catch(e){}
+}
+document.getElementById('mark').onclick=()=>sendMark('hit');
+document.getElementById('start').onclick=()=>sendMark('start');
 document.getElementById('r10').onclick=()=>{fmax=10; r10.classList.add('on'); r125.classList.remove('on'); drawWF();};
 document.getElementById('r125').onclick=()=>{fmax=125; r125.classList.add('on'); r10.classList.remove('on'); drawWF();};
 tick();
