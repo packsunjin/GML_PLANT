@@ -210,7 +210,10 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
     <!-- 스펙트로그램 -->
     <section class="tile t-spec">
       <div class="hd">
-        <h2>스펙트로그램</h2><span class="sub" id="specSub">최근 90초 · 원신호 4초 FFT, 0.25초마다 한 줄</span>
+        <h2>스펙트로그램</h2><span class="sub" id="specSub">최근 2분 · 원신호 4.1초 FFT, 0.25초마다 한 줄</span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button id="r10" type="button">0–10 Hz</button><button id="r125" type="button">0–125 Hz</button>
+        </span>
       </div>
       <div class="bd"><div class="plot" id="specPlot"><canvas id="specCv"></canvas><div class="tip" id="specTip"></div></div></div>
     </section>
@@ -473,7 +476,9 @@ const SPAD = { l: 58, r: 12, t: 8, b: 44 };
 let specHover = null;
 // 스펙트로그램도 보고서 그림6(나)처럼 90초를 이어 그린다. /data 는 매번 최근 10초 창의
 // 스펙트로그램을 주므로, 그 마지막 열(가장 최근)만 받아서 쌓는다. 색 범위는 쌓인 90초 전체의 최솟값~최댓값.
-const SPEC_SEC = 90;
+const SPEC_SEC = 120;                // 실시간 스펙트로그램 페이지와 같이 최근 2분
+let specRange = 10;                  // 보이는 주파수 범위(Hz): 10 또는 125
+let specDf = 250 / 1024;             // 줄 하나의 주파수 폭 — 서버가 보내면 그 값으로 바꾼다
 let specHist = [];   // {t, col}
 let specSince = -1;  // 서버에서 마지막으로 받은 줄 번호
 let specFmax = null;
@@ -481,9 +486,13 @@ function renderSpec() {
   const { g, w, h } = fit($("specCv"));
   g.clearRect(0, 0, w, h);
   const d = latest;
-  const S = specHist.length ? specHist[0].col.map((_, fi) => specHist.map(c => c.col[fi])) : null;
+  // 실시간 스펙트로그램 페이지(live_spectrogram.html)와 같은 출력 방식:
+  // 보이는 범위(0–10 Hz 또는 0–125 Hz)의 줄만 그리고, 색 범위는 0 Hz 줄을 뺀 값의 5–99.5 백분위
+  const nbAll = specHist.length ? specHist[0].col.length : 0;
+  const nb = Math.max(2, Math.min(nbAll, Math.round(specRange / specDf)));
+  const S = specHist.length ? Array.from({ length: nb }, (_, fi) => specHist.map(c => c.col[fi])) : null;
   const pw = w - SPAD.l - SPAD.r, ph = h - SPAD.t - SPAD.b;
-  const fHi = specFmax || (d && d.band ? +d.band[1] : 20), win = SPEC_SEC;
+  const fHi = Math.min(specRange, nbAll * specDf || specRange), win = SPEC_SEC;
   const ink = css("--text-primary");
   if (!S || !S.length || !S[0].length) {
     g.fillStyle = css("--text-muted"); g.font = "12px system-ui"; g.textAlign = "center";
@@ -491,8 +500,11 @@ function renderSpec() {
     return;
   }
   const nf = S.length, nt = S[0].length;
-  let lo = Infinity, hi = -Infinity;
-  for (const r of S) for (const v of r) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  const all = [];
+  for (let fi = 1; fi < nf; fi++) for (const v of S[fi]) all.push(v);
+  all.sort((a, b) => a - b);
+  const lo = all.length ? all[Math.floor(all.length * 0.05)] : 0;
+  const hi = all.length ? all[Math.min(all.length - 1, Math.floor(all.length * 0.995))] : 1;
   const img = g.createImageData(nt, nf);
   for (let fi = 0; fi < nf; fi++) for (let ti = 0; ti < nt; ti++) {
     const u = Math.max(0, Math.min(1, (S[fi][ti] - lo) / (hi - lo || 1)));
@@ -556,6 +568,7 @@ function ingest(d) {
     const maxN = Math.round(L.keep_sec / L.hop_s);
     if (specHist.length > maxN) specHist.splice(0, specHist.length - maxN);
     specFmax = L.fmax;
+    if (L.df) specDf = +L.df;
   } else if (d && Array.isArray(d.spec) && d.spec.length && d.spec[0].length && !d.paused) {
     const ntl = d.spec[0].length;                       // 데모: 판정용 창의 마지막 열을 쌓는다
     specHist.push({ t: now, col: d.spec.map(r => r[ntl - 1]) });
@@ -669,6 +682,16 @@ function startDemo() {
 function render() { renderGauge(); renderHist(); renderSpec(); renderVolt(); }
 function frame() { renderVolt(); requestAnimationFrame(frame); }
 new ResizeObserver(() => { renderSpec(); renderVolt(); }).observe(document.body);
+// 주파수 범위 버튼 — 실시간 스펙트로그램 페이지와 같은 0–10 Hz / 0–125 Hz
+function setRange(r) {
+  specRange = r;
+  $("r10").classList.toggle("on", r === 10); $("r125").classList.toggle("on", r === 125);
+  $("r10").setAttribute("aria-pressed", r === 10); $("r125").setAttribute("aria-pressed", r === 125);
+  renderSpec();
+}
+$("r10").addEventListener("click", () => setRange(10));
+$("r125").addEventListener("click", () => setRange(125));
+setRange(10);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 
 render();

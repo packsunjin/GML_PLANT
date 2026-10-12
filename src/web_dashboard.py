@@ -180,8 +180,8 @@ SIGNAL_AVG_SEC = 0.1
 # 판정용 10초 창 스펙트로그램(spec)을 매번 통째로 다시 그리면 화면이 실시간으로 흐르지 않는다.
 LIVE_NFFT = 1024
 LIVE_HOP_SEC = 0.25
-LIVE_KEEP_SEC = 90.0
-LIVE_FMAX = 20.0
+LIVE_KEEP_SEC = 120.0       # 실시간 스펙트로그램 페이지와 같이 2분
+LIVE_FMAX = 125.0           # 0–125 Hz 전부 보낸다(화면에서 0–10 Hz 와 0–125 Hz 를 고른다)
 _live_cols = deque(maxlen=int(LIVE_KEEP_SEC / LIVE_HOP_SEC))   # (번호, 열)
 _live_next = [0]
 
@@ -512,7 +512,7 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         d["live_spec"] = {"col0": cols[0][0] if cols else since + 1,
                           "cols": [c for _, c in cols], "hop_s": LIVE_HOP_SEC,
                           "keep_sec": LIVE_KEEP_SEC, "fmax": LIVE_FMAX, "nfft": LIVE_NFFT,
-                          "next": _live_next[0]}
+                          "next": _live_next[0], "df": round(clf.sample_rate / LIVE_NFFT, 6)}
         # 수집 중에는 실시간 루프가 센서를 양보하고 쉰다(같은 ADS1115를 두 프로세스가
         # 번갈아 읽으면 수집 쪽 샘플레이트가 떨어지기 때문). 그 사이 화면은 마지막 값에
         # 멈춰 있는데, 안내가 없으면 고장난 것으로 보인다. 그래서 왜 멈췄는지 같이 보낸다.
