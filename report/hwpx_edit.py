@@ -20,7 +20,9 @@ report = []
 for e in edits:
     old, new = esc(e["old"]), esc(e["new"])
     # <hp:t> 하나 안에 old 가 통째로 있어야 한다
-    hits = [m for m in re.finditer(r"<hp:t>([^<]*)</hp:t>", xml_s) if old in m.group(1)]
+    # "exact": true 면 <hp:t> 내용 전체가 old 와 같을 때만 바꾼다(표 칸처럼 짧은 글자용)
+    hits = [m for m in re.finditer(r"<hp:t>([^<]*)</hp:t>", xml_s)
+            if (m.group(1) == old if e.get("exact") else old in m.group(1))]
     want = e.get("count", 1)
     if len(hits) != want:
         report.append(f"[실패] {len(hits)}곳(기대 {want}): {e['old'][:40]}")

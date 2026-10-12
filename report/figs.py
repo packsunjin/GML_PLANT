@@ -117,17 +117,17 @@ def fig_band():
 # ── 그림3: 1단계·2단계 ───────────────────────────────
 def fig_stage():
     s1 = minute_means(load_bench("dc_shorted_30min_v2.csv"))
-    s2 = minute_means(load_bench("stage2_electrode_2h.csv"))
+    # 2단계는 2026-10-12 재측정(60분). 10-07 2시간 기록은 절전 때문에 쓰지 않는다(CLAUDE.md 0절)
+    s2 = minute_means(load_bench("stage2_repeat_1012/정상.csv"))
     fig, (a, b) = plt.subplots(1, 2, figsize=(7.2, 2.5), gridspec_kw={"width_ratios": [1, 1.6]})
     a.plot(np.arange(len(s1)) + 0.5, s1, color=BLUE, lw=1.1)
     a.set_title("(가) 1단계: 입력 단락, 30분", loc="left")
     a.set_xlabel("시간 (분)"); a.set_ylabel("전압 (mV, 1분 평균)")
     a.ticklabel_format(axis="y", useOffset=False)
     b.plot(np.arange(len(s2)) + 0.5, s2, color=GREEN, lw=1.1)
-    b.axhline(s2[0] + 5, color=RED, ls="--", lw=0.8)
-    b.text(2, s2[0] + 18, "합격 기준 (시작값 + 5 mV)", color=RED, fontsize=6.6)
-    b.axvline(30, color=GRAY, ls=":", lw=0.8); b.text(31, s2.max() - 30, "약 30분: 젖음 끝", fontsize=6.6, color=GRAY)
-    b.set_title("(나) 2단계: 수돗물 속 점퍼선 핀, 2시간", loc="left")
+    b.axhspan(s2[0] - 5, s2[0] + 5, color=RED, alpha=0.10, lw=0)
+    b.text(31, s2[0] - 1, "합격 범위 (시작값 ±5 mV)", color=RED, fontsize=6.6)
+    b.set_title("(나) 2단계: 수돗물 속 점퍼선 핀, 60분", loc="left")
     b.set_xlabel("시간 (분)"); b.set_ylabel("전압 (mV, 1분 평균)")
     for x in (a, b):
         x.grid(lw=0.3, color="#e3e3e3")
