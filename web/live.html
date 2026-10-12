@@ -249,7 +249,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
    다른 주소를 쓰려면 ?src=http://파이주소:5000/data  */
 const params   = new URLSearchParams(location.search);
 const SOURCE   = params.get("src") || "/data";
-const POLL_MS  = 500;
+const POLL_MS  = 250;                // 실시간 스펙트로그램 페이지와 같이 0.25초마다
 const VIEW_SEC = 90;                 // 전위 그래프에 보이는 시간 — 보고서 그림6(가)와 같은 90초
 const HIST_N   = 60;                 // 최근 판정 칸 수
 
