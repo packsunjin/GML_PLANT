@@ -210,7 +210,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
     <!-- 스펙트로그램 -->
     <section class="tile t-spec">
       <div class="hd">
-        <h2>스펙트로그램</h2><span class="sub" id="specSub">0.5–20 Hz 대역통과 후 (분류기 입력 대역)</span>
+        <h2>스펙트로그램</h2><span class="sub" id="specSub">최근 90초 · 원신호 4초 FFT, 0.25초마다 한 줄</span>
       </div>
       <div class="bd"><div class="plot" id="specPlot"><canvas id="specCv"></canvas><div class="tip" id="specTip"></div></div></div>
     </section>
@@ -475,13 +475,15 @@ let specHover = null;
 // 스펙트로그램을 주므로, 그 마지막 열(가장 최근)만 받아서 쌓는다. 색 범위는 쌓인 90초 전체의 최솟값~최댓값.
 const SPEC_SEC = 90;
 let specHist = [];   // {t, col}
+let specSince = -1;  // 서버에서 마지막으로 받은 줄 번호
+let specFmax = null;
 function renderSpec() {
   const { g, w, h } = fit($("specCv"));
   g.clearRect(0, 0, w, h);
   const d = latest;
   const S = specHist.length ? specHist[0].col.map((_, fi) => specHist.map(c => c.col[fi])) : null;
   const pw = w - SPAD.l - SPAD.r, ph = h - SPAD.t - SPAD.b;
-  const fHi = d && d.band ? +d.band[1] : 20, win = SPEC_SEC;
+  const fHi = specFmax || (d && d.band ? +d.band[1] : 20), win = SPEC_SEC;
   const ink = css("--text-primary");
   if (!S || !S.length || !S[0].length) {
     g.fillStyle = css("--text-muted"); g.font = "12px system-ui"; g.textAlign = "center";
@@ -545,8 +547,17 @@ $("specPlot").addEventListener("pointerleave", () => { specHover = null; renderS
 function ingest(d) {
   latest = d;
   const now = performance.now() / 1000;
-  if (d && Array.isArray(d.spec) && d.spec.length && d.spec[0].length && !d.paused) {
-    const ntl = d.spec[0].length;
+  const L = d && d.live_spec;
+  if (L && Array.isArray(L.cols)) {
+    // 서버가 0.25초마다 만든 새 줄만 받아 이어 붙인다(실시간 스펙트로그램 페이지와 같은 방식)
+    if (L.next <= specSince) { specSince = -1; specHist = []; }   // 서버가 다시 켜졌다
+    L.cols.forEach((c, k) => specHist.push({ t: (L.col0 + k) * L.hop_s, col: c }));
+    if (L.cols.length) specSince = L.col0 + L.cols.length - 1;
+    const maxN = Math.round(L.keep_sec / L.hop_s);
+    if (specHist.length > maxN) specHist.splice(0, specHist.length - maxN);
+    specFmax = L.fmax;
+  } else if (d && Array.isArray(d.spec) && d.spec.length && d.spec[0].length && !d.paused) {
+    const ntl = d.spec[0].length;                       // 데모: 판정용 창의 마지막 열을 쌓는다
     specHist.push({ t: now, col: d.spec.map(r => r[ntl - 1]) });
     while (specHist.length && specHist[0].t < now - SPEC_SEC) specHist.shift();
   }
@@ -576,7 +587,8 @@ function ingest(d) {
 async function poll() {
   try {
     const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 2000);
-    const r = await fetch(SOURCE, { cache: "no-store", signal: ctl.signal });
+    const url = SOURCE + (SOURCE.includes("?") ? "&" : "?") + "since=" + specSince;
+    const r = await fetch(url,{ cache: "no-store", signal: ctl.signal });
     clearTimeout(to);
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();

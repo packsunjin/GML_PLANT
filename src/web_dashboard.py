@@ -175,6 +175,15 @@ SIGNAL_DECIM = 3
 # 화면 전위는 보고서 그림5·6(가)와 같게 필터 안 거친 원신호의 0.1초 평균으로 보낸다.
 # 대역통과 신호를 보내면 계단(손 접촉)이 가장자리만 남아 보고서 그림과 달라 보인다.
 SIGNAL_AVG_SEC = 0.1
+# 화면 스펙트로그램은 실시간 스펙트로그램 페이지(live_spectrogram.py)와 같은 방식으로 흐르게
+# 그린다: 원신호(평균 제거)를 4.1초(1024표본) 한 창으로 FFT, 0.25초마다 한 줄, 최근 90초.
+# 판정용 10초 창 스펙트로그램(spec)을 매번 통째로 다시 그리면 화면이 실시간으로 흐르지 않는다.
+LIVE_NFFT = 1024
+LIVE_HOP_SEC = 0.25
+LIVE_KEEP_SEC = 90.0
+LIVE_FMAX = 20.0
+_live_cols = deque(maxlen=int(LIVE_KEEP_SEC / LIVE_HOP_SEC))   # (번호, 열)
+_live_next = [0]
 
 
 def dataset_paths(name):
@@ -249,6 +258,12 @@ def _worker(clf, source):
     루프 자체는 절대 죽지 않게 매 반복을 감싸고, 마지막 에러를 화면에서 볼 수 있게
     _latest에 같이 담아 보낸다."""
     recent = np.zeros(int(5 * clf.sample_rate))
+    ring = np.zeros(0)                     # 흐르는 스펙트로그램용 최근 원신호
+    hop = max(1, int(round(LIVE_HOP_SEC * clf.sample_rate)))
+    since_col = 0
+    hann = np.hanning(LIVE_NFFT)
+    freqs = np.fft.rfftfreq(LIVE_NFFT, 1.0 / clf.sample_rate)
+    keep = freqs <= LIVE_FMAX
     while True:
         try:
             # 수집 작업 중에는 센서를 양보하고 쉰다. 다시 시작할 때 pace()가 목표 시각을
@@ -260,6 +275,15 @@ def _worker(clf, source):
                 n_new = min(clf.predict_every, len(result["raw_signal"]), len(recent))
                 recent = np.roll(recent, -n_new)
                 recent[-n_new:] = result["raw_signal"][-n_new:]       # 화면 전위는 원신호
+                ring = np.concatenate([ring, result["raw_signal"][-n_new:]])[-LIVE_NFFT:]
+                since_col += n_new
+                if since_col >= hop and len(ring) == LIVE_NFFT:
+                    since_col %= hop
+                    w = (ring - ring.mean()) * hann
+                    col = 10 * np.log10(np.abs(np.fft.rfft(w)) ** 2 + 1e-18)
+                    with _lock:
+                        _live_cols.append((_live_next[0], np.round(col[keep], 1).tolist()))
+                        _live_next[0] += 1
                 payload = _payload(result, recent, clf)
                 # 라벨을 매번 다시 읽는다. /api/mode 로 시뮬레이션 상태를 바꾸면
                 # 배지 문구도 바로 따라가야 하기 때문이다.
@@ -477,8 +501,18 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     @app.route("/data")
     def data():
+        try:
+            since = int(request.args.get("since", -1))
+        except ValueError:
+            since = -1
         with _lock:
             d = dict(_latest)
+            cols = [(i, c) for i, c in _live_cols if i > since]
+        # 흐르는 스펙트로그램: 브라우저가 받은 마지막 줄 번호(since) 뒤의 새 줄만 보낸다
+        d["live_spec"] = {"col0": cols[0][0] if cols else since + 1,
+                          "cols": [c for _, c in cols], "hop_s": LIVE_HOP_SEC,
+                          "keep_sec": LIVE_KEEP_SEC, "fmax": LIVE_FMAX, "nfft": LIVE_NFFT,
+                          "next": _live_next[0]}
         # 수집 중에는 실시간 루프가 센서를 양보하고 쉰다(같은 ADS1115를 두 프로세스가
         # 번갈아 읽으면 수집 쪽 샘플레이트가 떨어지기 때문). 그 사이 화면은 마지막 값에
         # 멈춰 있는데, 안내가 없으면 고장난 것으로 보인다. 그래서 왜 멈췄는지 같이 보낸다.

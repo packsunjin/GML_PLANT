@@ -674,6 +674,9 @@ src/
   web_dashboard.py     Flask. 수집·전처리·학습·판정을 브라우저에서
                        /live = 실시간 판정 화면(web/live.html, /data 를 0.5초마다 읽음.
                        연결이 끊겨도 가짜 신호로 바꾸지 않는다 — 데모는 버튼으로만)
+                       /live 화면: 전위 = 원신호 0.1초 평균 90초, 스펙트로그램 = 원신호 4초 FFT 를
+                       0.25초마다 한 줄씩 흐르게(/data?since=N → live_spec, live_spectrogram 페이지 방식).
+                       판정만 모델의 10초 창(표10 과 같은 모델)
   sanity_check.py      분할 누수 검사 + 우연 수준 검사
   bias_check.py        바이어스 노드 점검. 단극으로 절대 전압을 읽는다(0절 ⑩).
                        차동만 보면 입력이 단락됐을 때 무조건 0 이라 못 잡는다
