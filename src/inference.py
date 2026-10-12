@@ -237,6 +237,11 @@ class RealtimeClassifier:
         self.model_name = bundle.get("name", "unknown")
         # 이 키가 없는 joblib은 모두 (이 기능이 생기기 전) pixel 방식으로 학습된 것이므로 "pixel"로 취급
         self.feature_mode = bundle.get("feature_mode", "pixel")
+        if self.feature_mode == "explicit" and bundle.get("slow_features", True):
+            # 실시간은 느린 특징 3개를 0 으로 넣는다. 그걸 실제 값으로 학습한 모델은
+            # 비접촉 창의 약 60 %를 자극으로 판정했다(CLAUDE.md 0절 ⑳).
+            print("[inference] 경고: 이 모델은 느린 특징(dc_level 등)을 써서 학습됐습니다. "
+                  "실시간 판정이 틀립니다 — train.py --no_slow 로 다시 학습하세요.")
         self.img_size = bundle.get("img_size", IMG_SIZE)  # feature_mode=="explicit"일 때는 사용 안 함
         # 학습 때 쓴 필터 대역(없는 예전 번들은 기본 0.5~45Hz + 50Hz 노치). 추론도 동일 대역 사용.
         self.filter = bundle.get("filter", {"lowcut": 0.5, "highcut": 20.0, "notch_freq": 60.0, "notch_q": 30.0})

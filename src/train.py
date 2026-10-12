@@ -199,6 +199,9 @@ def load_dataset(spectrogram_dir, classes):
     return np.array(X), np.array(y), np.array(groups), np.array(order)
 
 
+NO_SLOW = False
+
+
 def load_feature_dataset(features_csv_path, classes):
     """특징 모드: data/features.csv -> 명시적 통계/주파수 특징 14개.
     classes에 포함된 상태만 골라 라벨을 classes 순서로 매핑한다(픽셀 로더와 순서 공유)."""
@@ -206,6 +209,10 @@ def load_feature_dataset(features_csv_path, classes):
     df = df[df["label"].isin(classes)].reset_index(drop=True)
     label_to_idx = {cls: i for i, cls in enumerate(classes)}
     X = df[FEATURE_NAMES].to_numpy(dtype=np.float64)
+    if NO_SLOW:
+        # 실시간 판정(inference.signal_to_feature)은 느린 특징 3개를 0 으로 넣는다.
+        # 학습도 0 으로 맞춰야 학습/추론이 어긋나지 않는다(CLAUDE.md 0절 ⑳).
+        X[:, -3:] = 0.0
     y = df["label"].map(label_to_idx).to_numpy()
     groups = df["source_file"].to_numpy()
     order = df["img_name"].map(lambda n: _parse_img_name(n)[1]).to_numpy()
@@ -533,6 +540,7 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
         bundle["img_size"] = IMG_SIZE
     else:
         bundle["feature_names"] = FEATURE_NAMES
+        bundle["slow_features"] = not NO_SLOW
 
     best_path = os.path.join(models_dir, f"best_model{file_suffix}.joblib")
     joblib.dump(bundle, best_path)
@@ -592,9 +600,13 @@ def main():
                          help="픽셀(기본) / 특징(명시적 특징) / 둘다")
     parser.add_argument("--task", choices=list(TASKS) + [ALL_TASKS], default=DEFAULT_TASK,
                          help="3종(기본) / 정상-수분부족 / 정상-자극 / 전체. 정상은 항상 포함")
+    parser.add_argument("--no_slow", action="store_true",
+                        help="느린 특징 3개(dc_level·dc_slope·dc_drift)를 0 으로 두고 학습. "
+                             "실시간 판정에 쓸 모델은 반드시 이것으로 학습한다")
     args = parser.parse_args()
 
-    global FILTER_META, WINDOW_META
+    global FILTER_META, WINDOW_META, NO_SLOW
+    NO_SLOW = args.no_slow
     FILTER_META = load_filter_meta(args.features_csv)
     WINDOW_META = load_window_meta(args.features_csv)
     print(f"[train] 필터 대역: 대역통과 {FILTER_META['lowcut']}~{FILTER_META['highcut']}Hz, "
