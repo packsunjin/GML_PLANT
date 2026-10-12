@@ -1,0 +1,33 @@
+{
+  "mode": "hardware",
+  "hardware_error": null,
+  "frontend": {
+    "name": "dc",
+    "title": "DC 결합 (버퍼 + ADS1115 차동)",
+    "gain": 1.0,
+    "band": [
+      0.0,
+      0.0
+    ],
+    "dc_coupled": true,
+    "input_span_mv": 2048.0,
+    "rail": [
+      -2.00704,
+      2.00704
+    ],
+    "resolution_uv": 62.5,
+    "available": true,
+    "error": null,
+    "has_ref": false,
+    "pga": 2
+  },
+  "state": "자극",
+  "session": 1,
+  "requested_rate_hz": 250.0,
+  "actual_rate_hz": 250.00350183598547,
+  "has_ref": false,
+  "n_samples": 70232,
+  "duration_sec": 280.924065,
+  "recorded_at": "2026-09-15T06:55:22+09:00",
+  "git_rev": "e95d015"
+}
