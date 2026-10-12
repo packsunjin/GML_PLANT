@@ -7,6 +7,8 @@ from xml.sax.saxutils import escape
 import xml.dom.minidom
 
 src, dst, spec = sys.argv[1], sys.argv[2], sys.argv[3]
+# 그림 바꾸기: 뒤에 BinData/image5.png=새그림.png 처럼 준다(같은 가로세로비로 맞춰 둘 것)
+bins = dict(a.split("=", 1) for a in sys.argv[4:])
 edits = json.load(open(spec, encoding="utf-8"))
 zin = zipfile.ZipFile(src)
 xml_s = zin.read("Contents/section0.xml").decode("utf-8")
@@ -38,7 +40,9 @@ for e in edits:
 xml.dom.minidom.parseString(xml_s.encode("utf-8"))      # 파싱 확인
 with zipfile.ZipFile(dst, "w") as zout:
     for info in zin.infolist():
-        data = xml_s.encode("utf-8") if info.filename == "Contents/section0.xml" else zin.read(info.filename)
+        data = (xml_s.encode("utf-8") if info.filename == "Contents/section0.xml"
+                else open(bins[info.filename], "rb").read() if info.filename in bins
+                else zin.read(info.filename))
         ct = zipfile.ZIP_STORED if info.filename == "mimetype" else info.compress_type
         zi = zipfile.ZipInfo(info.filename, date_time=info.date_time)
         zi.compress_type = ct; zi.external_attr = info.external_attr

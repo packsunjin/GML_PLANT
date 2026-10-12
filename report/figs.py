@@ -28,7 +28,7 @@ plt.rcParams.update({"font.family": "Noto Sans CJK JP", "axes.unicode_minus": Fa
 INK, GRAY, GREEN, RED, BLUE = "#1b1b1b", "#6b6b6b", "#2e7d4f", "#c0392b", "#1f5f8b"
 FS = 250.0
 LIVE = os.path.join(ROOT, "data", "plant", "live_20260915_070020.csv")
-LIVE_SEC = 1719.0          # 0절 ⑰·⑱, 보고서 표의 손 접촉 분석과 같은 구간
+LIVE_SEC = 2109.0          # 표9·Ⅳ-7 과 같은 구간(데이터셋을 만들 때까지 저장된 길이)
 
 
 def save(fig, name):
@@ -173,9 +173,9 @@ def fig_touch():
     b.set_title("(나) 접촉 한 번 확대 (색칠 = 손이 닿은 동안)", loc="left")
     b.set_xlabel("접촉 시점부터 (초)"); b.set_ylabel("전압 (mV)")
     c = fig.add_subplot(gs[1, 1])
-    c.hist(amps["amps_mv"], bins=np.arange(0, 375, 25), color=GREEN, ec="white", lw=0.6)
+    c.hist(amps["amps_mv"], bins=np.arange(0, 425, 25), color=GREEN, ec="white", lw=0.6)
     c.axvspan(26.8, 39.8, color=BLUE, alpha=0.25, lw=0)
-    c.text(45, c.get_ylim()[1] * 0.85, "문헌 접촉\n활동전위", fontsize=6.2, color=BLUE)
+    c.text(108, c.get_ylim()[1] * 0.80, "← 문헌 접촉\n   활동전위", fontsize=6.2, color=BLUE)
     c.set_title(f"(다) 계단 높이, {len(amps['amps_mv'])}건", loc="left")
     c.set_xlabel("접촉 시 상승 폭 (mV)"); c.set_ylabel("횟수")
     for x in (a, b, c):
