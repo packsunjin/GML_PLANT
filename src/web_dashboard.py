@@ -172,6 +172,9 @@ DEFAULT_DATASET = "식물"
 # 브라우저가 이어붙여 그리므로 폴링을 몇 번 놓쳐도 메울 만큼만 있으면 된다.
 SIGNAL_TAIL_SEC = 2.0
 SIGNAL_DECIM = 3
+# 화면 전위는 보고서 그림5·6(가)와 같게 필터 안 거친 원신호의 0.1초 평균으로 보낸다.
+# 대역통과 신호를 보내면 계단(손 접촉)이 가장자리만 남아 보고서 그림과 달라 보인다.
+SIGNAL_AVG_SEC = 0.1
 
 
 def dataset_paths(name):
@@ -200,7 +203,9 @@ def _payload(result, recent, clf):
     # 보낼 필요가 없다 — 폴링 간격(0.5초)에 폴링을 몇 번 놓쳐도 메울 여유만 있으면 된다.
     # 2초면 네 번을 연속으로 놓쳐도 파형이 끊기지 않는다.
     tail = int(SIGNAL_TAIL_SEC * clf.sample_rate)
-    sig = np.asarray(recent)[-tail:][::SIGNAL_DECIM]
+    blk = max(1, int(round(SIGNAL_AVG_SEC * clf.sample_rate)))
+    tail = tail // blk * blk
+    sig = np.asarray(recent)[-tail:].reshape(-1, blk).mean(axis=1)      # 원신호 0.1초 평균
     spec = np.asarray(result["spectrogram_db"], dtype=float)
     filt = result["filtered_signal"]
     return {
@@ -223,7 +228,8 @@ def _payload(result, recent, clf):
         # signal 배열이 초당 몇 점인지. 브라우저가 '지난 폴링 이후 흐른 시간 x 이 값'
         # 만큼만 이어붙이면 파형이 실제 속도로 흐른다. 이 값 없이 배열 길이의 일정 비율을
         # 떼어 쓰면 폴링 간격과 어긋나 파형이 실제보다 빠르거나 느리게 흐른다.
-        "signal_hz": round(clf.sample_rate / SIGNAL_DECIM, 3),
+        "signal_hz": round(clf.sample_rate / blk, 3),
+        "signal_kind": "원신호 0.1초 평균(필터 없음)",
         "sample_rate": SAMPLE_RATE_HZ,
         "actual_rate": clf.actual_rate(),
         # 화면 설명에 쓰는 값. 모델마다 다르므로 상수로 박아 두면 거짓말이 된다.
@@ -251,9 +257,9 @@ def _worker(clf, source):
                 time.sleep(0.2)
             result = clf.step()
             if result is not None:
-                n_new = min(clf.predict_every, len(result["filtered_signal"]), len(recent))
+                n_new = min(clf.predict_every, len(result["raw_signal"]), len(recent))
                 recent = np.roll(recent, -n_new)
-                recent[-n_new:] = result["filtered_signal"][-n_new:]
+                recent[-n_new:] = result["raw_signal"][-n_new:]       # 화면 전위는 원신호
                 payload = _payload(result, recent, clf)
                 # 라벨을 매번 다시 읽는다. /api/mode 로 시뮬레이션 상태를 바꾸면
                 # 배지 문구도 바로 따라가야 하기 때문이다.

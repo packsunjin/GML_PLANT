@@ -217,7 +217,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 
     <!-- 전압 -->
     <section class="tile t-volt">
-      <div class="hd"><h2>전위</h2><span class="sub" id="voltSub">최근 10초 · mV</span></div>
+      <div class="hd"><h2>전위</h2><span class="sub" id="voltSub">최근 90초 · 원신호 0.1초 평균 · mV</span></div>
       <div class="bd"><div class="plot" id="voltPlot"><canvas id="voltCv"></canvas><div class="tip" id="voltTip"></div></div></div>
     </section>
   </div>
@@ -247,7 +247,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 const params   = new URLSearchParams(location.search);
 const SOURCE   = params.get("src") || "/data";
 const POLL_MS  = 500;
-const VIEW_SEC = 10;                 // 전위 그래프에 보이는 시간
+const VIEW_SEC = 90;                 // 전위 그래프에 보이는 시간 — 보고서 그림6(가)와 같은 90초
 const HIST_N   = 60;                 // 최근 판정 칸 수
 
 /* 상태 이름 → 색 역할. 모르는 이름은 순서대로 a, b, c 를 받는다. */
@@ -418,7 +418,7 @@ function renderVolt() {
     g.fillText(v.toFixed(Math.abs(hi - lo) < 5 ? 2 : 0), PAD.l - 6, y);
   }
   g.textAlign = "center"; g.textBaseline = "top";
-  for (let s = -VIEW_SEC; s <= 0; s += 2) g.fillText(s === 0 ? "지금" : `${s}초`, PAD.l + (s + VIEW_SEC) / VIEW_SEC * pw, PAD.t + ph + 6);
+  for (let s = -VIEW_SEC; s <= 0; s += (VIEW_SEC > 30 ? 10 : 2)) g.fillText(s === 0 ? "지금" : `${s}초`, PAD.l + (s + VIEW_SEC) / VIEW_SEC * pw, PAD.t + ph + 6);
   g.strokeStyle = css("--line");
   g.beginPath(); g.moveTo(PAD.l, PAD.t + ph + 0.5); g.lineTo(PAD.l + pw, PAD.t + ph + 0.5); g.stroke();
 
@@ -471,13 +471,17 @@ const LUT = (() => {
 })();
 const SPAD = { l: 58, r: 12, t: 8, b: 44 };
 let specHover = null;
+// 스펙트로그램도 보고서 그림6(나)처럼 90초를 이어 그린다. /data 는 매번 최근 10초 창의
+// 스펙트로그램을 주므로, 그 마지막 열(가장 최근)만 받아서 쌓는다. 색 범위는 쌓인 90초 전체의 최솟값~최댓값.
+const SPEC_SEC = 90;
+let specHist = [];   // {t, col}
 function renderSpec() {
   const { g, w, h } = fit($("specCv"));
   g.clearRect(0, 0, w, h);
   const d = latest;
-  const S = d && d.spec;
+  const S = specHist.length ? specHist[0].col.map((_, fi) => specHist.map(c => c.col[fi])) : null;
   const pw = w - SPAD.l - SPAD.r, ph = h - SPAD.t - SPAD.b;
-  const fHi = d && d.band ? +d.band[1] : 20, win = d && d.window_sec ? +d.window_sec : 10;
+  const fHi = d && d.band ? +d.band[1] : 20, win = SPEC_SEC;
   const ink = css("--text-primary");
   if (!S || !S.length || !S[0].length) {
     g.fillStyle = css("--text-muted"); g.font = "12px system-ui"; g.textAlign = "center";
@@ -496,7 +500,10 @@ function renderSpec() {
   const off = document.createElement("canvas"); off.width = nt; off.height = nf;
   off.getContext("2d").putImageData(img, 0, 0);
   g.imageSmoothingEnabled = false;
-  g.drawImage(off, SPAD.l, SPAD.t, pw, ph);
+  // 쌓인 기간만큼만 오른쪽에 붙여 그린다(켠 직후에는 90초가 다 차지 않았다)
+  const span = specHist.length > 1 ? specHist[specHist.length - 1].t - specHist[0].t : 0;
+  const frac = Math.max(0.02, Math.min(1, span / win));
+  g.drawImage(off, SPAD.l + pw * (1 - frac), SPAD.t, pw * frac, ph);
 
   // 테두리와 바깥쪽 눈금 (matplotlib 기본 모양)
   g.strokeStyle = ink; g.lineWidth = 1;
@@ -538,6 +545,11 @@ $("specPlot").addEventListener("pointerleave", () => { specHover = null; renderS
 function ingest(d) {
   latest = d;
   const now = performance.now() / 1000;
+  if (d && Array.isArray(d.spec) && d.spec.length && d.spec[0].length && !d.paused) {
+    const ntl = d.spec[0].length;
+    specHist.push({ t: now, col: d.spec.map(r => r[ntl - 1]) });
+    while (specHist.length && specHist[0].t < now - SPEC_SEC) specHist.shift();
+  }
   const dt = lastPollT ? now - lastPollT : POLL_MS / 1000;
   lastPollT = now;
   if (d.ready && Array.isArray(d.signal) && d.signal.length && !d.paused) {
