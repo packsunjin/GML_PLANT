@@ -1,0 +1,80 @@
+{
+  "mode": "hardware",
+  "hardware_error": null,
+  "frontend": {
+    "name": "dc",
+    "title": "DC 결합 (버퍼 + ADS1115 차동)",
+    "gain": 1.0,
+    "band": [
+      0.0,
+      0.0
+    ],
+    "dc_coupled": true,
+    "input_span_mv": 256.0,
+    "rail": [
+      -0.25088,
+      0.25088
+    ],
+    "resolution_uv": 7.8125,
+    "available": true,
+    "error": null,
+    "has_ref": false,
+    "pga": 16
+  },
+  "requested_rate_hz": 250.0,
+  "actual_rate_hz": 250.00054777897802,
+  "has_ref": false,
+  "n_samples": 450000,
+  "duration_sec": 1799.996056,
+  "recorded_at": "2026-09-15T00:08:16+09:00",
+  "git_rev": "aadfc46",
+  "kind": "bench",
+  "what": "DC 앞단 입력 단락 — 3번·5번을 같은 바이어스 중점에 물린 상태(식물·전극 없음). 10 kΩ 2개로 분압을 다시 세운 뒤 처음 잰 30분",
+  "why": "바이어스가 떠 있던 채로 잰 09-10 측정이 무효가 되어(0절 ⑩) 1단계를 다시 잰 것. 이번에는 bias_check 합격(A0 1.6482 V, 20초 흔들림 3.6 mV) 상태에서 쟀다",
+  "measured": {
+    "mean_mV": -0.5488,
+    "sd_all_mV": 0.0765,
+    "sd_band_0p5_20Hz_mV": 0.0293,
+    "drift_30min_mV": -0.0003,
+    "slow_range_mV": 0.2632,
+    "lsb_uV": 7.812,
+    "mains_share_55_65Hz_pct": 10.0,
+    "sd_all_mV_spike_excluded": 0.0222,
+    "sd_band_mV_spike_excluded": 0.0084,
+    "spike_excluded_pct": 4.3
+  },
+  "spikes": {
+    "count": 18,
+    "at_sec": [
+      46,
+      167,
+      289,
+      410,
+      531,
+      532,
+      653,
+      774,
+      775,
+      896,
+      1017,
+      1139,
+      1260,
+      1381,
+      1382,
+      1503,
+      1625,
+      1746
+    ],
+    "interval_sec": "121~122 (규칙적)",
+    "max_mV": 9.78,
+    "note": "간격이 일정하므로 사람이 건드린 것이 아니라 주기적인 외부 간섭이다(컴프레서 등). 원인 미확인. 2단계에서 다시 볼 것"
+  },
+  "verdict": "1단계 통과 — 30분 표류 0.3 µV 로 ADC 한 칸(7.81 µV)의 1/26, 1 GΩ 전극 열잡음(17.9 µV)보다도 훨씬 작다",
+  "vs_09_10_invalid": {
+    "sd_all_mV": 0.219,
+    "sd_band_mV": 0.027,
+    "drift_30min_mV": 0.008,
+    "note": "바이어스가 떠 있는 채로 잰 값이라 무효다(0절 ⑩). 비교용으로만 남긴다"
+  },
+  "caveat": "전극도 식물도 없는 회로만의 영점이다. 전극 계면의 표류는 2단계(전극쌍을 같은 젤에 2시간)에서 따로 재야 한다"
+}

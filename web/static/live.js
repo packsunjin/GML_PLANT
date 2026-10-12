@@ -37,6 +37,8 @@
   var lastState = null;
   var stateSince = Date.now();
   var lastSeen = 0;
+  var paused = false;            // 수집 중이라 실시간 루프가 쉬고 있는가
+  var lastWaveAt = 0;            // 파형을 마지막으로 이어붙인 시각(흐른 시간 계산용)
   var pageLoad = Date.now();     // lastSeen이 한 번도 안 찍혔을 때(첫 판정 전 실패)의 기준 시각
   var lastWorkerError = null;    // 실시간 루프가 보낸 마지막 에러 메시지(있으면 일반 문구보다 우선)
 
@@ -151,6 +153,17 @@
 
   // ── 적용 ─────────────────────────────────────────────────────────
   function apply(d) {
+    // 수집 중에는 실시간 루프가 센서를 양보하고 쉰다. 화면이 멈춘 게 고장이 아니라는
+    // 것을 알려주고, '신호 끊김' 경고도 이 동안에는 띄우지 않는다.
+    paused = !!(d && d.paused);
+    if (paused) {
+      setText("source", "⏸ " + (d.paused_by || "작업") + " 중 — 측정을 양보하고 잠시 멈춥니다");
+      // 멈춘 시간만큼 흘렀다고 보고 한꺼번에 이어붙이면 파형이 튄다. 재개할 때
+      // 다시 첫 갱신처럼 시작하도록 기준 시각을 지운다.
+      lastWaveAt = 0;
+      return;                    // 멈춘 동안의 옛 값으로 그래프를 다시 그리지 않는다
+    }
+
     if (!d || !d.ready) {
       // 실시간 루프가 죽지는 않았지만 매 반복에서 계속 실패하는 중이면(예: 방금
       // 갈아끼운 모델이 안 맞음) 서버가 이유를 같이 보낸다. 그냥 '대기 중'만 뜨는 것보다
@@ -211,10 +224,19 @@
       }
     }
 
-    // 파형 버퍼 (뒤쪽 일부만 이어붙여 흐르게)
+    // 파형 버퍼 — 지난 폴링 이후 **실제로 흐른 시간**만큼만 이어붙인다.
+    // 배열 길이의 일정 비율(예전엔 1/6)을 떼어 쓰면 폴링 간격과 어긋나, 서버가 내주는
+    // 것보다 많이 갖다 써서 파형이 실제보다 빠르게 흐르고 같은 구간이 반복해 그려진다.
     if (!paused && d.signal && d.signal.length) {
-      var take = d.signal.slice(-Math.max(4, Math.round(d.signal.length / 6)));
-      waveBuf = waveBuf.concat(take);
+      var hz = d.signal_hz || (d.signal.length / 2);
+      var now = Date.now();
+      // 첫 갱신이면 받은 것을 다 채우고, 그 뒤로는 흐른 시간만큼만 가져온다.
+      var n = lastWaveAt
+        ? Math.round((now - lastWaveAt) / 1000 * hz)
+        : d.signal.length;
+      lastWaveAt = now;
+      n = Math.max(1, Math.min(d.signal.length, n));
+      waveBuf = waveBuf.concat(d.signal.slice(-n));
       if (waveBuf.length > WAVE_MAX) waveBuf = waveBuf.slice(-WAVE_MAX);
       drawWave();
     }
@@ -352,10 +374,12 @@
 
   function loadJobOptions() {
     if (demo) return;
-    fetch("/api/train/options", { cache: "no-store" })
+    fetch("/api/train/options?dataset=" + encodeURIComponent(dsPick), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (o) {
+        if (o.error) return;               // 알 수 없는 데이터셋 등
         jobOpts = o;
+        if (o.datasets && o.datasets.length) { dsList = o.datasets; renderDatasets(); }
         var box = jobEl("collect-buttons");
         if (box) {
           box.innerHTML = "";
@@ -364,13 +388,33 @@
             b.type = "button";
             b.dataset.jobCollect = s;
             b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
-            // 이미 수집된 상태는 표시해 준다(다시 누르면 덮어쓰기).
-            b.textContent = o.collected.indexOf(s) >= 0 ? s + " ✓" : s;
+            // 이미 몇 회차까지 모았는지 보여준다. 다시 누르면 덮어쓰지 않고
+            // 다음 회차로 저장된다.
+            var n = (o.sessions || {})[s] || 0;
+            b.textContent = n ? s + " (" + n + "회)" : s;
             box.appendChild(b);
           });
           var last = remembered("collect", null);
           selectCollect(o.states.indexOf(last) >= 0 ? last : o.states[0]);
         }
+        // 상태마다 회차가 하나뿐이면, 그 회차의 전극 조건이 곧 클래스 라벨이 된다.
+        // 정확도가 높게 나와도 식물 상태를 배운 것이 아닐 수 있어 미리 알린다.
+        var warn = $('[data-job="session-warn"]');
+        if (warn) {
+          var got = (o.collected || []).filter(function (s) {
+            return ((o.sessions || {})[s] || 0) === 1; });
+          if (got.length && (o.collected || []).length > 1) {
+            warn.style.display = "block";
+            warn.textContent = "⚠️ 회차가 1회뿐인 상태: " + got.join(", ")
+              + " — 상태마다 날짜·전극을 달리해 2회 이상 나눠 재세요. "
+              + "1회뿐이면 그날의 전극 조건이 곧 정답이 되어, 높은 정확도가 나와도 "
+              + "식물 상태를 구분한 것인지 알 수 없습니다.";
+          } else {
+            warn.style.display = "none";
+            warn.textContent = "";   // 조건이 바뀌었을 때 옛 문구가 남지 않게
+          }
+        }
+
         // 전처리 버튼: 상태별 + 전체. 변환이 끝난 상태에는 이미지 장수를 붙여준다.
         var pbox = jobEl("prep-buttons");
         if (pbox) {
@@ -511,9 +555,10 @@
     }
     var unlimited = (jobEl("unlimited") || {}).checked;
     var dur = parseFloat((jobEl("duration") || {}).value) || 30;
-    hint.textContent = unlimited
-      ? "'" + collectPick + "' 을(를) 중지할 때까지 측정합니다"
-      : "'" + collectPick + "' 을(를) " + dur + "초 동안 측정합니다";
+    // 몇 회차로 저장될지 미리 알려준다. 덮어쓴다고 오해하지 않게.
+    var nth = (((jobOpts || {}).sessions || {})[collectPick] || 0) + 1;
+    hint.textContent = "'" + collectPick + "' " + nth + "회차 · "
+      + (unlimited ? "중지할 때까지 측정합니다" : dur + "초 동안 측정합니다");
     if (!jobRunning) { btn.disabled = false; btn.style.opacity = ""; }
   }
 
@@ -566,7 +611,7 @@
     if (demo) return;
     var box = jobEl("train-history");
     if (!box) return;
-    fetch("/api/train/history", { cache: "no-store" })
+    fetch("/api/train/history?dataset=" + encodeURIComponent(dsPick), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var hist = d.history || [];
@@ -615,8 +660,20 @@
     }
     if (hint) {
       if (j.running) {
-        var sec = j.started ? Math.round(Date.now() / 1000 - j.started) : 0;
-        hint.textContent = "▶ " + (j.label || "") + " · " + (j.step || "") + " (" + sec + "초)";
+        // 경과는 서버가 계산해 준 값을 쓴다. 브라우저 시계로 빼면 파이와의
+        // 시계 차이가 그대로 오차가 된다.
+        var sec = Math.round(j.elapsed_sec != null ? j.elapsed_sec : 0);
+        var t;
+        if (j.collect_sec != null) {
+          // 수집기가 찍는 값을 그대로 보여 준다. 작업 경과와 다른 이유는
+          // 앞에 전극 안정화 대기가 붙기 때문 — 두 숫자를 함께 보여 준다.
+          t = Math.round(j.collect_sec) + (j.collect_total != null
+                ? "/" + Math.round(j.collect_total) + "초 수집" : "초 수집");
+          if (sec) t += " · 경과 " + sec + "초";
+        } else {
+          t = sec + "초";
+        }
+        hint.textContent = "▶ " + (j.label || "") + " · " + (j.step || "") + " (" + t + ")";
       } else if (j.ok === true) {
         hint.textContent = j.stopped ? "⏹ " + (j.label || "") + " 중지됨 (모은 데이터는 저장됨)"
                                      : "✅ " + (j.label || "") + " 완료";
@@ -685,7 +742,110 @@
     }, 1000);
   }
 
+  // ── 측정 대상(데이터셋) ──────────────────────────────────────────
+  // 식물 / 호일 / 사체를 같은 폴더에 모으면 서로 덮어써서 둘 다 못 쓰게 된다.
+  // 수집·변환·학습이 모두 여기서 고른 조건을 향한다.
+  // 새로고침해도 고른 조건이 유지돼야 한다. 대조군을 고른 채 새로고침했다가
+  // 식물로 되돌아가면, 대조군 데이터를 식물 폴더에 덮어쓰게 된다.
+  var dsPick = "식물", dsList = [];
+  try { dsPick = localStorage.getItem("gml.dataset") || "식물"; } catch (e) {}
+
+  function dsEl(n) { return $('[data-ds="' + n + '"]'); }
+
+  function renderDatasets() {
+    var box = dsEl("buttons");
+    if (!box || !dsList.length) return;
+    box.innerHTML = "";
+    dsList.forEach(function (d) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.dataset.dsSet = d.name;
+      b.className = "rounded-xl bg-muted px-3.5 py-1.5 text-xs font-bold text-secondary-foreground transition hover:bg-border";
+      b.textContent = d.title;
+      setActive(b, d.name === dsPick);
+      box.appendChild(b);
+    });
+    var note = dsEl("note"), cur = dsList.filter(function (d) { return d.name === dsPick; })[0];
+    if (note) note.textContent = cur ? " — " + cur.note : "";
+    // 대조군을 고른 상태라는 걸 놓치면 식물 데이터를 덮어썼다고 착각하게 된다.
+    var bar = dsEl("bar");
+    if (bar) bar.style.opacity = dsPick === "식물" ? "1" : "1";
+  }
+
+  function pickDataset(name) {
+    if (name === dsPick) return;
+    dsPick = name;
+    try { localStorage.setItem("gml.dataset", name); } catch (e) {}
+    renderDatasets();
+    loadJobOptions();       // 수집/변환/학습 버튼이 그 조건 기준으로 다시 그려진다
+    loadTrainHistory();
+    if (adminTab === "files") loadFiles();     // 자료 목록도 그 조건 것으로
+  }
+
+  // 서버가 보낸 문자열을 innerHTML 에 넣기 전에 태그를 무력화한다.
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // ── 대조군 판정 ──────────────────────────────────────────────────
+  function loadControl() {
+    if (demo) return;
+    fetch("/api/control", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (c) {
+        var v = $('[data-control="verdict"]'), t = $('[data-control="table"]');
+        if (v) {
+          if (c.verdict === "ok") {
+            v.innerHTML = "<p><b>✅ 대조군이 우연 수준입니다.</b> 식물 데이터의 정확도는 "
+                        + "식물에서 온 것으로 볼 수 있습니다.</p>";
+          } else if (c.verdict === "contaminated") {
+            v.innerHTML = "<p><b>❌ 살아 있는 조직이 없는데도 정확도가 높습니다.</b> "
+                        + "그 정확도는 식물 반응이 아니라 측정계·환경에서 온 것입니다. "
+                        + "실패가 아니라 <b>그 자체가 보고서에 쓸 결과</b>입니다.</p>";
+          } else {
+            v.innerHTML = "<p>아직 판정할 수 없어요 — " + esc(c.reason || "") + "</p>";
+          }
+          if (c.verdict) v.innerHTML += "<p>" + esc(c.reason || "") + "</p>";
+        }
+        if (t) {
+          var rows = (c.rows || []).map(function (r) {
+            var acc = r.best ? (r.best.accuracy * 100).toFixed(1) + "%" : "—";
+            var why = !r.best ? "아직 학습 안 함"
+                    : (!r.comparable ? "과제가 달라 비교 불가 (" + esc(r.best.task || "?") + ")" : "");
+            return "<tr><td>" + esc(r.title) + "</td><td>" + acc + "</td><td>" + why + "</td></tr>";
+          }).join("");
+          var base = c.base ? (c.base.accuracy * 100).toFixed(1) + "%" : "—";
+          t.innerHTML = "<table><thead><tr><th>조건</th><th>정확도</th><th></th></tr></thead>"
+                      + "<tbody><tr><td>식물 (기준)</td><td>" + base + "</td><td></td></tr>"
+                      + rows + "</tbody></table>";
+        }
+      })
+      .catch(function () {});
+  }
+
+  // 사전 점검에서 막힌 요청. '그래도 시작'을 누르면 force 를 붙여 다시 보낸다.
+  var precheckPending = null;
+
+  function forceStart() {
+    if (!precheckPending) return;
+    var p = precheckPending;
+    precheckPending = null;
+    var f = jobEl("force");
+    if (f) f.style.display = "none";
+    p.body.force = true;
+    postJob(p.url, p.body, p.startedText);
+  }
+
   function postJob(url, body, startedText) {
+    body = body || {};
+    body.dataset = dsPick;      // 수집·변환·학습 모두 지금 고른 조건으로 간다
+    if (!body.force) {
+      precheckPending = null;
+      var fb = jobEl("force");
+      if (fb) fb.style.display = "none";
+    }
     var hint = jobEl("hint"), log = jobEl("log");
     // 요청이 왕복하는 동안 아무 반응이 없으면 "안 눌린다"고 느끼므로 즉시 표시한다.
     jobFinished = false;
@@ -697,6 +857,22 @@
       .then(function (res) {
         if (res.j.ok) { renderJob(res.j.job); watchJob(); }
         else if (handleAuthError(res.j)) { if (hint) hint.textContent = "🔒 관리자 로그인이 필요합니다"; }
+        else if (res.j.precheck) {
+          // 레일 포화 등으로 막힌 경우. 이유를 자세히 보여주고, 그래도 하겠다면 길을 열어준다.
+          if (hint) hint.textContent = "⛔ " + res.j.error;
+          if (log) {
+            log.style.display = "block";
+            log.textContent = res.j.error + "\n\n" + (res.j.detail || "")
+              + "\n\n확인할 것\n"
+              + "  1) RA·LA·RL 세 전극이 모두 닿아 있는가\n"
+              + "  2) RL(기준) 전극 — 기준 전위를 못 잡으면 출력이 레일로 밀립니다\n"
+              + "  3) AD8232 와 ADS1115 의 GND 가 공통인가\n"
+              + "\n'센서' 탭에서 자세히 볼 수 있습니다.";
+          }
+          precheckPending = { url: url, body: body, startedText: startedText };
+          var f = jobEl("force");
+          if (f) f.style.display = "inline-block";
+        }
         else if (hint) hint.textContent = "❌ " + (res.j.error || "실패");
       })
       .catch(function () { if (hint) hint.textContent = "❌ 요청을 보내지 못했습니다"; });
@@ -738,6 +914,7 @@
       p.style.display = p.dataset.adminPane === name ? "block" : "none";
     });
     if (name === "files") loadFiles();
+    if (name === "control") loadControl();
   }
 
   function loadAuth() {
@@ -807,7 +984,8 @@
   function loadFiles() {
     if (demo) { fEl("hint").textContent = "데모 화면이라 파일 목록은 백엔드에서만 보입니다"; return; }
     Promise.all([
-      fetch("/api/files", { cache: "no-store" }).then(function (r) { return r.json(); }),
+      fetch("/api/files?dataset=" + encodeURIComponent(dsPick), { cache: "no-store" })
+        .then(function (r) { return r.json(); }),
       fetch("/api/trash", { cache: "no-store" }).then(function (r) { return r.json(); })
     ]).then(function (res) {
       var d = res[0];
@@ -1120,6 +1298,9 @@
     if (tsel && !tsel.disabled) { selectTrainTask(tsel.dataset.jobTask); return; }
     var msel = e.target.closest("[data-job-mode-btn]");
     if (msel) { selectTrainMode(msel.dataset.jobModeBtn); return; }
+    if (e.target.closest('[data-job="force"]')) { forceStart(); return; }
+    var dsBtn = e.target.closest("[data-ds-set]");
+    if (dsBtn) { pickDataset(dsBtn.dataset.dsSet); return; }
     var atab = e.target.closest("[data-admin-tab]");
     if (atab) { showAdminTab(atab.dataset.adminTab); return; }
     var abtn = e.target.closest('[data-auth="button"]');
@@ -1195,7 +1376,8 @@
     if (lastState) setText("duration", since(stateSince));
     // lastSeen은 ready:true를 한 번도 못 받으면 0으로 남으므로, 그 경우 페이지를 연
     // 시각을 기준으로 삼는다(안 그러면 시작부터 실패해도 이 경고가 영영 안 뜬다).
-    if (!demo && Date.now() - (lastSeen || pageLoad) > 4000) {
+    // 수집 중에는 일부러 멈춘 것이므로 '신호 끊김' 경고를 띄우지 않는다.
+    if (!demo && !paused && Date.now() - (lastSeen || pageLoad) > 4000) {
       setText("source", lastWorkerError ? "⚠️ " + lastWorkerError : "신호 끊김 — 재시도 중");
     }
   }, 1000);

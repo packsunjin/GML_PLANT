@@ -1,0 +1,26 @@
+{
+  "mode": "hardware",
+  "frontend": {
+    "name": "dc",
+    "title": "DC 결합 (버퍼 + ADS1115 차동)",
+    "gain": 1.0,
+    "band": [
+      0.0,
+      0.0
+    ],
+    "dc_coupled": true,
+    "input_span_mv": 2048.0,
+    "rail": [
+      -2.00704,
+      2.00704
+    ],
+    "resolution_uv": 62.5,
+    "available": true,
+    "error": null,
+    "has_ref": false,
+    "pga": 2
+  },
+  "fs": 250.0,
+  "started": "2026-09-15T07:00:20",
+  "what": "실시간 스펙트로그램 페이지로 기록. 표시와 저장을 한 프로세스가 한다"
+}

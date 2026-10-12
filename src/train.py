@@ -244,6 +244,42 @@ def chronological_group_split(X, y, groups, order, test_size=0.3, guard=1):
     return X[train_idx], X[test_idx], y[train_idx], y[test_idx]
 
 
+def session_holdout_split(X, y, groups, labels, test_size=0.3, seed=0):
+    """세션(파일)을 통째로 학습/평가로 갈라, 평가 세션은 모델이 한 번도 본 적 없게 한다.
+
+    왜 이게 필요한가
+    ---------------
+    같은 세션의 창을 앞/뒤로만 나누면(chronological_group_split), 모든 세션이 학습과
+    평가 양쪽에 들어간다. 그러면 모델이 '그 세션의 전극이 어느 방향으로 표류했는지'를
+    외워서 맞힐 수 있다. 식물 상태를 배운 것이 아니라 측정 조건을 배운 것이다.
+
+    실제로 이 프로젝트의 1차 학습에서 나온 높은 정확도가 그랬다 — 클래스마다 전극
+    부착 조건이 달랐고 모델은 그 차이를 학습했다(보고서 Ⅳ장 2절 (4)).
+    시뮬레이션으로도 확인했다: 상태당 세션이 하나면, 수분 스트레스를 원리적으로
+    측정할 수 없는 AD8232 구성에서도 정확도 100% 가 나온다.
+
+    평가 세션을 통째로 빼면 그 지름길이 막힌다. 대신 상태마다 세션이 2개 이상 있어야
+    쓸 수 있어서, 조건을 못 채우면 None 을 돌려준다(호출한 쪽이 옛 방식으로 넘어간다).
+    """
+    rng = np.random.default_rng(seed)
+    by_label = {}
+    for g in np.unique(groups):
+        lab = labels[np.where(groups == g)[0][0]]
+        by_label.setdefault(lab, []).append(g)
+    if any(len(v) < 2 for v in by_label.values()):
+        return None                      # 세션이 하나뿐인 상태가 있다
+
+    test_groups = set()
+    for lab, gs in by_label.items():
+        gs = sorted(gs)
+        n_test = max(1, int(round(len(gs) * test_size)))
+        n_test = min(n_test, len(gs) - 1)          # 학습용도 최소 하나 남긴다
+        test_groups.update(rng.permutation(gs)[:n_test].tolist())
+
+    te = np.isin(groups, list(test_groups))
+    return X[~te], X[te], y[~te], y[te], sorted(test_groups)
+
+
 def overlap_guard(window_sec=None, step_sec=None):
     """train/test 경계에서 버려야 할 윈도우 수. 창 W초를 S초씩 밀면 거리 ceil(W/S)-1 까지 겹친다."""
     w = float(window_sec if window_sec is not None else WINDOW_META["window_sec"])
@@ -283,6 +319,50 @@ def cv_folds_for(y_train, classes, cv_default=CV_FOLDS_DEFAULT):
         print(f"⚠️  학습 분할 내 클래스별 최소 샘플 수({smallest_n})가 적어 GridSearchCV 폴드를 "
               f"{cv_default} -> {cv_folds}로 자동 축소합니다.")
     return cv_folds
+
+
+MAX_CV_SESSION_FOLDS = 5      # 세션이 많아도 이 이상은 돌리지 않는다(학습 시간)
+
+
+def cross_session_scores(model, X, y, groups, labels, max_folds=MAX_CV_SESSION_FOLDS):
+    """세션을 돌아가며 하나씩 빼고 평가해, 정확도가 얼마나 흔들리는지 본다.
+
+    왜 필요한가
+    ----------
+    분할을 한 번만 하면, 어느 세션이 평가로 빠졌느냐에 따라 결과가 통째로 달라진다.
+    시뮬레이션으로 확인한 예 — 상태당 4세션에서 조합 16가지를 모두 돌렸을 때
+
+        AD8232 : 평균 85.5%, 범위 50.0~98.9%, 표준편차 20.6%p   ← 우연에 좌우
+        DC 결합 : 평균 98.1%, 범위 98.0~98.3%, 표준편차  0.1%p   ← 안정
+
+    AD8232 는 수분 스트레스를 원리적으로 측정할 수 없는데도 어떤 조합에서는 98.9%가
+    나온다. 그 한 번을 보고 '분류에 성공했다'고 하면 틀린 결론에 이른다.
+    그래서 한 숫자가 아니라 **흔들리는 폭**을 함께 봐야 한다.
+
+    반환: (정확도 배열, 평가에 쓴 세션쌍 목록). 세션이 모자라면 (None, None).
+    """
+    from sklearn.base import clone
+    by_label = {}
+    for g in np.unique(groups):
+        lab = labels[np.where(groups == g)[0][0]]
+        by_label.setdefault(lab, []).append(g)
+    if len(by_label) < 2 or any(len(v) < 2 for v in by_label.values()):
+        return None, None
+
+    # 클래스마다 세션을 하나씩 짝지어 돌린다(모든 조합을 다 돌면 세션 수의 곱이 된다).
+    n_folds = min(max_folds, min(len(v) for v in by_label.values()))
+    picks = {lab: sorted(v) for lab, v in by_label.items()}
+    accs, used = [], []
+    for i in range(n_folds):
+        held = [picks[lab][i % len(picks[lab])] for lab in sorted(picks)]
+        te = np.isin(groups, held)
+        if te.all() or not te.any():
+            continue
+        m = clone(model)
+        m.fit(X[~te], y[~te])
+        accs.append(float(m.score(X[te], y[te])))
+        used.append(held)
+    return (np.array(accs), used) if accs else (None, None)
 
 
 def train_and_eval(X_train, X_test, y_train, y_test, out_dir, classes, mode="pixel",
@@ -393,12 +473,28 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     print(f"[train] ({tag_prefix}) 총 샘플 수: {len(y)}  [{dist}]")
     validate_classes(y, classes)
 
-    # 무작위 분할 대신 상태별 시간순 분할로 윈도우 겹침에 의한 데이터 누수를 차단한다.
+    # 분할 방식은 두 가지고, 가능하면 강한 쪽을 쓴다.
+    #
+    #  ① 세션 홀드아웃 — 평가 세션을 통째로 뺀다. 모델이 그 세션의 전극 조건을
+    #     외워서 맞히는 지름길이 막힌다. 상태마다 세션이 2개 이상 있어야 쓸 수 있다.
+    #  ② 시간순 그룹 분할 — 세션이 하나뿐일 때의 차선책. 창 겹침에 의한 누수는
+    #     막지만, 같은 세션이 학습·평가 양쪽에 들어가는 것 자체는 못 막는다.
     guard = overlap_guard()
-    X_train, X_test, y_train, y_test = chronological_group_split(X, y, groups, order,
-                                                                 test_size=0.3, guard=guard)
-    print(f"[train] ({tag_prefix}) Train={len(y_train)}, Test={len(y_test)} "
-          f"(시간순 그룹 분할, 경계에서 겹치는 {guard}창 제거)")
+    # labels 는 **클래스**여야 한다. 여기에 groups 를 넘기면 세션마다 라벨이 달라져
+    # '상태마다 세션이 하나뿐'으로 잘못 판단한다.
+    split = session_holdout_split(X, y, groups, y, test_size=0.3)
+    if split is not None:
+        X_train, X_test, y_train, y_test, held = split
+        print(f"[train] ({tag_prefix}) Train={len(y_train)}, Test={len(y_test)} "
+              f"(세션 홀드아웃 — 평가 세션: {', '.join(held)})")
+    else:
+        X_train, X_test, y_train, y_test = chronological_group_split(X, y, groups, order,
+                                                                     test_size=0.3, guard=guard)
+        print(f"[train] ({tag_prefix}) Train={len(y_train)}, Test={len(y_test)} "
+              f"(시간순 그룹 분할, 경계에서 겹치는 {guard}창 제거)")
+        print(f"[train] ⚠️  상태마다 세션이 하나뿐이라 세션 홀드아웃을 쓸 수 없습니다.")
+        print(f"[train]     이 정확도는 식물 상태가 아니라 그 세션의 측정 조건을 학습한")
+        print(f"[train]     결과일 수 있습니다. 상태마다 2회 이상 나눠 수집하세요.")
 
     cv_folds = cv_folds_for(y_train, classes)
     results, file_suffix, tag = train_and_eval(X_train, X_test, y_train, y_test, models_dir,
@@ -408,6 +504,22 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
     best_res = results[best_name]
     best_model = best_res["model"]
     best_acc = best_res["accuracy"]
+
+    # 분할을 한 번만 하면 어느 세션이 평가로 빠졌느냐에 따라 결과가 통째로 달라진다.
+    # 흔들리는 폭을 함께 봐야 그 한 숫자를 믿어도 되는지 알 수 있다.
+    cv_acc, cv_used = cross_session_scores(best_model, X, y, groups, y)
+    cv_summary = None
+    if cv_acc is not None and len(cv_acc) >= 2:
+        cv_summary = {"mean": float(cv_acc.mean()), "min": float(cv_acc.min()),
+                      "max": float(cv_acc.max()), "std": float(cv_acc.std()),
+                      "folds": len(cv_acc)}
+        print(f"[train] ({tag_prefix}) 세션 교차검증 {len(cv_acc)}회: "
+              f"평균 {cv_acc.mean()*100:.1f}% · 범위 {cv_acc.min()*100:.1f}~{cv_acc.max()*100:.1f}% "
+              f"· 표준편차 {cv_acc.std()*100:.1f}%p")
+        if cv_acc.std() > 0.10:
+            print(f"[train] ⚠️  세션에 따라 정확도가 크게 흔들립니다({cv_acc.std()*100:.0f}%p).")
+            print(f"[train]     식물 상태가 아니라 그날의 측정 조건을 학습했을 가능성이 큽니다.")
+            print(f"[train]     위의 단일 분할 정확도({best_acc*100:.1f}%)만 보고 판단하지 마세요.")
 
     feature_mode = "pixel" if mode == "pixel" else "explicit"
     os.makedirs(models_dir, exist_ok=True)
@@ -435,6 +547,7 @@ def run_pipeline(X, y, groups, order, models_dir, mode, classes, task):
         print(f"[train] ({tag}) ⚠️ Accuracy가 70% 미만입니다. 데이터/파라미터를 조정하세요.")
 
     _append_history(models_dir, {
+        "cross_session": cv_summary,
         "task": task, "mode": MODE_KO[mode], "trained_at": time.time(),
         "best_name": best_name, "accuracy": best_acc,
         "precision": best_res["precision"], "recall": best_res["recall"],

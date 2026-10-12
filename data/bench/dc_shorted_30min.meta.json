@@ -1,0 +1,33 @@
+{
+  "mode": "hardware",
+  "kind": "bench",
+  "what": "DC 앞단 입력 단락 — 두 입력(3번·5번)을 같은 바이어스 노드에 물린 상태. A0·A1 배선을 꼬은 뒤",
+  "why": "회로 자체의 잡음 바닥과 30분 표류를 재는 영점 측정. 1단계 합격 판정용",
+  "frontend": {
+    "name": "dc",
+    "gain": 1.0,
+    "pga": 16,
+    "dc_coupled": true
+  },
+  "n_samples": 450000,
+  "duration_sec": 1799.9960529999998,
+  "actual_rate_hz": 250.00054819564653,
+  "measured": {
+    "mean_mV": -0.0197,
+    "sd_all_mV": 0.2194,
+    "sd_band_0p5_20Hz_mV": 0.0269,
+    "drift_30min_mV": -0.0,
+    "slow_range_mV": 0.0081,
+    "lsb_uV": 7.81,
+    "mains_share_55_65Hz_pct": 69.8
+  },
+  "verdict": "1단계 통과 — 표류 기준 0.5 mV 대비 60배 여유",
+  "vs_before_twist": {
+    "sd_all_mV": 0.871,
+    "sd_band_mV": 0.1417,
+    "note": "120초, 배선 꼬기 전"
+  },
+  "caveat": "전극도 식물도 없는 회로만의 영점이다. 수분부족을 잴 수 있다는 증명이 아니며, 전극 계면의 표류는 2단계(전극쌍을 같은 젤에 담가 2시간)에서 따로 재야 한다.",
+  "note": "사용자가 올린 두 파일은 md5 가 동일했다 — 같은 파일 두 번 업로드. 독립 2회차는 없다.",
+  "recorded_at": "2026-09-10"
+}

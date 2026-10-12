@@ -1,0 +1,82 @@
+{
+  "mode": "hardware",
+  "hardware_error": null,
+  "frontend": {
+    "name": "dc",
+    "title": "DC 결합 (버퍼 + ADS1115 차동)",
+    "gain": 1.0,
+    "band": [
+      0.0,
+      0.0
+    ],
+    "dc_coupled": true,
+    "input_span_mv": 2048.0,
+    "rail": [
+      -2.00704,
+      2.00704
+    ],
+    "resolution_uv": 62.5,
+    "available": true,
+    "error": null,
+    "has_ref": false,
+    "pga": 2
+  },
+  "requested_rate_hz": 250.0,
+  "actual_rate_hz": 250.00013697924174,
+  "has_ref": false,
+  "n_samples": 1800000,
+  "duration_sec": 7199.996055,
+  "recorded_at": "2026-09-15T03:00:09+09:00",
+  "git_rev": "aadfc46",
+  "kind": "bench",
+  "stage": 2,
+  "what": "2단계 — 전극 계면 표류. 점퍼선 황동 핀 3개를 수돗물 한 컵에 담갔다(측정 2개 약 3cm 간격 + 바이어스 기준 1개). 식물 없음",
+  "why": "전극 계면이 2시간 동안 얼마나 표류하는지가 수분부족 측정의 실질적 한계다. 1단계(회로만)는 통과했으므로 여기서 걸리면 한계는 전극에 있다",
+  "measured": {
+    "start_mv": 182.0,
+    "end_mv": 728.48,
+    "drift_2h_mv": 546.48,
+    "min_mv": 173.19,
+    "max_mv": 734.44,
+    "band_sd_0p5_20Hz_mV": 0.4543,
+    "rate_first10_mv_per_min": 7.8,
+    "rate_last10_mv_per_min": 0.28,
+    "segments_30min": [
+      {
+        "range": "0~30분",
+        "mean_mV": 280.79,
+        "sd_mV": 43.237
+      },
+      {
+        "range": "30~60분",
+        "mean_mV": 602.36,
+        "sd_mV": 88.439
+      },
+      {
+        "range": "60~90분",
+        "mean_mV": 698.22,
+        "sd_mV": 16.413
+      },
+      {
+        "range": "90~120분",
+        "mean_mV": 722.67,
+        "sd_mV": 4.381
+      }
+    ],
+    "saturation_pct": 0.0
+  },
+  "verdict": "불합격 — 합격선 5 mV 의 109배. 수분부족은 이 전극으로 측정 불가",
+  "conclusions": [
+    "수분부족 불가 확정 — 수 시간 규모에서 전극이 546 mV 밀리므로 식물 신호와 가를 수 없다",
+    "자극은 가능 — 분석대역 잡음 0.4543 mV 대 문헌 활동전위 21.2 mV, 47배 여유",
+    "2시간 예열하면 전극이 안정된다 — 마지막 30분 sd 4.4 mV",
+    "한계는 회로가 아니라 전극 — 1단계(회로만) 표류는 0.0003 mV/30분이었다"
+  ],
+  "vs_stage1": {
+    "file": "dc_shorted_30min_v2.csv",
+    "drift_mv": -0.0003,
+    "duration_sec": 1800,
+    "note": "같은 회로, 입력 단락. 전극을 달자 표류가 180만 배가 됐다"
+  },
+  "caveat": "물컵 전극이다. 식물 줄기에서는 다를 수 있다. 다만 금속-전해질 계면이라는 점은 같으므로 같은 자릿수가 나올 것으로 본다"
+}

@@ -32,7 +32,8 @@ import pandas as pd
 from scipy.signal import butter, filtfilt, iirnotch
 
 from spectro_render import render_rgb_image, compute_spectrogram
-from sensor_control import AD8232_HPF_HZ, AD8232_LPF_HZ
+import sensor_control
+from sensor_control import ANALOG_HPF_HZ, ANALOG_LPF_HZ, FRONTEND_GAIN, FRONTEND
 from feature_extraction import extract_features, FEATURE_NAMES
 
 # 원시 파일명 -> 상태(클래스) 매핑. 3가지 상태를 각각 별도 클래스로 저장한다.
@@ -44,12 +45,44 @@ FILE_TO_STATE = {
     "자극.csv": "자극",
 }
 
+# 상태마다 **여러 번 나눠 측정한 파일**을 받는다.
+#   정상.csv, 정상_2.csv, 정상_20260825_1430.csv  →  전부 '정상'
+#
+# 왜 필요한가. 상태마다 세션이 하나뿐이면, 그 세션의 전극이 어느 방향으로 표류했는지가
+# 곧 클래스 라벨이 되어 버린다. "수분부족이라 전위가 밀린 것"과 "그날 그 전극이 그렇게
+# 표류한 것"을 구분할 방법이 없다. 실제로 이 프로젝트의 1차 학습에서 나온 높은 정확도가
+# 식물 반응이 아니라 전극 부착 조건의 차이였다(보고서 Ⅳ장 2절 (4)).
+# 세션을 여러 번 나눠 측정하고, 학습·평가를 **세션 단위로** 갈라야 그 혼동을 뺄 수 있다.
+STATE_SUFFIX_SEP = "_"
+
+
+def state_of(fname):
+    """파일명에서 상태를 알아낸다. 모르는 파일이면 None.
+    '정상.csv' 도 '정상_3.csv' 도 '정상' 이다."""
+    if not fname.lower().endswith(".csv"):
+        return None
+    stem = fname[:-4]
+    if stem + ".csv" in FILE_TO_STATE:
+        return FILE_TO_STATE[stem + ".csv"]
+    head = stem.split(STATE_SUFFIX_SEP)[0]
+    return FILE_TO_STATE.get(head + ".csv")
+
+
+def session_of(fname):
+    """세션 이름(= 파일 이름에서 확장자 뺀 것). 학습/평가를 이 단위로 가른다."""
+    return fname[:-4] if fname.lower().endswith(".csv") else fname
+
 # ---- 품질 기준 --------------------------------------------------------
 # 전극이 잘 안 붙으면 AD8232 출력이 전원 레일에 붙어버린다(3.3V 계통 기준 3.2V 근처).
 # 그 구간은 증폭기 포화지 식물 신호가 아니므로 학습에서 제외한다.
 RAIL_HIGH_V = 3.0   # 이 위로 평균이 올라간 창은 버림
 RAIL_LOW_V = 0.3    # 이 아래로 내려간 창도 버림
-MIN_STD_V = 0.0005  # 필터 후 표준편차가 이보다 작으면 신호가 없다고 본다
+# 필터 후 표준편차가 이보다 작으면 신호가 없다고 본다.
+# ⚠️ 이 값은 **앞단의 이득에 따라 달라진다.** AD8232 는 1100배로 증폭해서 내보내지만
+# DC 결합은 증폭하지 않으므로, 같은 전극 신호라도 ADC 가 보는 크기가 1100배 다르다.
+# 그래서 전극 입력 환산으로 기준을 정하고(0.45µV), 앞단의 이득을 곱해 쓴다.
+MIN_STD_INPUT_UV = 0.45
+MIN_STD_V = MIN_STD_INPUT_UV * 1e-6 * FRONTEND_GAIN
 
 # 위의 절대 문턱만으로는 포화를 못 잡는 경우가 있다. 실제로 이 프로젝트에서 수집한
 # CSV 6개를 조사한 결과가 그랬다. 모든 파일의 최댓값이 2.57~2.60V, 최솟값이 -0.59~-0.61V로
@@ -183,24 +216,28 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
                  low=0.5, high=20.0, notch_freq=60.0,
                  quality=True, rail_high=RAIL_HIGH_V, rail_low=RAIL_LOW_V, min_std=MIN_STD_V,
                  rail_frac=RAIL_WIN_FRAC,
-                 repair=True):
+                 repair=True, ref_subtract=True):
     """CSV 하나를 윈도우 단위로 나눠 스펙트로그램 PNG를 저장하고,
     (이미지 수, 특징 행 리스트, 실제로 사용한 노치 주파수)를 반환한다.
     노치는 신호에서 50/60Hz를 재서 자동 보정하므로 파일마다 다를 수 있고,
     추론이 같은 필터를 쓰도록 이 값을 메타에 기록해야 한다.
     low/high/notch_freq로 대역통과·노치 필터 대역을 조절한다(느린 식물 신호 보존 시 low를 낮춤)."""
     fname = os.path.basename(csv_path)
-    if fname not in FILE_TO_STATE:
+    if state_of(fname) is None:
         print(f"  [건너뜀] 매핑되지 않은 파일: {fname}")
         return 0, [], notch_freq
 
-    cls = FILE_TO_STATE[fname]
+    cls = state_of(fname)
     out_dir = os.path.join(out_root, cls)
     os.makedirs(out_dir, exist_ok=True)
 
     # 이전에 만든 이미지를 먼저 지운다. 새로 수집한 CSV가 더 짧으면 예전 이미지가
     # 남아 학습 데이터에 섞이기 때문이다(파일명이 시작 인덱스라 덮어쓰기가 안 됨).
-    stale = [n for n in os.listdir(out_dir) if n.lower().endswith(".png")]
+    # 이 CSV 의 이미지만 지운다. 폴더 전체를 지우면 같은 상태의 다른 세션 파일이
+    # 만든 이미지까지 사라져 마지막 파일 것만 남는다(0절 ⑲).
+    base_name = os.path.splitext(fname)[0]
+    stale = [n for n in os.listdir(out_dir)
+             if n.lower().endswith(".png") and n.startswith(base_name + "_")]
     for n in stale:
         os.remove(os.path.join(out_dir, n))
     if stale:
@@ -208,6 +245,23 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
 
     df = pd.read_csv(csv_path)
     raw_signal = df["voltage"].to_numpy(dtype=float)
+
+    # ── 참조(더미) 채널 빼기 ────────────────────────────────────────
+    # voltage_ref 는 식물 없이 전극쌍만 담근 채널이다. 거기 담긴 것은 전극 표류와
+    # 주변 잡음뿐이므로, 빼고 남는 것이 식물에서 온 성분이다. 수분부족처럼 느린
+    # 신호는 전극 표류와 대역이 완전히 겹쳐서, 이 빼기 없이는 '식물이 마른 것'과
+    # '전극이 오래 붙어 있던 것'을 원리적으로 구분할 수 없다.
+    if "voltage_ref" in df.columns:
+        ref = df["voltage_ref"].to_numpy(dtype=float)
+        if ref_subtract:
+            before = float(np.std(raw_signal))
+            raw_signal = raw_signal - ref
+            print(f"  참조 채널 차감: 표준편차 {before*1e3:.3f} -> "
+                  f"{float(np.std(raw_signal))*1e3:.3f} mV "
+                  f"(참조 자체 {float(np.std(ref))*1e3:.3f} mV)")
+        else:
+            print(f"  참조 채널이 있으나 차감하지 않음(--no-ref-subtract). "
+                  f"표류가 그대로 남아 있어 느린 신호 분류는 믿을 수 없다.")
 
     # 샘플레이트는 가정하지 않고 CSV의 timestamp 에서 실제로 계산한다.
     # 하드웨어가 목표 속도를 못 따라가면(ADS1115 가 느릴 때) 실제 250Hz가 아닌데,
@@ -309,7 +363,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
             continue
 
         p2p = float(segment.max() - segment.min())
-        prepared.append((start, segment, p2p))
+        # 느린 특징은 필터 전 원신호에서만 볼 수 있으므로 함께 들고 간다.
+        prepared.append((start, segment, p2p, raw_win))
 
     # 2차 패스: '자극' 파일은 이 파일 안에서 상대적으로 튀는 창만 남긴다(위 EVENT_ONLY_STATE 설명).
     event_thresh = None
@@ -320,7 +375,11 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
         if np.any(p2ps > thresh):   # 전부 baseline 근처면(계속 자극 중) 거르지 않는다
             event_thresh = thresh
 
-    for start, segment, p2p in prepared:
+    # 측정 시작 시점의 기준 전위. 느린 드리프트는 '시작 대비 얼마나 밀렸나'로 재야
+    # 의미가 있어서, 파일 앞부분 평균을 기준선으로 삼는다.
+    dc_baseline = float(np.mean(prepared[0][3])) if prepared else 0.0
+
+    for start, segment, p2p, raw_seg in prepared:
         if event_thresh is not None and p2p <= event_thresh:
             skipped_quiet += 1
             continue
@@ -332,7 +391,8 @@ def process_file(csv_path, out_root, fs=SAMPLE_RATE_HZ, window_sec=WINDOW_SEC, s
         img_path = os.path.join(out_dir, img_name)
         make_spectrogram_image(Sxx_db, img_path)
 
-        feats = extract_features(segment, Sxx_db, f, t, fs=fs)
+        feats = extract_features(segment, Sxx_db, f, t, fs=fs,
+                                 raw_window=raw_seg, baseline=dc_baseline)
         feature_rows.append([img_name, fname, cls] + feats.tolist())
 
         count += 1
@@ -375,6 +435,9 @@ def main():
                         help="노치 주파수(Hz). 기본 60Hz — 한국 상용 전원 주파수. 0이면 노치 끔. "
                              "신호에서 50/60Hz를 직접 재서 센 쪽으로 자동 보정하므로 "
                              "보통 그대로 두면 됩니다")
+    parser.add_argument("--no-ref-subtract", action="store_true",
+                        help="voltage_ref 열이 있어도 빼지 않는다. 참조 채널이 제대로 "
+                             "동작하는지 따로 보고 싶을 때만 쓴다.")
     parser.add_argument("--no-repair", action="store_true",
                         help="fast-restore 강하 보간을 끄고 원신호 그대로 사용한다")
     parser.add_argument("--no-quality", action="store_true",
@@ -397,12 +460,13 @@ def main():
     print(f"[preprocess] 출력(스펙트로그램): {args.out_dir}")
     print(f"[preprocess] 창 {args.window_sec}초 / 스텝 {args.step_sec}초")
     # AD8232의 아날로그 대역(0.5~40Hz) 밖을 지정하면 소프트웨어 필터는 헛돈다.
-    if args.lowcut < AD8232_HPF_HZ:
-        print(f"[preprocess] ⚠️  하한 {args.lowcut}Hz 는 AD8232의 고역통과({AD8232_HPF_HZ}Hz)보다 낮습니다.")
+    if ANALOG_HPF_HZ > 0 and args.lowcut < ANALOG_HPF_HZ:
+        print(f"[preprocess] ⚠️  하한 {args.lowcut}Hz 는 {FRONTEND.title}의 고역통과({ANALOG_HPF_HZ}Hz)보다 낮습니다.")
         print("    회로에서 이미 지워진 대역이라 하드웨어 데이터에서는 효과가 없습니다"
               " (시뮬레이션 데이터에는 적용됩니다).")
-    if args.highcut > AD8232_LPF_HZ:
-        print(f"[preprocess] ⚠️  상한 {args.highcut}Hz 는 AD8232의 저역통과({AD8232_LPF_HZ}Hz)보다 높습니다.")
+    # lpf_hz == 0 은 '설정된 저역통과 없음'(DC 결합)이라는 뜻이라 비교 대상이 아니다.
+    if ANALOG_LPF_HZ > 0 and args.highcut > ANALOG_LPF_HZ:
+        print(f"[preprocess] ⚠️  상한 {args.highcut}Hz 는 {FRONTEND.title}의 저역통과({ANALOG_LPF_HZ}Hz)보다 높습니다.")
         print("    그 위에는 회로가 통과시킨 신호가 없습니다.")
     print(f"[preprocess] 필터: 대역통과 {args.lowcut}~{args.highcut}Hz"
           + (f" + 노치 {args.notch}Hz" if args.notch else " (노치 없음)"))
@@ -412,21 +476,50 @@ def main():
     existing = set(os.listdir(args.raw_dir)) if os.path.isdir(args.raw_dir) else set()
     if args.only:
         # 한 상태만 돌릴 때는 그 파일만 본다.
-        targets = {f for f in existing if FILE_TO_STATE.get(f) == args.only}
+        targets = {f for f in existing if state_of(f) == args.only}
         if not targets:
             print(f"❌ '{args.only}' 의 원시 CSV가 없습니다. 먼저 수집하세요.")
             return
     else:
         targets = existing
-        missing_states = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname not in existing]
+        # 상태별로 몇 세션이 모였는지 센다. '정상.csv' 하나만 보면 '정상_2.csv' 같은
+        # 추가 세션을 못 알아보고 "수집 안 됨"이라고 잘못 알린다.
+        by_state = {}
+        for f in existing:
+            st = state_of(f)
+            if st:
+                by_state.setdefault(st, []).append(f)
+        all_states = sorted(set(FILE_TO_STATE.values()))
+        missing_states = [st for st in all_states if st not in by_state]
         if missing_states:
             print(f"⚠️  다음 상태가 수집되지 않았습니다: {', '.join(missing_states)}")
-            collected = [fname.replace(".csv", "") for fname in FILE_TO_STATE if fname in existing]
-            print(f"   ({' + '.join(collected) if collected else '수집된 상태 없음'} 데이터만으로 진행합니다)")
+            got = [f"{st}({len(v)}세션)" for st, v in sorted(by_state.items())]
+            print(f"   ({' + '.join(got) if got else '수집된 상태 없음'} 데이터만으로 진행합니다)")
+        single = [st for st, v in by_state.items() if len(v) == 1]
+        if single and len(by_state) > 1:
+            print(f"⚠️  세션이 하나뿐인 상태: {', '.join(sorted(single))}")
+            print("    상태마다 세션이 하나면, 그 세션의 전극이 어느 방향으로 표류했는지가")
+            print("    곧 클래스 라벨이 되어 버립니다. 높은 정확도가 나와도 식물 반응이")
+            print("    아니라 측정 조건의 차이일 수 있습니다.")
+            print("    → 상태마다 날짜·전극을 달리해 2회 이상 나눠 수집하세요")
+            print("      (예: 정상.csv, 정상_2.csv, 정상_3.csv).")
 
     total = 0
     all_feature_rows = []
     used_notches = []
+    # 시뮬레이터 출력이 실측으로 오해된 채 학습·보고서까지 올라간 적이 있다.
+    # 수집기가 CSV 옆에 남긴 출처 파일을 여기서 읽어, 가짜가 섞이면 크게 알린다.
+    simulated = [f for f in sorted(targets) if f.endswith(".csv")
+                 and sensor_control.is_simulated(os.path.join(args.raw_dir, f)) is True]
+    unknown = [f for f in sorted(targets) if f.endswith(".csv")
+               and sensor_control.is_simulated(os.path.join(args.raw_dir, f)) is None]
+    if simulated:
+        print(f"[preprocess] ⛔ 시뮬레이터 출력이 섞여 있습니다: {', '.join(simulated)}")
+        print("    실측 데이터가 아니므로 여기서 나온 정확도는 식물과 아무 관계가 없습니다.")
+    if unknown:
+        print(f"[preprocess] ⚠️  출처를 알 수 없는 파일: {', '.join(unknown)}")
+        print("    .meta.json 이 없습니다. 수집기를 거치지 않았거나 옛 코드로 모은 파일입니다.")
+
     for fname in sorted(targets):
         if fname.endswith(".csv"):
             csv_path = os.path.join(args.raw_dir, fname)
@@ -434,6 +527,7 @@ def main():
                                                window_sec=args.window_sec, step_sec=args.step_sec,
                                                low=args.lowcut, high=args.highcut, notch_freq=args.notch,
                                                quality=not args.no_quality,
+                                               ref_subtract=not args.no_ref_subtract,
                                                rail_high=args.rail_high, min_std=args.min_std, rail_frac=args.rail_frac,
                                                repair=not args.no_repair)
             total += count
@@ -471,7 +565,7 @@ def main():
     this_run = {"lowcut": args.lowcut, "highcut": args.highcut, "notch_freq": meta_notch,
                 "window_sec": args.window_sec, "step_sec": args.step_sec}
     for fname in sorted(targets):
-        st = FILE_TO_STATE.get(fname)
+        st = state_of(fname)
         if st:
             by_state[st] = dict(this_run)
 

@@ -17,6 +17,8 @@ AD8232(생체 전위 증폭기) + ADS1115(16비트 ADC)를 이용하여
 
 import argparse
 import csv
+import datetime
+import json
 import os
 import signal
 import threading
@@ -32,73 +34,82 @@ import numpy as np
 # ----------------------------------------------------------------------
 # 하드웨어 접근 시도 (실패 시 시뮬레이션 모드로 자동 전환)
 # ----------------------------------------------------------------------
-# 출력이 이 범위를 벗어나면 증폭기가 전원 레일에 포화된 것으로 본다
-# (preprocess.py 의 품질 게이트와 같은 기준).
-RAIL_HIGH_V = 3.0
-RAIL_LOW_V = 0.3
+# 포화 판정 문턱은 앞단마다 다르다(AD8232 는 0~3.3V 단전원 출력, DC 차동은 ±PGA범위).
+# 값은 아래 FRONTEND 에서 가져온다.
+# 증폭기가 레일에 붙으면 입력이 변해도 출력이 안 따라가서 흔들림이 사라진다.
+# 정상 측정에서는 잡음만으로도 이보다 훨씬 크게 흔들린다(실측 수 mV 이상).
+# '출력이 안 움직인다'를 판정하는 문턱.
+#
+# ⚠️ 절대 전압으로 박으면 안 된다. 예전에는 0.0008 V 고정이었는데, 그 값은
+# AD8232(이득 1100배) 기준이었다. 이득 1배인 DC 앞단에서는 같은 잣대가
+# 0.8 mV — 실제 신호와 잡음이 놓이는 바로 그 범위라, 회로가 조용해질수록
+# '포화'라고 우기게 된다. MIN_STD_V 를 고정값으로 두어 DC 데이터가 전멸했던
+# 것과 같은 종류의 실수다.
+#
+# 포화의 물리적 정의는 'ADC 분해능만큼도 안 움직인다'이므로 문턱을 LSB 로 센다.
+# 6.4 LSB 는 AD8232 에서 예전 값 0.0008 V 와 같고, DC 앞단에서는 0.05 mV 가 된다.
+STUCK_STD_LSB = 6.4
 
-# ── AD8232 라는 하드웨어가 정하는 한계 ────────────────────────────────
-# 이 회로는 원래 심전도용이고, 심전도 신호(500µV~5mV)에 맞춰 설계되어 있다.
-# 우리가 재려는 식물 신호는 그 규격 안에 들어오지 않는 부분이 있어서,
-# 무엇이 물리적으로 측정 가능한지를 코드가 알고 있어야 한다.
-#
-#  · 총 이득 1100배 = 계측증폭기 100배 x 2차 저역통과단 11배 (심전도 구성)
-#  · 아날로그 대역 0.5~40Hz (2차 고역통과 0.5Hz + 2차 저역통과 40Hz)
-#
-# 총 이득이 1100배라는 것은, 전극 사이 전압이 약 ±1.2mV만 넘어도 출력이 전원
-# 레일에 부딪혀 잘린다는 뜻이다(3.3V 전원, 중간 기준점 기준).
-# 문헌이 표면 전극으로 보고하는 식물 전위는 수 mV~수십 mV라 이 범위를 넘는다 —
-# 즉 큰 식물 전위는 '작게 보이는' 것이 아니라 아예 잘려서 레일 포화로 나타난다.
-# (1mV 미만의 작은 과도신호만 잘리지 않고 들어온다)
-# 또 0.5Hz 고역통과가 회로에 박혀 있어, 수십 초에 걸친 느린 반응은 모양 전체가
-# 아니라 시작 부분의 빠른 변화만 남는다. 레일 포화가 자주 보이는 이유와,
-# 느린 신호가 안 보이는 이유를 코드가 설명할 수 있어야 한다.
-AD8232_GAIN = 1100.0        # V/V (데이터시트 심전도 구성)
-AD8232_HPF_HZ = 0.5         # 아날로그 고역통과 차단 주파수
-AD8232_LPF_HZ = 40.0        # 아날로그 저역통과 차단 주파수
+
+def stuck_threshold_v():
+    """지금 앞단에서 '안 움직인다'로 볼 출력 흔들림(V)."""
+    lsb_v = FRONTEND.resolution_uv * FRONTEND.gain * 1e-6
+    return STUCK_STD_LSB * lsb_v
+
+# ── 아날로그 앞단 ─────────────────────────────────────────────────────
+# 어떤 앞단(AD8232 / DC 결합)을 쓰는지에 따라 이득·대역·측정 범위가 전부 다르다.
+# 그 값들은 frontend.py 가 들고 있고, 여기서는 물어보기만 한다.
+# 고르는 법:  GML_FRONTEND=dc  또는  --frontend dc
+import frontend
+
+FRONTEND = frontend.choose()
+
+FRONTEND_GAIN = FRONTEND.gain
+ANALOG_HPF_HZ = FRONTEND.hpf_hz      # 0 이면 DC 결합(고역통과 없음)
+ANALOG_LPF_HZ = FRONTEND.lpf_hz
+INPUT_SPAN_MV = FRONTEND.input_span_mv
+RAIL_HIGH_V = FRONTEND.rail_high_v
+RAIL_LOW_V = FRONTEND.rail_low_v
+
+# 예전 이름. 다른 모듈이 이 이름으로 가져다 쓰고 있어 그대로 남긴다.
+# 다만 값은 지금 고른 앞단의 것이므로, AD8232 가 아닐 수도 있다.
+AD8232_GAIN = FRONTEND_GAIN
+AD8232_HPF_HZ = ANALOG_HPF_HZ
+AD8232_LPF_HZ = ANALOG_LPF_HZ
 
 
 def to_input_mv(v_out):
-    """증폭기 출력(V)을 전극 사이 입력 전압(mV)으로 환산한다.
+    """ADC 가 본 값(V) -> 전극 사이 전압(mV).
     문헌의 식물 전위 값(mV)과 비교하려면 반드시 이 환산을 거쳐야 한다."""
-    return 1000.0 * float(v_out) / AD8232_GAIN
+    return FRONTEND.to_input_mv(v_out)
 
-HARDWARE_AVAILABLE = False
-try:
-    import board
-    import busio
-    import adafruit_ads1x15.ads1115 as ADS
-    from adafruit_ads1x15.analog_in import AnalogIn
 
-    # I2C 기본 속도는 100kHz라 250Hz 샘플링에 필요한 왕복을 못 채운다. 400kHz로 올린다.
-    try:
-        i2c = busio.I2C(board.SCL, board.SDA, frequency=400_000)
-    except TypeError:
-        i2c = busio.I2C(board.SCL, board.SDA)   # frequency 인자를 안 받는 옛 버전
-    ads = ADS.ADS1115(i2c)
+HARDWARE_AVAILABLE = FRONTEND.available
+_HW_ERR = FRONTEND.error
 
-    # ⚠️ 기본값(128 SPS + 싱글샷)으로는 250Hz 수집이 불가능하다.
-    # 싱글샷은 읽을 때마다 변환을 시작하고 끝날 때까지 기다리므로 한 샘플에 ~8ms,
-    # 실측 약 100Hz밖에 안 나온다. 그러면 CSV의 시간축(t=i/250)과 실제가 2.5배
-    # 어긋나 모든 주파수 분석이 틀어진다.
-    # -> 데이터레이트를 최대(860 SPS)로 올리고 연속 변환 모드로 바꾼다.
-    try:
-        ads.data_rate = 860
-    except Exception:
-        pass
-    try:
-        from adafruit_ads1x15.ads1x15 import Mode
-        ads.mode = Mode.CONTINUOUS
-    except Exception:
-        pass
 
-    # 채널 0(A0) 지정. 라이브러리 버전에 따라 ADS.P0가 없을 수 있어(P0는 곧 정수 0) 안전하게 폴백한다.
-    _CH0 = getattr(ADS, "P0", 0)
-    chan = AnalogIn(ads, _CH0)  # AD8232 출력 -> A0
-    HARDWARE_AVAILABLE = True
-except Exception as e:  # ImportError, NotImplementedError(비-Pi 환경), OSError(I2C 없음) 등
-    HARDWARE_AVAILABLE = False
-    _HW_ERR = str(e)
+def read_sample_hardware():
+    """전극 신호 1개 샘플(V)."""
+    return FRONTEND.read()
+
+
+def use_frontend(name, **opts):
+    """앞단을 바꾼다. 모듈을 가져올 때 한 번 정해지므로, CLI 인자로 바꾸려면
+    여기서 관련 값들을 다시 묶어 줘야 한다(안 그러면 옛 앞단의 이득·레일이 남는다)."""
+    global FRONTEND, FRONTEND_GAIN, ANALOG_HPF_HZ, ANALOG_LPF_HZ, INPUT_SPAN_MV
+    global RAIL_HIGH_V, RAIL_LOW_V, AD8232_GAIN, AD8232_HPF_HZ, AD8232_LPF_HZ
+    global HARDWARE_AVAILABLE, _HW_ERR
+    FRONTEND = frontend.choose(name, **opts)
+    FRONTEND_GAIN = FRONTEND.gain
+    ANALOG_HPF_HZ = FRONTEND.hpf_hz
+    ANALOG_LPF_HZ = FRONTEND.lpf_hz
+    INPUT_SPAN_MV = FRONTEND.input_span_mv
+    RAIL_HIGH_V = FRONTEND.rail_high_v
+    RAIL_LOW_V = FRONTEND.rail_low_v
+    AD8232_GAIN, AD8232_HPF_HZ, AD8232_LPF_HZ = FRONTEND_GAIN, ANALOG_HPF_HZ, ANALOG_LPF_HZ
+    HARDWARE_AVAILABLE = FRONTEND.available
+    _HW_ERR = FRONTEND.error
+    return FRONTEND
 
 
 # I2C 버스 접근을 직렬화한다(수집 루프와 진단이 동시에 건드리지 않도록).
@@ -121,10 +132,10 @@ def sensor_status():
     if not HARDWARE_AVAILABLE:
         return info
 
-    # 기준점을 1초만 재서 평균을 낸다(레일에 붙어 있는지 보는 것이 목적).
+    # 기준점을 2초 재서 평균과 흔들림을 함께 본다.
     vs = []
     t0 = time.time()
-    while time.time() - t0 < 1.0:
+    while time.time() - t0 < 2.0:
         try:
             vs.append(read_sample_hardware())
         except Exception as e:
@@ -134,9 +145,38 @@ def sensor_status():
     if not vs:
         return info
 
-    avg = sum(vs) / len(vs)
+    v = np.asarray(vs, dtype=float)
+    avg = float(v.mean())
+    std = float(v.std())
     info["baseline"] = round(avg, 3)
-    if avg > RAIL_HIGH_V:
+    info["std"] = round(std, 5)
+    info["min"] = round(float(v.min()), 3)
+    info["max"] = round(float(v.max()), 3)
+
+    # 위 RAIL_HIGH_V(3.0)·RAIL_LOW_V(0.3)는 전원 전압에서 짐작한 값이라 보드마다
+    # 실제 한계와 다르다. 실측한 이 보드의 출력 한계는 2.57~2.60 V / -0.59~-0.61 V 였고,
+    # 그래서 값만 보는 판정은 진짜 포화를 놓친다. 값이 문턱을 넘었는지보다
+    # **출력이 아예 움직이지 않는지**가 포화의 확실한 증거다 — 레일에 붙으면
+    # 입력이 변해도 출력이 따라가지 않으므로 표준편차가 무너진다.
+    thr = stuck_threshold_v()
+    info["stuck_threshold_mv"] = round(thr * 1000, 4)
+    info["stuck"] = std < thr
+    if info["stuck"]:
+        # 레일 이름은 값이 실제로 그 끝에 가 있을 때만 말한다. 차동 앞단은
+        # 0 이 중심이라 부호만 보고 '하단'이라 부르면 잡음 부호를 읽는 셈이다.
+        span = RAIL_HIGH_V - RAIL_LOW_V
+        near_hi = (RAIL_HIGH_V - avg) < span * 0.1
+        near_lo = (avg - RAIL_LOW_V) < span * 0.1
+        where = "상단" if near_hi else ("하단" if near_lo else None)
+        if where:
+            info["baseline_verdict"] = (
+                f"출력이 움직이지 않습니다(흔들림 {std*1000:.3f} mV) — {where} 레일 포화로 보입니다")
+        else:
+            info["baseline_verdict"] = (
+                f"출력이 거의 움직이지 않습니다(흔들림 {std*1000:.3f} mV, 문턱 {thr*1000:.3f} mV). "
+                f"기준점은 범위 중앙 부근이라 레일 포화는 아닙니다 — 전극이 떨어졌거나 "
+                f"입력이 단락된 상태일 수 있습니다")
+    elif avg > RAIL_HIGH_V:
         info["baseline_verdict"] = "상단 레일 포화 — 전극 연결을 확인하세요"
     elif avg < RAIL_LOW_V:
         info["baseline_verdict"] = "하단 레일 포화 — 전극 연결을 확인하세요"
@@ -147,8 +187,9 @@ def sensor_status():
     # 출력 볼트로만 보면 감이 안 오므로 전극 입력 기준(mV)으로 환산해서 같이 준다.
     headroom_v = min(RAIL_HIGH_V - avg, avg - RAIL_LOW_V)
     info["headroom_mv"] = round(to_input_mv(headroom_v), 3)
-    info["gain"] = AD8232_GAIN
-    info["analog_band"] = [AD8232_HPF_HZ, AD8232_LPF_HZ]
+    info["gain"] = FRONTEND_GAIN
+    info["analog_band"] = [ANALOG_HPF_HZ, ANALOG_LPF_HZ]
+    info["frontend"] = FRONTEND.describe()
     return info
 
 
@@ -158,67 +199,152 @@ KOR_FILENAMES = {"정상": "정상.csv", "수분부족": "수분부족.csv", "�
 VALID_STATES = tuple(KOR_FILENAMES.keys())
 
 
-def read_sample_hardware():
-    """ADS1115에서 실측 전위(V) 1개 샘플을 읽어온다."""
-    with _ads_lock:
-        return chan.voltage
+def session_filename(state, session=None):
+    """상태 + 세션 번호 -> 저장 파일명.
+
+    세션을 나누는 이유. 상태마다 한 번만 재면, 그 회차의 전극이 어느 방향으로
+    표류했는지가 곧 클래스 라벨이 된다. "수분부족이라 전위가 밀린 것"과
+    "그날 그 전극이 그렇게 표류한 것"을 가를 방법이 없다.
+    (보고서 Ⅳ장 2절 (4) — 1차 학습의 높은 정확도가 실제로 그랬다)
+
+        session=None -> 정상.csv      (첫 회차)
+        session=2    -> 정상_2.csv
+    """
+    base = KOR_FILENAMES[state][:-4]
+    return f"{base}.csv" if not session or int(session) <= 1 else f"{base}_{int(session)}.csv"
+
+
+def next_session(out_dir, state):
+    """그 상태의 다음 회차 번호. 이미 있는 파일을 세어 결정한다."""
+    n = 1
+    while os.path.isfile(os.path.join(out_dir, session_filename(state, n))):
+        n += 1
+    return n
+
+
+def count_sessions(out_dir, state):
+    """이미 수집된 회차 수."""
+    return next_session(out_dir, state) - 1
+
+
+# 전극 표류의 세기. 30분(1800초)에 표준편차 약 1mV 가 되도록 잡았다.
+# (임의보행이라 시간 T 뒤의 표준편차는 이 값 x sqrt(T) 이다)
+ELECTRODE_DRIFT_V_PER_RTS = 0.001 / np.sqrt(1800.0)
+
+
+# 온도·습도처럼 **두 채널에 똑같이** 실리는 표류의 크기(V). 참조 채널을 빼면
+# 사라지는 성분이 이것이고, 참조 채널을 두는 이유 자체다.
+COMMON_DRIFT_V = 0.002
+
+
+def _common_drift(t):
+    """식물 채널과 참조 채널에 공통으로 실리는 느린 표류.
+
+    t 만의 함수라 두 채널이 정확히 같은 값을 받는다 — 빼면 그대로 사라진다.
+    실제로는 온도·습도·전원 변동처럼 두 전극쌍이 같은 환경에 놓여서 생긴다.
+    독립 성분(각 채널의 random walk)은 빼도 안 사라지고 오히려 √2 배로 커지므로,
+    참조 차감이 이득인지는 '공통 성분이 독립 성분보다 큰가'에 달려 있다."""
+    t = np.asarray(t, dtype=float)
+    return COMMON_DRIFT_V * (np.sin(2 * np.pi * t / 2400.0)
+                             + 0.6 * np.sin(2 * np.pi * t / 700.0 + 1.1))
+
+
+def _sim_core(t, state, rng=None):
+    """상태별 합성 신호를 **전극에서 나오는 전압(V)** 으로 만든다.
+
+    여기서 만드는 값은 앞단을 거치기 **전** 이다. 앞단의 이득·고역통과는
+    _sim_through_frontend() 가 따로 적용한다. 이렇게 나눠야 'AD8232 를 쓰면
+    이 신호가 어떻게 훼손되는가'를 시뮬레이션에서도 그대로 볼 수 있다.
+
+    크기는 문헌값을 따른다 — 토마토 활동전위 21.2mV(전류 자극 후)[12], 표면 전극 과도신호
+    1mV 미만[9], 변동전위 수십 mV[13].
+    """
+    t = np.asarray(t, dtype=float)
+    scalar = (t.ndim == 0)
+    t = np.atleast_1d(t)
+    n = t.shape
+    randn = (rng.standard_normal(n) if rng is not None else np.random.normal(0, 1, n))
+
+    # 상용전원 유도잡음(제거 대상). 국내는 60Hz.
+    powerline = 0.0005 * np.sin(2 * np.pi * 60 * t)      # 0.5mV
+
+    # ⚠️ 잡음과 배경 변동은 **세 상태에서 똑같아야 한다.**
+    # 상태마다 잡음 크기를 다르게 주면, 분류기가 느린 드리프트가 아니라 잡음 크기로
+    # 구분해 버린다. 그러면 0.5Hz 고역통과를 쓰는 앞단에서도 수분부족이 분류되어,
+    # "AD8232 로는 수분부족을 못 잰다"는 이 연구의 결론과 어긋나는 가짜 결과가 나온다.
+    # 상태 간 차이는 아래 sig 하나로만 준다.
+    noise = 0.00015 * randn
+
+    # 전극 자체의 느린 표류(1/f). Ag/AgCl 계면은 온도·습도·분극 때문에 시간당
+    # 0.1~1mV 씩 제멋대로 움직인다. **어느 상태에나 있고**, 수분 스트레스와 같은
+    # 대역에 있어서 실제 측정에서 가장 큰 방해물이다.
+    # 이걸 빼고 백색잡음만 주면, 고역통과가 남기는 미세한 잔류(램프 입력에 대해
+    # τ×기울기)를 평균으로 끄집어낼 수 있게 되어, AD8232 로도 수분부족이 분류되는
+    # 가짜 결과가 나온다. 실제로는 이 표류에 묻힌다.
+    dt = float(np.median(np.diff(t))) if t.size > 1 else 0.004
+    walk = np.cumsum(randn) * ELECTRODE_DRIFT_V_PER_RTS * np.sqrt(dt)
+    background = 0.0004 * np.sin(2 * np.pi * 0.2 * t) + walk + _common_drift(t)
+
+    if state == "정상":
+        sig = 0.0
+    elif state == "수분부족":
+        # 수분 스트레스의 본체는 **수 시간에 걸친 기준점 이동**이다(10⁻⁴ Hz 수준).
+        # 0.5Hz 고역통과를 쓰는 앞단에서는 이 성분이 통째로 사라진다 — 그것이
+        # AD8232 로 수분부족을 못 잰 이유이고, DC 결합이 필요한 이유다.
+        sig = 0.012 * (1 - np.exp(-t / 3600.0))          # 시간 규모 1시간, 12mV
+    elif state == "자극":
+        # 접촉 활동전위. 문헌 진폭 21.2mV[12] — 다만 그 값은 전류 자극 후의 것이라
+        # 기계·온도 자극의 진폭이 같다는 보장은 없다(0절 ⑭).
+        # 반복 간격은 수집 프로토콜(표3: "5분간 10~20초 간격으로 반복 접촉")을 따른다.
+        period = 15.0
+        phase = (t % period) - 3.0
+        sig = 0.0212 * np.exp(-(phase ** 2) / (2 * 2.5 ** 2))
+    else:
+        raise ValueError(f"알 수 없는 상태: {state}")
+
+    sig = sig + background
+    out = sig + powerline + noise
+    return float(out[0]) if scalar else out
+
+
+def _sim_through_frontend(v_in, t, fe=None):
+    """전극 전압을 지금 고른 앞단에 통과시킨다.
+
+    앞단이 신호에 하는 일은 두 가지다.
+      · 고역통과 — 차단주파수보다 느린 성분을 지운다. AD8232 의 0.5Hz 가
+        수분 스트레스(10⁻⁴ Hz)를 통째로 지우는 지점이 여기다.
+      · 이득 — 곱한 뒤 레일을 넘으면 잘린다(포화).
+    """
+    fe = fe or FRONTEND
+    v = np.atleast_1d(np.asarray(v_in, dtype=float))
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+
+    if fe.hpf_hz > 0 and len(v) > 1:
+        # 1차 고역통과를 시간영역에서 근사한다(느린 성분을 뺀다).
+        dt = float(np.median(np.diff(t))) if len(t) > 1 else 0.004
+        alpha = 1.0 / (1.0 + 2 * np.pi * fe.hpf_hz * dt)
+        y = np.empty_like(v); y[0] = 0.0
+        for i in range(1, len(v)):
+            y[i] = alpha * (y[i - 1] + v[i] - v[i - 1])
+        v = y
+
+    out = v * fe.gain
+    # 단전원 앞단은 기준점이 전원 중앙에 있다. 차동 앞단은 0 이 중심이다.
+    if fe.rail_low_v is not None and fe.rail_low_v >= 0:
+        out = out + (fe.rail_high_v + fe.rail_low_v) / 2.0
+    if fe.rail_low_v is not None:
+        out = np.clip(out, fe.rail_low_v, fe.rail_high_v)   # 레일 포화
+    return out
 
 
 def simulate_sample(t, state):
-    """
-    하드웨어가 없을 때 사용하는 합성 신호 생성기.
-    실제 식물 전기신호(plant electrophysiology) 문헌에서 보고되는 패턴을 참고하여
-    상태별로 다른 저주파 변동 + 노이즈 특성을 부여한다.
-
-    - 정상: 완만한 기저선 변동 (0.05~0.5Hz 위주), 저잡음
-    - 수분부족: 느린 드리프트(스트레스 반응) + 간헐적 저주파 스파이크
-    - 자극(잎 흔들기): 짧고 진폭 큰 액션포텐셜 유사 스파이크가 불규칙하게 발생 (순간 이벤트)
-    """
-    baseline = 0.0  # V, AD8232 출력 기준선(가상)
-    powerline_noise = 0.01 * np.sin(2 * np.pi * 50 * t)  # 50Hz 전원 노이즈(제거 대상)
-
-    if state == "정상":
-        signal = 0.02 * np.sin(2 * np.pi * 0.2 * t) + 0.01 * np.sin(2 * np.pi * 0.05 * t)
-        noise = np.random.normal(0, 0.005)
-    elif state == "수분부족":
-        drift = 0.03 * np.sin(2 * np.pi * 0.02 * t)
-        spike = 0.04 if (int(t * 10) % 47 == 0) else 0.0
-        signal = drift + spike
-        noise = np.random.normal(0, 0.008)
-    elif state == "자극":
-        # 불규칙한 순간 스파이크 (잎 접촉/흔들림에 의한 액션포텐셜 유사 반응)
-        spike = 0.15 * np.exp(-((t % 1.3 - 0.15) ** 2) / (2 * 0.01 ** 2))
-        signal = spike + 0.02 * np.sin(2 * np.pi * 0.3 * t)
-        noise = np.random.normal(0, 0.01)
-    else:
-        raise ValueError(f"알 수 없는 상태: {state}")
-
-    return baseline + signal + powerline_noise + noise
+    """하드웨어가 없을 때 쓰는 합성 신호 1샘플. 지금 고른 앞단을 통과시킨 값이다."""
+    return float(_sim_through_frontend(_sim_core(t, state), np.atleast_1d(t))[0])
 
 
 def simulate_batch(t_array, state):
-    """simulate_sample()의 벡터화 버전. 시뮬레이션 모드에서는 실시간 페이싱이 필요 없으므로
-    전체 구간을 numpy 배열 연산으로 한 번에 계산해 샘플별 파이썬 함수 호출 오버헤드를 없앤다.
-    (수식은 simulate_sample()과 동일)"""
-    baseline = 0.0
-    powerline_noise = 0.01 * np.sin(2 * np.pi * 50 * t_array)
-
-    if state == "정상":
-        signal = 0.02 * np.sin(2 * np.pi * 0.2 * t_array) + 0.01 * np.sin(2 * np.pi * 0.05 * t_array)
-        noise = np.random.normal(0, 0.005, size=t_array.shape)
-    elif state == "수분부족":
-        drift = 0.03 * np.sin(2 * np.pi * 0.02 * t_array)
-        spike = np.where((t_array * 10).astype(np.int64) % 47 == 0, 0.04, 0.0)
-        signal = drift + spike
-        noise = np.random.normal(0, 0.008, size=t_array.shape)
-    elif state == "자극":
-        spike = 0.15 * np.exp(-((t_array % 1.3 - 0.15) ** 2) / (2 * 0.01 ** 2))
-        signal = spike + 0.02 * np.sin(2 * np.pi * 0.3 * t_array)
-        noise = np.random.normal(0, 0.01, size=t_array.shape)
-    else:
-        raise ValueError(f"알 수 없는 상태: {state}")
-
-    return baseline + signal + powerline_noise + noise
+    """simulate_sample() 의 벡터화 버전(수식 동일)."""
+    return _sim_through_frontend(_sim_core(t_array, state), t_array)
 
 
 def _install_stop_handler():
@@ -486,11 +612,68 @@ def _settle(settle_sec, sample_rate_hz, max_sec=SETTLE_MAX_SEC):
         print("    파형이 통째로 잘립니다. 전극 접촉을 고치고 다시 시작하세요.")
 
 
+def _git_rev():
+    """수집에 쓰인 코드가 어느 커밋이었는지. 알 수 없으면 None."""
+    try:
+        import subprocess
+        here = os.path.dirname(os.path.abspath(__file__))
+        return subprocess.run(["git", "-C", here, "rev-parse", "--short", "HEAD"],
+                              capture_output=True, text=True, timeout=5
+                              ).stdout.strip() or None
+    except Exception:
+        return None
+
+
+def meta_path(csv_path):
+    """CSV 옆에 놓이는 출처 파일 경로."""
+    return os.path.splitext(csv_path)[0] + ".meta.json"
+
+
+def load_meta(csv_path):
+    """출처 정보를 읽는다. 파일이 없으면 None — '출처 불명'이라는 뜻이다."""
+    try:
+        with open(meta_path(csv_path), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def is_simulated(csv_path):
+    """이 CSV 가 시뮬레이터 출력인가.
+    True=시뮬레이터, False=실측, None=출처 파일이 없어 알 수 없음."""
+    m = load_meta(csv_path)
+    return None if m is None else (m.get("mode") != "hardware")
+
+
+def _write_meta(out_path, state, session, sample_rate_hz, rows):
+    span = float(rows[-1][0]) if rows else 0.0
+    meta = {
+        "mode": "hardware" if HARDWARE_AVAILABLE else "simulation",
+        "hardware_error": None if HARDWARE_AVAILABLE else _HW_ERR,
+        "frontend": FRONTEND.describe(),
+        "state": state,
+        "session": session,
+        "requested_rate_hz": float(sample_rate_hz),
+        "actual_rate_hz": (len(rows) / span) if span > 0 else None,
+        "has_ref": FRONTEND.has_ref,
+        "n_samples": len(rows),
+        "duration_sec": span,
+        "recorded_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "git_rev": _git_rev(),
+    }
+    with open(meta_path(out_path), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    if not HARDWARE_AVAILABLE:
+        print(f"[sensor_control] ⚠️  이 파일은 시뮬레이터 출력입니다 — 실측 데이터가 아닙니다.")
+        print(f"    {meta_path(out_path)} 에 기록해 두었습니다.")
+
+
 def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
-            settle_sec=SETTLE_SEC, settle_max_sec=SETTLE_MAX_SEC):
+            settle_sec=SETTLE_SEC, settle_max_sec=SETTLE_MAX_SEC, session=None):
     """
     지정한 상태(state)에 대해 duration_sec 동안 sample_rate_hz로 샘플링하여
-    out_dir/<상태>.csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
+    out_dir/<상태>[_회차].csv 로 저장한다. (timestamp, voltage) 2개 컬럼.
+    session 을 주면 그 회차로, 안 주면 비어 있는 다음 회차로 저장한다.
 
     settle_sec 동안은 전극이 안정되기를 기다렸다가(저장하지 않음) 수집을 시작한다.
 
@@ -502,14 +685,20 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
         raise ValueError(f"state는 {list(VALID_STATES)} 중 하나여야 합니다.")
 
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, KOR_FILENAMES[state])
+    # 회차를 안 주면 비어 있는 다음 번호를 쓴다 — 덮어쓰지 않는다.
+    if session is None:
+        session = next_session(out_dir, state)
+    out_path = os.path.join(out_dir, session_filename(state, session))
 
     unlimited = duration_sec is None or duration_sec <= 0
     n_samples = 0 if unlimited else int(duration_sec * sample_rate_hz)
     interval = 1.0 / sample_rate_hz
 
-    mode_str = "HARDWARE (AD8232+ADS1115)" if HARDWARE_AVAILABLE else "SIMULATION (no I2C hardware detected)"
+    mode_str = (f"HARDWARE ({FRONTEND.title})" if HARDWARE_AVAILABLE
+                else f"SIMULATION (no I2C hardware detected) · 앞단 가정: {FRONTEND.title}")
     length_str = "무제한 (중지할 때까지)" if unlimited else f"{duration_sec}s (총 {n_samples} 샘플)"
+    if FRONTEND.has_ref:
+        mode_str += " · 참조채널 A2-A3 동시 기록"
     print(f"[sensor_control] 모드: {mode_str}")
     print(f"[sensor_control] 상태='{state}' 샘플링={sample_rate_hz}Hz 길이={length_str} -> {out_path}")
 
@@ -540,7 +729,11 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
                 # 하드웨어가 목표 속도를 못 따라가도 CSV의 시간이 거짓말하지 않게 하기 위함.
                 # (i/fs 로 적으면 100Hz로 잰 것을 250Hz라고 우기게 되어 주파수가 다 틀어진다)
                 now_t = time.time() - start
-                rows.append((round(now_t, 6), read_sample_hardware()))
+                if FRONTEND.has_ref:
+                    v, vref = FRONTEND.read_pair()
+                    rows.append((round(now_t, 6), v, vref))
+                else:
+                    rows.append((round(now_t, 6), read_sample_hardware()))
                 i += 1
                 # 실제 하드웨어 샘플링 주기에 맞춰 페이싱
                 elapsed = time.time() - start
@@ -559,7 +752,14 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
                 take = chunk if unlimited else min(chunk, n_samples - i)
                 t_array = (np.arange(i, i + take)) * interval
                 v_array = simulate_batch(t_array, state)
-                rows.extend(zip(np.round(t_array, 6), v_array))
+                if FRONTEND.has_ref:
+                    # 참조 채널은 같은 전극·같은 앞단이지만 식물이 없다. 그래서
+                    # 표류·잡음·전원성분은 있고 상태 신호만 없다. 이 차이가 곧
+                    # '식물 반응'과 '전극이 그냥 표류한 것'을 가르는 근거다.
+                    r_array = simulate_batch(t_array, "정상")
+                    rows.extend(zip(np.round(t_array, 6), v_array, r_array))
+                else:
+                    rows.extend(zip(np.round(t_array, 6), v_array))
                 i += take
                 report(i, i * interval)
                 if unlimited:
@@ -576,8 +776,18 @@ def collect(state, duration_sec, sample_rate_hz, out_dir, progress_sec=5.0,
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["timestamp_sec", "voltage"])
+        header = ["timestamp_sec", "voltage"]
+        if FRONTEND.has_ref:
+            header.append("voltage_ref")      # 참조(더미) 채널 — 표류만 담긴 값
+        writer.writerow(header)
         writer.writerows(rows)
+
+    # ── 출처를 파일 옆에 같이 남긴다 ──────────────────────────────
+    # 예전에는 HARDWARE/SIMULATION 을 화면에 print 만 하고 버렸다. 그래서 나중에
+    # CSV 만 보고는 그게 식물에서 온 값인지 시뮬레이터가 만든 값인지 구분할
+    # 방법이 아예 없었고, 실제로 시뮬레이터 출력이 실측 데이터로 오해된 채
+    # 보고서까지 올라갔다. 신호 처리로 사후에 알아내려 하지 말고 수집할 때 적는다.
+    _write_meta(out_path, state, session, sample_rate_hz, rows)
 
     _report_artifacts([r[1] for r in rows], sample_rate_hz)
     _report_motion_artifacts([r[1] for r in rows], sample_rate_hz)
@@ -614,17 +824,34 @@ def main():
                         help="수집 시간(초), 기본 120초. 0이면 중지할 때까지 무제한. "
                              "분석 창이 10초라 30초만 모으면 학습 이미지가 열 몇 장뿐이다")
     parser.add_argument("--rate", type=float, default=250.0, help="샘플링 주기(Hz), 100~1000 권장")
+    parser.add_argument("--frontend", default=None, choices=frontend.names(),
+                        help="아날로그 앞단. ad8232=지금까지의 구성, dc=버퍼+차동입력(DC 결합). "
+                             "GML_FRONTEND 환경변수로도 지정할 수 있습니다.")
     parser.add_argument("--out", default="../data/raw", help="저장 폴더")
+    parser.add_argument("--ref", action="store_true",
+                        help="참조(더미) 채널 A2-A3 를 같이 기록한다. 식물 없이 전극쌍만 "
+                             "담근 채널이라, 여기서 나온 표류는 식물 반응이 아니다. "
+                             "차동쌍을 번갈아 읽으므로 채널당 샘플레이트가 절반이 된다.")
+    parser.add_argument("--session", type=int, default=None,
+                        help="회차 번호. 안 주면 비어 있는 다음 회차로 저장합니다. "
+                             "상태마다 2회 이상 나눠 재야 전극 조건과 식물 상태를 가를 수 있습니다.")
     parser.add_argument("--settle", type=float, default=SETTLE_SEC,
                         help=f"수집 전 전극 안정화 최소 대기(초), 기본 {SETTLE_SEC:.0f}초. 0이면 대기 없음")
     parser.add_argument("--settle-max", type=float, default=SETTLE_MAX_SEC,
                         help=f"안정화 최대 대기(초), 기본 {SETTLE_MAX_SEC:.0f}초. "
                              "기준점이 잠잠해지면 이보다 일찍 넘어간다")
     args = parser.parse_args()
+    if args.frontend or args.ref:
+        # --ref 만 주고 --frontend 를 안 주면 지금 앞단을 그대로 다시 만든다.
+        use_frontend(args.frontend or FRONTEND.name, ref=args.ref)
+    if args.ref and not FRONTEND.has_ref:
+        print(f"[sensor_control] ⚠️  {FRONTEND.title} 은(는) 참조 채널을 지원하지 않습니다 "
+              "— 참조 없이 수집합니다. (DC 결합 앞단에서만 됩니다: --frontend dc --ref)")
 
     _install_stop_handler()
     collect(args.state, args.duration, args.rate, args.out,
-            settle_sec=args.settle, settle_max_sec=args.settle_max)
+            settle_sec=args.settle, settle_max_sec=args.settle_max,
+            session=args.session)
 
 
 if __name__ == "__main__":

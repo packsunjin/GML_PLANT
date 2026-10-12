@@ -1,0 +1,316 @@
+"""
+frontend.py
+===========
+전극에서 ADC까지의 **아날로그 앞단**을 갈아끼울 수 있게 감싼 모듈.
+
+이 프로젝트는 두 가지 앞단을 쓴다.
+
+  ad8232 — 심전도용 생체전위 증폭기. 이득 1100배가 고정이고 0.5~40Hz 아날로그
+           필터가 실리콘 안에 박혀 있다. 지금까지의 모든 측정이 이 구성이다.
+  dc     — 오피앰프 버퍼 + ADS1115 차동입력. 아날로그 증폭이 없고 고역통과가
+           없다(DC 결합). 느린 신호를 재려면 이쪽이어야 한다.
+
+왜 나눴나
+---------
+AD8232 의 0.5Hz 고역통과는 수분 스트레스(수 시간 규모, 10⁻⁴ Hz 수준)를 원리적으로
+지운다. 소프트웨어로 복구할 수 없어서 앞단 자체를 바꿔야 한다. 그런데 두 구성은
+이득·대역·측정 범위가 전부 달라서, 한 코드에 조건문으로 섞으면 어느 쪽 기준으로
+계산된 값인지 알 수 없게 된다. 그래서 '앞단이 무엇을 할 수 있는가'를 이 모듈이
+값으로 들고 있고, 나머지 코드는 그 값을 물어보게 했다.
+
+고르는 법
+---------
+    python3 main.py --web                          # 기본값 dc
+    GML_FRONTEND=ad8232 python3 main.py --web      # 옛 구성으로 되돌릴 때
+    python3 sensor_control.py --frontend dc --state 정상
+
+지정하지 않으면 **dc** 다. 이 브랜치(claude/dc-frontend)의 하드웨어가 DC 결합
+앞단이기 때문이다. 기본값이 ad8232 이던 시절에는 웹을 그냥 켜면 같은 회로를
+이득 1100배로 읽어 "레일 포화"라는 헛판정이 났다(0절 ⑨). AD8232 구성은
+main 브랜치에 있다.
+"""
+
+import os
+import threading
+
+# I2C 버스 접근을 직렬화한다(수집 루프와 진단이 동시에 건드리지 않도록).
+_i2c_lock = threading.Lock()
+
+
+def _start_continuous(ads, chan):
+    """ADS1115 를 연속 모드로 바꾸되, 칩의 채널(MUX)을 chan 으로 맞춘 뒤에 바꾼다.
+
+    ⚠️ adafruit_ads1x15 의 _write_config() 는 **연속 모드일 때 넘겨받은 채널을 버리고
+    칩에 이미 들어 있는 채널을 다시 써 넣는다**(else 쪽에서 config 레지스터의 MUX 를
+    읽어 덮어씀). 그래서 연속 모드로 읽으면 "직전에 다른 프로그램이 마지막으로 읽은
+    채널"을 계속 읽는다. 단극 진단(bias_check 등)이 A0 나 A3 를 읽고 끝난 뒤 수집기를
+    돌리면 차동 A0−A1 대신 그 채널의 절대 전압(약 1.65 V)이 기록된다(0절 ⑯).
+
+    단발 모드에서는 채널이 제대로 써진다. 그래서 단발로 한 번 읽어 칩의 MUX 를
+    맞춘 다음 연속 모드로 바꾼다 — 모드 setter 는 칩의 현재 MUX 를 보존한다.
+    """
+    try:
+        from adafruit_ads1x15.ads1x15 import Mode
+    except Exception:
+        return
+    ads.mode = Mode.SINGLE
+    chan.value                      # 단발 변환 1회 → 칩 MUX 가 chan 으로 바뀐다
+    ads.mode = Mode.CONTINUOUS
+    # 연속 모드의 "빠른 읽기"는 레지스터 포인터가 변환 레지스터에 있다고 가정하고
+    # 포인터를 다시 쓰지 않는다. 그런데 모드를 바꾸며 설정 레지스터를 썼으니 지금
+    # 포인터는 설정 레지스터에 있다. 그대로 두면 설정값(0x04E3 → 78.2 mV)이 매번
+    # 읽힌다. 마지막 핀 기록을 지워 다음 읽기가 정식 경로(포인터 복귀)를 타게 한다.
+    ads._last_pin_read = None
+    chan.value
+
+
+class Frontend:
+    """앞단 하나가 갖춰야 할 것. 하위 클래스가 read() 와 사양 값을 채운다."""
+
+    name = "?"
+    title = "?"
+    gain = 1.0              # V/V — 전극 전압이 ADC 까지 오며 몇 배가 되는가
+    hpf_hz = 0.0            # 아날로그 고역통과 차단(0 이면 DC 결합)
+    lpf_hz = 0.0            # 아날로그 저역통과 차단
+    input_span_mv = None    # 잘리지 않고 잴 수 있는 전극 간 전압(± mV)
+    resolution_uv = None    # 전극 입력 환산 분해능
+    # ADC 가 보는 값이 이 밖으로 나가면 잘린 것으로 본다. 앞단마다 완전히 다르다 —
+    # AD8232 는 0~3.3V 단전원 출력이고, DC 차동은 ±PGA범위다.
+    rail_high_v = None
+    rail_low_v = None
+    available = False
+    error = None
+    # 참조(더미) 채널 — 식물 없이 전극쌍만 담근 채널을 동시에 읽는가.
+    # 이게 있어야 '식물 반응'과 '전극이 그냥 표류한 것'을 나눌 수 있다.
+    has_ref = False
+
+    def read(self):
+        """전극 신호 한 샘플(V, ADC 가 본 값)."""
+        raise NotImplementedError
+
+    def read_ref(self):
+        """참조 채널 한 샘플(V). 참조 채널이 없으면 None."""
+        return None
+
+    def read_pair(self):
+        """(식물, 참조) 한 쌍. 참조가 없으면 (식물, None)."""
+        return self.read(), self.read_ref()
+
+    def to_input_mv(self, v):
+        """ADC 가 본 값(V) -> 전극 사이 전압(mV).
+        문헌의 식물 전위(mV)와 비교하려면 반드시 이 환산을 거쳐야 한다."""
+        return 1000.0 * float(v) / self.gain
+
+    def describe(self):
+        return {
+            "name": self.name, "title": self.title,
+            "gain": self.gain, "band": [self.hpf_hz, self.lpf_hz],
+            "dc_coupled": self.hpf_hz == 0.0,
+            "input_span_mv": self.input_span_mv,
+            "rail": [self.rail_low_v, self.rail_high_v],
+            "resolution_uv": self.resolution_uv,
+            "available": self.available, "error": self.error,
+            "has_ref": self.has_ref,
+        }
+
+
+# ── ① AD8232 (지금까지의 구성) ────────────────────────────────────────
+class AD8232Frontend(Frontend):
+    """심전도용 생체전위 증폭기. 이득과 대역이 소자에 고정돼 있다.
+
+    총 이득 1100배 = 계측증폭기 100배 x 저역통과단 11배(데이터시트 심전도 구성).
+    3.3V 단전원에서 기준점이 중앙이라고 보면, 전극 사이 전압이 ±1.2mV만 넘어도
+    출력이 레일에 부딪혀 잘린다. 문헌이 표면 전극으로 보고하는 식물 전위는
+    수 mV~수십 mV라 이 범위를 넘는다 — 큰 신호가 '작게' 보이는 게 아니라
+    아예 잘려서 레일 포화로 나타난다."""
+
+    name = "ad8232"
+    title = "AD8232 (심전도용 증폭기)"
+    gain = 1100.0
+    hpf_hz = 0.5
+    lpf_hz = 40.0
+    input_span_mv = 1.23        # (3.3/2 - 여유) / 1100
+    # 3.3V 단전원 출력. 아래 값은 전원 전압에서 짐작한 것이고, 실측한 이 보드의
+    # 진짜 한계는 2.57~2.60V / -0.59~-0.61V 였다. 그래서 값 판정만으로는 부족하고
+    # '출력이 안 움직이는지'를 함께 봐야 한다(sensor_control.sensor_status 참고).
+    rail_high_v = 3.0
+    rail_low_v = 0.3
+
+    def __init__(self):
+        self._chan = None
+        # 사양 값은 하드웨어가 붙어 있는지와 무관하다. 시뮬레이션에서도
+        # '이 앞단으로는 무엇을 잴 수 있는가' 를 물어볼 수 있어야 한다.
+        self.resolution_uv = self.to_input_mv(4.096 * 2 / 65536) * 1000
+        try:
+            import board, busio
+            import adafruit_ads1x15.ads1115 as ADS
+            from adafruit_ads1x15.analog_in import AnalogIn
+            try:
+                i2c = busio.I2C(board.SCL, board.SDA, frequency=400_000)
+            except TypeError:
+                i2c = busio.I2C(board.SCL, board.SDA)
+            ads = ADS.ADS1115(i2c)
+            # 싱글샷 128SPS 로는 250Hz 를 못 채운다(한 샘플에 8ms 이상).
+            try: ads.data_rate = 860
+            except Exception: pass
+            self._chan = AnalogIn(ads, getattr(ADS, "P0", 0))   # 증폭기 출력 -> A0
+            _start_continuous(ads, self._chan)
+            self.available = True
+        except Exception as e:
+            self.error = str(e)
+
+    def read(self):
+        with _i2c_lock:
+            return self._chan.voltage
+
+
+# ── ② DC 결합 (오피앰프 버퍼 + ADS1115 차동입력) ──────────────────────
+class DCFrontend(Frontend):
+    """아날로그 증폭도 고역통과도 없는 앞단.
+
+    전극 --> 오피앰프 전압 폴로어(이득 1배) --> ADS1115 차동입력(A0-A1)
+
+    버퍼는 증폭하지 않고 임피던스만 낮춘다. 그래서
+      · 아날로그 이득이 1배라 오프셋으로 레일에 붙을 일이 없다.
+      · 고역통과가 없어 수 시간짜리 느린 변화가 그대로 남는다.
+        (AD8232 의 0.5Hz 고역통과가 지우던 수분 스트레스 대역)
+      · 증폭은 ADS1115 의 PGA 가 디지털로 맡는다.
+
+    PGA 를 16배로 두면 측정 범위 ±256mV, 분해능 7.8µV 다. 문헌의 토마토
+    활동전위 21.2mV(전류 자극 후, Macedo 2015) 가 범위의 8% 라 잘리지 않고
+    들어온다 — AD8232 의 ±1.23mV
+    범위에서는 17배를 넘어가 잘리던 값이다.
+
+    ⚠️ 기준 전위 — 단전원이라 전극 전위를 전원 중간(1.65V)에 걸어 줘야 한다.
+       100kΩ 두 개로 만든 분압을 버퍼로 받아 흙 전극에 연결한다.
+    """
+
+    name = "dc"
+    title = "DC 결합 (버퍼 + ADS1115 차동)"
+    gain = 1.0              # 아날로그 증폭 없음
+    hpf_hz = 0.0            # DC 결합 — 고역통과 없음
+    lpf_hz = 0.0            # 설정된 저역통과 없음(샘플레이트가 한계)
+
+    # ADS1115 PGA 설정별 측정 범위(V). 16배가 이 용도에 맞다.
+    PGA_RANGE_V = {1: 4.096, 2: 2.048, 4: 1.024, 8: 0.512, 16: 0.256}
+
+    def __init__(self, pga=None, ref=False):
+        # PGA 는 환경변수로 받는다(GML_PGA=2). CLI 인자로 받아 use_frontend() 를
+        # 다시 부르면 앞단이 두 번 만들어져 ADS1115 가 꼬인다(0절 ⑫).
+        # 환경변수면 import 시점에 한 번만 만들어진다.
+        if pga is None:
+            try:
+                pga = int(os.environ.get("GML_PGA", "16"))
+            except ValueError:
+                pga = 16
+        self._chan = None
+        self._chan_ref = None
+        self.has_ref = bool(ref)
+        self.pga = pga if pga in self.PGA_RANGE_V else 16
+        span_v = self.PGA_RANGE_V[self.pga]
+        self.input_span_mv = span_v * 1000.0
+        self.resolution_uv = span_v * 2 / 65536 * 1e6
+        # 차동 입력이라 0 을 중심으로 ±span 이 측정 범위이고, 그 끝이 곧 포화다.
+        # 여유를 조금 두어 끝에 닿기 전에 경고가 나오게 한다.
+        self.rail_high_v = span_v * 0.98
+        self.rail_low_v = -span_v * 0.98
+        try:
+            import board, busio
+            import adafruit_ads1x15.ads1115 as ADS
+            from adafruit_ads1x15.analog_in import AnalogIn
+            try:
+                i2c = busio.I2C(board.SCL, board.SDA, frequency=400_000)
+            except TypeError:
+                i2c = busio.I2C(board.SCL, board.SDA)
+            ads = ADS.ADS1115(i2c)
+            ads.gain = self.pga
+            try: ads.data_rate = 860
+            except Exception: pass
+            # 차동 입력: A0 와 A1 의 **차이**를 잰다. 공통으로 들어오는 잡음은
+            # 양쪽에 똑같이 실리므로 빼면서 사라진다(계측증폭기가 하던 일).
+            p0 = getattr(ADS, "P0", 0)
+            p1 = getattr(ADS, "P1", 1)
+            self._chan = AnalogIn(ads, p0, p1)
+            if not self.has_ref:
+                # 참조쌍을 번갈아 읽을 때는 채널을 계속 바꿔야 하므로 단발 모드로 둔다.
+                # 연속 모드에서는 라이브러리가 채널을 못 바꾼다(_start_continuous 참조).
+                _start_continuous(ads, self._chan)
+            if self.has_ref:
+                # 참조쌍은 A2-A3. ADS1115 는 차동쌍이 둘뿐이라 이게 마지막 하나다.
+                # ⚠️ 두 쌍을 번갈아 읽으면 멀티플렉서를 매번 바꿔야 해서 채널당
+                #    실효 샘플레이트가 절반으로 떨어진다. 느린 실험(5Hz)에서는
+                #    문제가 없지만, 자극처럼 빠른 신호를 볼 때는 참조를 끄는 게 낫다.
+                p2 = getattr(ADS, "P2", 2)
+                p3 = getattr(ADS, "P3", 3)
+                self._chan_ref = AnalogIn(ads, p2, p3)
+            self.available = True
+        except Exception as e:
+            self.error = str(e)
+
+    def read(self):
+        with _i2c_lock:
+            return self._chan.voltage
+
+    def read_ref(self):
+        if self._chan_ref is None:
+            return None
+        with _i2c_lock:
+            return self._chan_ref.voltage
+
+    def read_pair(self):
+        """한 번의 잠금 안에서 두 채널을 연달아 읽는다.
+        따로 읽으면 사이에 다른 스레드가 멀티플렉서를 바꿔 놓을 수 있다."""
+        if self._chan_ref is None:
+            return self.read(), None
+        with _i2c_lock:
+            return self._chan.voltage, self._chan_ref.voltage
+
+    def describe(self):
+        d = super().describe()
+        d["pga"] = self.pga
+        return d
+
+
+_REGISTRY = {"ad8232": AD8232Frontend, "dc": DCFrontend}
+
+# 이 브랜치(claude/dc-frontend)의 하드웨어는 DC 결합 앞단이다. 기본값이 ad8232 면
+# 웹을 그냥 켰을 때 같은 회로를 이득 1100배·포화 문턱 0.8 mV 로 읽어서
+# "레일 포화"라는 헛판정이 난다(0절 ⑨). AD8232 를 쓰려면 main 브랜치를 쓰거나
+# GML_FRONTEND=ad8232 를 준다.
+DEFAULT = "dc"
+_active = None
+_active_key = None     # 지금 살아 있는 앞단을 만들 때 쓴 (이름, 옵션). 재사용 판정용
+
+
+def choose(name=None, **opts):
+    """앞단을 고른다. 이름이 없으면 GML_FRONTEND 환경변수, 그것도 없으면 DEFAULT(dc).
+
+    opts 는 해당 앞단 생성자가 받는 것만 넘어간다(예: dc 앞단의 ref=True).
+    앞단이 모르는 옵션은 조용히 버린다 — ad8232 에 ref 를 줘도 터지지 않게.
+
+    ⚠️ **같은 앞단을 두 번 만들지 않는다.** 같은 설정으로 또 부르면 이미 만든 것을
+    그대로 돌려준다. 새로 만들면 같은 ADS1115 칩에 I2C 객체가 둘 붙고, 둘 다
+    연속모드로 설정하면서 레지스터를 서로 덮어써 읽은 값이 풀스케일로 굳는다
+    (0절 ⑫ — 30분 측정 하나를 통째로 날렸다)."""
+    global _active, _active_key
+    name = (name or os.environ.get("GML_FRONTEND") or DEFAULT).lower()
+    if name not in _REGISTRY:
+        raise ValueError(f"모르는 앞단: {name} (가능: {', '.join(_REGISTRY)})")
+    cls = _REGISTRY[name]
+    import inspect
+    accepted = set(inspect.signature(cls.__init__).parameters) - {"self"}
+    used = {k: v for k, v in opts.items() if k in accepted}
+    key = (name, tuple(sorted(used.items())))
+    if _active is not None and _active_key == key:
+        return _active          # 이미 같은 설정으로 살아 있다. 또 만들면 칩이 꼬인다
+    _active = cls(**used)
+    _active_key = key
+    return _active
+
+
+def active():
+    return _active if _active is not None else choose()
+
+
+def names():
+    return list(_REGISTRY)

@@ -62,16 +62,97 @@ def ensure():
     py = venv_python()
     if not py:
         return
-    try:
-        if os.path.samefile(py, sys.executable):
-            return               # 이미 그 파이썬으로 돌고 있다
-    except OSError:
-        pass
+    # ⚠️ 여기서 os.path.samefile(py, sys.executable) 로 비교하면 안 된다.
+    # samefile 은 심볼릭 링크를 따라가는데, venv 의 python3 는 원본 인터프리터를
+    # 가리키는 심볼릭 링크다. 그래서 항상 '같은 파일'로 나와 늘 여기서 되돌아갔고,
+    # 결과적으로 한 번도 갈아타지 않았다.
+    # '이미 그 venv 안인가'는 sys.prefix 로 판단해야 한다.
+    venv_root = os.path.dirname(os.path.dirname(py))
+    if os.path.normcase(os.path.abspath(sys.prefix)) == \
+       os.path.normcase(os.path.abspath(venv_root)):
+        return                   # 이미 그 venv 안이다
     script = os.path.abspath(sys.argv[0])
     if not os.path.isfile(script):
         return                       # -c, -m, 대화형 등은 건드리지 않는다
     os.environ[_GUARD] = "1"
     try:
         os.execv(py, [py, script] + sys.argv[1:])
-    except OSError:
-        pass                         # 갈아타기 실패하면 그냥 하던 대로 진행
+    except Exception as e:
+        # execv 는 성공하면 돌아오지 않는다. 여기까지 왔다는 건 실패했다는 뜻이다.
+        # 조용히 넘어가면 곧바로 ModuleNotFoundError 가 뜨는데, 그것만 보고는
+        # venv 전환이 실패했다는 걸 알 수 없다.
+        print(f"[venv_boot] execv 실패({e}) — 대신 venv 의 라이브러리 경로를 붙입니다.",
+              file=sys.stderr)
+    # 프로세스를 갈아타지 못했더라도, venv 의 site-packages 를 import 경로에
+    # 붙이면 대부분 그대로 돌아간다. execv 가 막힌 환경(권한·컨테이너 등)을 위한 대비다.
+    add_venv_site_packages()
+
+
+def venv_site_packages(root=None):
+    """venv 안 site-packages 경로들. 없으면 빈 목록."""
+    import glob
+    root = root or _repo_root()
+    if not root:
+        return []
+    pats = [os.path.join(root, "venv", "lib", "python*", "site-packages"),
+            os.path.join(root, "venv", "Lib", "site-packages")]
+    out = []
+    for pat in pats:
+        out.extend(sorted(p for p in glob.glob(pat) if os.path.isdir(p)))
+    return out
+
+
+def add_venv_site_packages():
+    """venv 의 라이브러리를 import 경로에 붙인다(프로세스는 그대로).
+
+    os.execv 로 갈아타는 것이 정석이지만, 그게 막히는 환경이 있다. 그럴 때
+    최소한 라이브러리는 찾을 수 있게 한다. 파이썬 버전이 다르면 C 확장이
+    안 맞을 수 있어 정석보다 약하지만, 아무것도 안 하는 것보다는 낫다."""
+    # 뒤에 붙이면(append) 시스템 쪽 경로가 먼저 잡혀 venv 것이 무시된다.
+    # sys.path[0] 은 실행한 스크립트의 폴더라 건드리지 않고, 그 바로 뒤에 넣는다.
+    added = []
+    for sp in reversed(venv_site_packages()):
+        if sp not in sys.path:
+            sys.path.insert(1, sp)
+            added.append(sp)
+    return added
+
+
+def report():
+    """왜 전환이 되는지/안 되는지 한눈에 본다.
+
+        python3 src/venv_boot.py
+    """
+    root = _repo_root()
+    py = venv_python(root)
+    in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    print(f"  저장소 위치   : {root}")
+    print(f"  venv 파이썬   : {py or '못 찾음'}")
+    print(f"  지금 파이썬   : {sys.executable}")
+    print(f"  이미 venv 안? : {in_venv}")
+    print(f"  GML_NO_VENV   : {os.environ.get('GML_NO_VENV') or '(안 켜짐)'}")
+    if in_venv:
+        print("  → 이미 가상환경 안이라 아무것도 하지 않습니다.")
+    elif not py:
+        print("  → venv 를 못 찾아 시스템 파이썬으로 진행합니다.")
+    else:
+        print("  → 실행하면 이 파이썬으로 갈아탑니다.")
+    # 실제로 쓸 파이썬에 필요한 라이브러리가 있는지도 본다
+    import subprocess
+    target = py if (py and not in_venv) else sys.executable
+    need = ["numpy", "scipy", "pandas", "sklearn", "flask", "joblib", "matplotlib"]
+    code = "import importlib,sys;print(' '.join(m for m in sys.argv[1:] "\
+           "if importlib.util.find_spec(m) is None))"
+    try:
+        out = subprocess.run([target, "-c", code] + need,
+                             capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception as e:
+        out = f"확인 실패: {e}"
+    print(f"\n  쓸 파이썬     : {target}")
+    print(f"  빠진 라이브러리: {out or '없음 (전부 있음)'}")
+    if out and "확인 실패" not in out:
+        print(f"\n  설치:  {target} -m pip install {out}")
+
+
+if __name__ == "__main__":
+    report()

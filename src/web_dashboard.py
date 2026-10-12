@@ -18,12 +18,16 @@ web_dashboard.py
 
 import argparse
 import os
+import re
 import signal
 import subprocess
 import sys
 import threading
 import time
 from collections import deque
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import venv_boot; venv_boot.ensure()   # 직접 실행해도 venv 로 갈아탄다
 
 import numpy as np
 
@@ -39,7 +43,12 @@ _lock = threading.Lock()
 # 대시보드가 멈추므로, 별도 프로세스(subprocess)로 띄우고 출력만 받아온다.
 _job = {"running": False, "kind": None, "label": None, "ok": None,
         "started": None, "finished": None, "step": None, "stopping": False,
-        "stopped": False}
+        "stopped": False,
+        # 수집 진행은 '작업 시작부터의 시간'과 다르다. 작업에는 전극 안정화
+        # 대기(_settle, 20초~3분)가 앞에 붙고, sensor_control 은 그 대기가
+        # 끝난 뒤부터 센다. 두 숫자를 같은 것으로 보여 주면 화면과 터미널이
+        # 서로 다른 초를 말하게 된다. 그래서 수집기가 찍는 값을 그대로 받아 둔다.
+        "collect_sec": None, "collect_total": None}
 _job_log = deque(maxlen=400)
 _job_lock = threading.Lock()
 # 지금 돌고 있는 자식 프로세스. '중지' 버튼이 여기에 SIGINT를 보낸다.
@@ -49,16 +58,30 @@ _job_proc = {"proc": None}
 _pause = threading.Event()
 
 
+# "[sensor_control] 수집 중… 12/300초" / "… 12초" 둘 다 받는다.
+_PROGRESS_RE = re.compile(r"수집 중[…\.]*\s*([\d.]+)(?:\s*/\s*([\d.]+))?\s*초")
+
+
 def _job_say(line):
+    line = line.rstrip()
+    m = _PROGRESS_RE.search(line)
     with _job_lock:
-        _job_log.append(line.rstrip())
+        _job_log.append(line)
+        if m:
+            _job["collect_sec"] = float(m.group(1))
+            _job["collect_total"] = float(m.group(2)) if m.group(2) else None
 
 
 def _job_snapshot():
     with _job_lock:
         d = dict(_job)
         d["log"] = list(_job_log)
-        return d
+    # 브라우저에서 Date.now() - started 로 구하면 파이와 브라우저의 시계 차이가
+    # 그대로 표시 오차가 된다. 경과는 서버가 자기 시계 안에서만 계산한다.
+    if d.get("started"):
+        end = d.get("finished") or time.time()
+        d["elapsed_sec"] = round(end - d["started"], 1)
+    return d
 
 
 def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
@@ -69,7 +92,8 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
             return False
         _job.update({"running": True, "kind": kind, "label": label, "ok": None,
                      "started": time.time(), "finished": None, "step": steps[0][0],
-                     "stopping": False, "stopped": False})
+                     "stopping": False, "stopped": False,
+                     "collect_sec": None, "collect_total": None})
         _job_log.clear()
 
     def work():
@@ -127,6 +151,44 @@ def _run_steps(kind, label, steps, cwd, pause_live=False, on_done=None):
     return True
 
 
+# ---- 데이터셋 -----------------------------------------------------------
+# 대조군 데이터를 식물 데이터와 같은 폴더에 모으면 서로 덮어써서 둘 다 못 쓰게 된다.
+# 그래서 조건마다 raw/스펙트로그램/특징/모델을 통째로 분리한다.
+# 세 조건은 보고서 Ⅳ장 3절 (4)의 ㉮·㉯·㉰ 에 그대로 대응한다.
+#
+# '식물' 만은 예전 경로(data/raw, data/spectrogram, models)를 그대로 쓴다.
+# 이미 모아 둔 데이터와 학습된 모델이 거기 있어서, 옮기면 다 깨지기 때문이다.
+DATASETS = {
+    "식물": {"title": "식물 (기준)", "dir": None,
+             "note": "살아 있는 방울토마토. 비교의 기준이 되는 조건입니다."},
+    "호일": {"title": "호일 (도체 대조)", "dir": "foil",
+             "note": "알루미늄 호일·구리선 등 도체. 살아 있는 조직이 전혀 없습니다."},
+    "사체": {"title": "사체 (죽은 조직)", "dir": "dead",
+             "note": "바싹 말린 가지. 생물이었지만 지금은 죽은 것."},
+}
+DEFAULT_DATASET = "식물"
+
+# 화면 파형용으로 매번 보낼 최근 구간과 다운샘플 비율.
+# 브라우저가 이어붙여 그리므로 폴링을 몇 번 놓쳐도 메울 만큼만 있으면 된다.
+SIGNAL_TAIL_SEC = 2.0
+SIGNAL_DECIM = 3
+
+
+def dataset_paths(name):
+    """데이터셋 이름 -> 저장소 기준 상대경로 4개."""
+    sub = DATASETS[name]["dir"]
+    if sub is None:
+        return {"raw": os.path.join("data", "raw"),
+                "spec": os.path.join("data", "spectrogram"),
+                "features": os.path.join("data", "features.csv"),
+                "models": "models"}
+    base = os.path.join("data", "ds", sub)
+    return {"raw": os.path.join(base, "raw"),
+            "spec": os.path.join(base, "spectrogram"),
+            "features": os.path.join(base, "features.csv"),
+            "models": os.path.join(base, "models")}
+
+
 def _payload(result, recent, clf):
     """step() 결과 + 최근 5초 버퍼 -> 브라우저로 보낼 JSON 딕셔너리.
 
@@ -134,7 +196,11 @@ def _payload(result, recent, clf):
     (픽셀 방식 모델은 이 이미지로 직접 추론하고, 특징 방식도 여기서 특징을 뽑는다).
     분류에 쓰지 않는 값은 싣지 않는다(네트워크 절약).
     """
-    sig = np.asarray(recent)[::3]  # 5초 버퍼를 1/3로 다운샘플(네트워크 절약)
+    # 화면 파형은 브라우저가 자기 버퍼에 **이어붙여** 그린다. 그래서 매번 5초를 통째로
+    # 보낼 필요가 없다 — 폴링 간격(0.5초)에 폴링을 몇 번 놓쳐도 메울 여유만 있으면 된다.
+    # 2초면 네 번을 연속으로 놓쳐도 파형이 끊기지 않는다.
+    tail = int(SIGNAL_TAIL_SEC * clf.sample_rate)
+    sig = np.asarray(recent)[-tail:][::SIGNAL_DECIM]
     spec = np.asarray(result["spectrogram_db"], dtype=float)
     filt = result["filtered_signal"]
     return {
@@ -148,10 +214,16 @@ def _payload(result, recent, clf):
         # 실측 20배 이상 빠르다.
         "signal": np.round(sig, 5).tolist(),
         "spec": np.round(spec, 1).tolist(),  # (주파수 x 시간)
+        # mean 은 내장 폴백 화면이 쓴다. 없어서 'undefined V' 로 뜨고 있었다.
+        "mean": round(float(np.mean(filt)), 4),
         "std": round(float(np.std(filt)), 4),
         "p2p": round(float(np.max(filt) - np.min(filt)), 4),
         # 실제로 초당 몇 샘플을 읽고 있는지. 명목(250Hz)보다 많이 낮으면 필터/스펙트로그램이
         # 가정하는 주파수축이 어긋나 정확도가 떨어진다는 신호다.
+        # signal 배열이 초당 몇 점인지. 브라우저가 '지난 폴링 이후 흐른 시간 x 이 값'
+        # 만큼만 이어붙이면 파형이 실제 속도로 흐른다. 이 값 없이 배열 길이의 일정 비율을
+        # 떼어 쓰면 폴링 간격과 어긋나 파형이 실제보다 빠르거나 느리게 흐른다.
+        "signal_hz": round(clf.sample_rate / SIGNAL_DECIM, 3),
         "sample_rate": SAMPLE_RATE_HZ,
         "actual_rate": clf.actual_rate(),
         # 화면 설명에 쓰는 값. 모델마다 다르므로 상수로 박아 두면 거짓말이 된다.
@@ -389,7 +461,15 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     @app.route("/data")
     def data():
         with _lock:
-            return jsonify(dict(_latest))
+            d = dict(_latest)
+        # 수집 중에는 실시간 루프가 센서를 양보하고 쉰다(같은 ADS1115를 두 프로세스가
+        # 번갈아 읽으면 수집 쪽 샘플레이트가 떨어지기 때문). 그 사이 화면은 마지막 값에
+        # 멈춰 있는데, 안내가 없으면 고장난 것으로 보인다. 그래서 왜 멈췄는지 같이 보낸다.
+        d["paused"] = _pause.is_set()
+        if d["paused"]:
+            with _job_lock:
+                d["paused_by"] = _job.get("label")
+        return jsonify(d)
 
     # ---- 모드 전환 (SSH 없이 브라우저에서) -----------------------------
     # RealtimeClassifier 는 매 스텝마다 self.sim_state 를 읽으므로, 값만 바꿔도
@@ -496,6 +576,90 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         threading.Thread(target=finisher, daemon=True).start()
         return jsonify({"ok": True, "label": label})
 
+    def _pick_dataset(src):
+        """요청에서 데이터셋 이름을 꺼낸다. 없으면 '식물'. 모르는 이름이면 None."""
+        name = (src.get("dataset") or DEFAULT_DATASET)
+        return name if name in DATASETS else None
+
+    def _abs(rel):
+        return os.path.join(root_dir, rel)
+
+    def _ds_counts(name):
+        """데이터셋 하나의 진행 상황: 상태별 CSV 유무와 변환된 이미지 장수."""
+        p = dataset_paths(name)
+        raw_dir, spec_dir = _abs(p["raw"]), _abs(p["spec"])
+        collected, converted, sessions = [], {}, {}
+        for s in sensor_control.VALID_STATES:
+            n = sensor_control.count_sessions(raw_dir, s)
+            sessions[s] = n
+            if n:
+                collected.append(s)
+            d = os.path.join(spec_dir, s)
+            converted[s] = (len([n for n in os.listdir(d) if n.lower().endswith(".png")])
+                            if os.path.isdir(d) else 0)
+        return collected, converted, sessions
+
+    def _ds_best(name):
+        """그 데이터셋에서 가장 정확도가 높았던 학습 기록. 없으면 None."""
+        import json
+        path = _abs(os.path.join(dataset_paths(name)["models"], "train_history.json"))
+        try:
+            with open(path, encoding="utf-8") as f:
+                hist = json.load(f)
+        except Exception:
+            return None
+        hist = [h for h in hist if h.get("accuracy") is not None]
+        return max(hist, key=lambda h: h["accuracy"]) if hist else None
+
+    @app.route("/api/datasets")
+    def api_datasets():
+        """조건별 수집·변환·학습 진행 상황을 한 번에 돌려준다."""
+        out = []
+        for name, meta in DATASETS.items():
+            collected, converted, sessions = _ds_counts(name)
+            best = _ds_best(name)
+            out.append({"name": name, "title": meta["title"], "note": meta["note"],
+                        "collected": collected, "converted": converted,
+                        "sessions": sessions,
+                        "images": sum(converted.values()),
+                        "best": ({"accuracy": best["accuracy"], "task": best.get("task"),
+                                  "mode": best.get("mode")} if best else None)})
+        return jsonify({"datasets": out, "default": DEFAULT_DATASET})
+
+    @app.route("/api/control")
+    def api_control():
+        """음성 대조군 판정 — 이 연구의 핵심 질문에 직접 답하는 화면용.
+
+        식물과 대조군을 '같은 과제'로 학습한 결과끼리만 비교한다. 3종 정확도와
+        2종 정확도를 나란히 놓으면 우연 수준이 달라(33% vs 50%) 비교가 성립하지 않는다."""
+        base = _ds_best(DEFAULT_DATASET)
+        rows, verdict, reason = [], None, None
+        for name in DATASETS:
+            if name == DEFAULT_DATASET:
+                continue
+            b = _ds_best(name)
+            same_task = bool(base and b and b.get("task") == base.get("task"))
+            rows.append({"name": name, "title": DATASETS[name]["title"],
+                         "best": b and {"accuracy": b["accuracy"], "task": b.get("task")},
+                         "comparable": same_task})
+        done = [r for r in rows if r["best"] and r["comparable"]]
+        if not base:
+            reason = "먼저 '식물' 조건을 학습하세요."
+        elif not done:
+            reason = "대조군을 식물과 같은 과제로 학습하면 판정이 나옵니다."
+        else:
+            n_cls = len(TASK_CLASSES.get(base.get("task"), [])) or 3
+            chance = 1.0 / n_cls
+            worst = max(r["best"]["accuracy"] for r in done)
+            # 우연 수준과 식물 정확도의 중간을 경계로 삼는다. 대조군이 그 위면
+            # '식물이 아닌 곳에서 온 신호'로 본다.
+            cut = (chance + base["accuracy"]) / 2
+            verdict = "ok" if worst < cut else "contaminated"
+            reason = (f"기준 과제 '{base.get('task')}' · 우연 수준 {chance*100:.0f}% · "
+                      f"식물 {base['accuracy']*100:.1f}% · 대조군 최고 {worst*100:.1f}%")
+        return jsonify({"base": base and {"accuracy": base["accuracy"], "task": base.get("task")},
+                        "rows": rows, "verdict": verdict, "reason": reason})
+
     @app.route("/api/collect", methods=["POST"])
     @require_admin
     def api_collect():
@@ -512,9 +676,44 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         if duration != 0 and not (5 <= duration <= 1800):
             return jsonify({"ok": False, "error": "수집 시간은 5~1800초, 또는 0(무제한)으로 넣어주세요"}), 400
 
+        ds = _pick_dataset(body)
+        if ds is None:
+            return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+
+        # 증폭기가 레일에 붙어 있으면 입력이 변해도 출력이 안 움직인다. 그 상태로
+        # 30분을 모아도 전부 못 쓰는 데이터가 되므로, 시작 전에 한 번 보고 막는다.
+        # (force=true 면 사용자가 알고도 강행하는 것으로 보고 진행한다.)
+        if not body.get("force"):
+            try:
+                st = sensor_control.sensor_status()
+            except Exception:
+                st = None
+            if st and st.get("i2c") and st.get("baseline") is not None \
+                    and st.get("baseline_verdict") not in (None, "정상 범위"):
+                return jsonify({
+                    "ok": False, "precheck": True,
+                    "error": f"측정계가 정상 동작점에 있지 않습니다 — {st['baseline_verdict']}",
+                    "detail": ("이 상태로 모은 데이터는 입력이 변해도 출력이 따라가지 않아 "
+                               "학습에 쓸 수 없습니다. RL(기준) 전극 접촉부터 확인하세요."),
+                    "status": st}), 409
+
+        raw_rel = dataset_paths(ds)["raw"]
+        os.makedirs(_abs(raw_rel), exist_ok=True)
+
+        # 회차. 안 주면 sensor_control 이 비어 있는 다음 번호를 고른다(덮어쓰지 않는다).
+        sess = body.get("session")
         cmd = [sys.executable, "sensor_control.py", "--state", state,
-               "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ)]
-        label = f"{state} 수집 (무제한)" if duration == 0 else f"{state} {duration:g}초 수집"
+               "--duration", str(duration), "--rate", str(SAMPLE_RATE_HZ),
+               "--out", os.path.join("..", raw_rel)]
+        if sess:
+            try:
+                cmd += ["--session", str(int(sess))]
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "회차가 숫자가 아닙니다"}), 400
+        nth = int(sess) if sess else sensor_control.next_session(_abs(raw_rel), state)
+        tag = "" if ds == DEFAULT_DATASET else f"[{ds}] "
+        label = (f"{tag}{state} {nth}회차 수집 (무제한)" if duration == 0
+                 else f"{tag}{state} {nth}회차 {duration:g}초 수집")
         started = _run_steps("collect", label,
                              [(f"'{state}' 수집", cmd)], src_dir, pause_live=True)
         if not started:
@@ -531,10 +730,20 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         if state is not None and state not in sensor_control.VALID_STATES:
             return jsonify({"ok": False, "error": "알 수 없는 상태입니다"}), 400
 
-        cmd = [sys.executable, "preprocess.py"]
+        ds = _pick_dataset(body)
+        if ds is None:
+            return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+        p = dataset_paths(ds)
+
+        cmd = [sys.executable, "preprocess.py",
+               "--raw_dir", os.path.join("..", p["raw"]),
+               "--out_dir", os.path.join("..", p["spec"]),
+               "--features_csv", os.path.join("..", p["features"])]
         if state:
             cmd += ["--only", state]
-        label = f"'{state}' 스펙트로그램 변환" if state else "전체 스펙트로그램 변환"
+        tag = "" if ds == DEFAULT_DATASET else f"[{ds}] "
+        label = (f"{tag}'{state}' 스펙트로그램 변환" if state
+                 else f"{tag}전체 스펙트로그램 변환")
         started = _run_steps("preprocess", label, [(label, cmd)], src_dir)
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
@@ -551,16 +760,27 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         if task not in TASKS or mode not in MODES:
             return jsonify({"ok": False, "error": "알 수 없는 학습 옵션입니다"}), 400
 
-        spec_dir = os.path.join(root_dir, "data", "spectrogram")
+        ds = _pick_dataset(body)
+        if ds is None:
+            return jsonify({"ok": False, "error": "알 수 없는 데이터셋입니다"}), 400
+        p = dataset_paths(ds)
+
+        spec_dir = _abs(p["spec"])
         if not os.path.isdir(spec_dir) or not os.listdir(spec_dir):
             return jsonify({"ok": False,
                             "error": "스펙트로그램이 없습니다. 전처리를 먼저 하세요"}), 409
 
-        label = f"{task} / {mode} 학습"
-        steps = [(label, [sys.executable, "train.py", "--task", task, "--mode", mode])]
+        tag = "" if ds == DEFAULT_DATASET else f"[{ds}] "
+        label = f"{tag}{task} / {mode} 학습"
+        steps = [(label, [sys.executable, "train.py", "--task", task, "--mode", mode,
+                          "--spectrogram_dir", os.path.join("..", p["spec"]),
+                          "--features_csv", os.path.join("..", p["features"]),
+                          "--models_dir", os.path.join("..", p["models"])])]
         run_start = time.time()
-        started = _run_steps("train", label, steps, src_dir,
-                             on_done=lambda: _reload_after_train(run_start))
+        # 대조군으로 학습한 모델을 실시간 분류기에 걸면 안 된다. 호일에서 배운 모델이
+        # 식물 화면을 판정하게 되기 때문이다. 자동 교체는 '식물' 조건에서만 한다.
+        on_done = (lambda: _reload_after_train(run_start)) if ds == DEFAULT_DATASET else None
+        started = _run_steps("train", label, steps, src_dir, on_done=on_done)
         if not started:
             return jsonify({"ok": False, "error": "이미 다른 작업이 실행 중입니다"}), 409
         return jsonify({"ok": True, "job": _job_snapshot()})
@@ -632,8 +852,8 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     # 상태별 하위 폴더를 각각 훑어, 상태 정보를 붙이고 상태마다 같은 개수만 보낸다.
     PER_STATE_CAP = 120
 
-    def _spectrogram_group():
-        base = os.path.join(root_dir, "data", "spectrogram")
+    def _spectrogram_group(spec_rel):
+        base = os.path.join(root_dir, spec_rel)
         files, totals = [], {}
         for st in sensor_control.VALID_STATES:
             d = os.path.join(base, st)
@@ -659,18 +879,26 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
     @app.route("/api/files")
     @require_admin
     def api_files():
-        return jsonify({"current_model": os.path.relpath(os.path.realpath(clf.model_path),
+        # 자료 탭도 조건별로 본다. 대조군 파일이 목록에 아예 안 나오면 확인도 삭제도 못 한다.
+        ds = _pick_dataset(request.args)
+        if ds is None:
+            return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
+        p = dataset_paths(ds)
+        # features.csv 는 폴더가 아니라 파일 하나라, 그 파일이 있는 폴더를 훑는다.
+        feat_dir = os.path.dirname(p["features"]) or "data"
+        return jsonify({"dataset": ds,
+                        "current_model": os.path.relpath(os.path.realpath(clf.model_path),
                                                          root_dir).replace(os.sep, "/"),
                         "groups": [
             _group("raw", "원시 데이터 (CSV)", "csv",
-                   "수집한 전위 신호. 지우고 다시 수집할 수 있어요.", "data/raw", (".csv",)),
+                   "수집한 전위 신호. 지우고 다시 수집할 수 있어요.", p["raw"], (".csv",)),
             _group("features", "특징 테이블 (CSV)", "csv",
-                   "전처리가 뽑은 윈도우별 특징 14개.", "data", (".csv",)),
-            _spectrogram_group(),
+                   "전처리가 뽑은 윈도우별 특징 14개.", feat_dir, (".csv",)),
+            _spectrogram_group(p["spec"]),
             _group("eval", "평가 이미지 (혼동행렬)", "image",
-                   "학습 결과 confusion matrix.", "models", (".png",)),
+                   "학습 결과 confusion matrix.", p["models"], (".png",)),
             _group("model", "학습된 모델", "model",
-                   "지우면 해당 모델로는 실행할 수 없게 됩니다.", "models", (".joblib",)),
+                   "지우면 해당 모델로는 실행할 수 없게 됩니다.", p["models"], (".joblib",)),
         ]})
 
     @app.route("/api/files/download")
@@ -866,16 +1094,11 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
 
     @app.route("/api/train/options")
     def api_train_options():
-        raw_dir = os.path.join(root_dir, "data", "raw")
-        spec_dir = os.path.join(root_dir, "data", "spectrogram")
-        have = sorted(s for s in sensor_control.VALID_STATES
-                      if os.path.isfile(os.path.join(raw_dir, sensor_control.KOR_FILENAMES[s])))
-        # 상태별로 스펙트로그램이 몇 장 변환돼 있는지 (전처리 버튼에 표시)
-        converted = {}
-        for s in sensor_control.VALID_STATES:
-            d = os.path.join(spec_dir, s)
-            converted[s] = (len([n for n in os.listdir(d) if n.lower().endswith(".png")])
-                            if os.path.isdir(d) else 0)
+        ds = _pick_dataset(request.args)
+        if ds is None:
+            return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
+        have, converted, sessions = _ds_counts(ds)
+        have = sorted(have)
         # 과제별로 필요한 클래스가 다 변환돼 있어야 고를 수 있다(없으면 이유를 같이 보낸다).
         task_ready, task_reason = {}, {}
         for t, classes in TASK_CLASSES.items():
@@ -885,16 +1108,23 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         return jsonify({"tasks": list(TASKS), "modes": list(MODES),
                         "states": list(sensor_control.VALID_STATES),
                         "collected": have, "converted": converted,
+                        "sessions": sessions,
                         "task_classes": TASK_CLASSES,
                         "task_ready": task_ready, "task_reason": task_reason,
                         "hardware": sensor_control.HARDWARE_AVAILABLE,
+                        "dataset": ds,
+                        "datasets": [{"name": n, "title": m["title"], "note": m["note"]}
+                                     for n, m in DATASETS.items()],
                         "model": clf.model_name, "classes": list(clf.classes)})
 
     @app.route("/api/train/history")
     def api_train_history():
         """train.py가 학습마다 남긴 기록(과제/방식/정확도)을 최신순으로 돌려준다."""
         import json
-        path = os.path.join(root_dir, "models", "train_history.json")
+        ds = _pick_dataset(request.args)
+        if ds is None:
+            return jsonify({"error": "알 수 없는 데이터셋입니다"}), 400
+        path = _abs(os.path.join(dataset_paths(ds)["models"], "train_history.json"))
         try:
             with open(path, encoding="utf-8") as f:
                 hist = json.load(f)
@@ -961,7 +1191,7 @@ PAGE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
     <span class="rec"><span class="d"></span>LIVE</span><span class="mono" id="clock">--:--:--</span></div>
 
   <div class="signal">
-    <div class="h"><h2>전위 신호 · 필터 후</h2><span class="u">최근 5.0 s</span></div>
+    <div class="h"><h2>전위 신호 · 필터 후</h2><span class="u" id="span">최근 —</span></div>
     <svg id="wave" viewBox="0 0 1000 240" preserveAspectRatio="none"></svg>
   </div>
 
@@ -1026,6 +1256,9 @@ function mode(d){
 async function tick(){
   try{const d=await (await fetch('/data')).json(); if(!d.ready)return;
     mode(d); drawWave(d.signal); drawSpec(d.spec); status(d);
+    // 보내는 구간 길이가 바뀌어도 라벨이 거짓말하지 않게 값에서 계산한다.
+    if(d.signal_hz)document.getElementById('span').textContent=
+      '최근 '+(d.signal.length/d.signal_hz).toFixed(1)+' s';
     document.getElementById('s_mean').textContent=d.mean+' V';
     document.getElementById('s_std').textContent=d.std+' V';
     document.getElementById('s_p2p').textContent=d.p2p+' V';

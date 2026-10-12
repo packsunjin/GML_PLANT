@@ -7,8 +7,8 @@ import sys
 COMPACT = '--compact' in sys.argv          # 20쪽 판: 정보 손실이 적은 항목만 덜어낸다
 BLK=json.load(open('blocks.json',encoding='utf-8'))
 FONT='휴먼명조'
-PLATES=['FIG_HW.png','FIG_PIPE.png','FIG_BAND.png','FIG_OFFSET.png']
-EMU_W=5200000                      # 그림 폭 — 본문 폭의 약 85%.
+PLATES=['FIG_BAND.png','FIG_SYS.png','FIG_AD8232.png','FIG_STAGE.png','FIG_TOUCH.png','FIG_SPEC.png']   # 본문 등장 순서
+EMU_W=4950000                      # 그림 폭 — 본문 폭의 약 81%.
                                    # 원본이 2700px 이라 이 폭에서도 약 470dpi 로, 서식이 요구하는 300dpi 를 넘는다.
 TW=9360                            # 표 전체 폭(dxa)
 
@@ -26,7 +26,21 @@ def rpr(sz=22, b=False, i=False, color=None):
 def run(t, **kw):
     return f'<w:r>{rpr(**kw)}<w:t xml:space="preserve">{escape(t)}</w:t></w:r>'
 
-def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, keep=False, color=None):
+CITE = re.compile(r'\[(\d+)\]')
+CAPNO = re.compile(r'((?:그림|표|사진)\d+\.)(.*)', re.S)
+
+def runs(t, **kw):
+    """본문의 [n] 을 참고문헌 n 번으로 가는 내부 링크로 만든다(책갈피 ref<n>)."""
+    out, pos = [], 0
+    for m in CITE.finditer(t):
+        if m.start() > pos: out.append(run(t[pos:m.start()], **kw))
+        out.append(f'<w:hyperlink w:anchor="ref{m.group(1)}" w:history="1">'
+                   + run(m.group(0), **dict(kw, color='1F4E79')) + '</w:hyperlink>')
+        pos = m.end()
+    if pos < len(t): out.append(run(t[pos:], **kw))
+    return ''.join(out)
+
+def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, keep=False, color=None, mark=None, cap=False):
     pr='<w:pPr>'
     if keep: pr+='<w:keepNext/>'
     pr+=f'<w:spacing w:before="{before}" w:after="{after}" w:line="{line}" w:lineRule="auto"/>'
@@ -34,7 +48,14 @@ def para(t='', sz=22, align=None, b=False, ind=0, before=0, after=44, line=312, 
     if align: pr+=f'<w:jc w:val="{align}"/>'
     pr+=rpr(sz,b,color=color).replace('<w:rPr>','<w:rPr>').replace('</w:rPr>','</w:rPr>')
     pr+='</w:pPr>'
-    body=run(t, sz=sz, b=b, color=color) if t else ''
+    body=runs(t, sz=sz, b=b, color=color) if t else ''
+    m = CAPNO.match(t) if cap else None
+    if m:                         # 서식2: "그림1." · "표1." 번호만 굵게, 제목은 보통
+        body = run(m.group(1), sz=sz, b=True) + runs(m.group(2), sz=sz, b=b, color=color)
+    if mark:                      # 참고문헌 항목: 본문 [n] 링크가 도착할 책갈피
+        bid = int(mark[3:])
+        body = (f'<w:bookmarkStart w:id="{bid}" w:name="{mark}"/>'
+                + run(t, sz=sz, b=b, color=color) + f'<w:bookmarkEnd w:id="{bid}"/>')
     return f'<w:p>{pr}{body}</w:p>'
 
 def pagebreak():
@@ -166,7 +187,7 @@ while i < len(BLK):
             li_n+=1
             ref = t.split(' — ')[0] if COMPACT else t
             # 참고문헌은 학술 표기법대로 주석 없이, 9pt·줄간격 1.15로 촘촘하게 싣는다
-            body.append(para(f'[{li_n}] {ref}', sz=18, ind=340, after=20, line=276))
+            body.append(para(f'[{li_n}] {ref}', sz=18, ind=340, after=20, line=276, mark=f'ref{li_n}'))
         elif b.get('ord'):
             li_n+=1; body.append(para(f'{CIRC[(li_n-1)%15]} {t}', sz=22, ind=440, after=60))
         else:
@@ -175,16 +196,15 @@ while i < len(BLK):
         if not in_ref: li_n=0
     elif k=='tblcap':
         # 양식: 표 제목은 표 상단 중앙, 휴먼명조 11pt
-        body.append(para(t, sz=22, align='center', after=60, keep=True))
+        body.append(para(t, sz=22, align='center', after=60, keep=True, cap=True))
     elif k=='table':
         if not (COMPACT and skip_section): body.append(table(t['head'], t['body']))
     elif k=='plate':
         body.append(image(plate_i, f'rId{100+plate_i}')); plate_i+=1
     elif k=='figcap':
         parts=[x.strip() for x in t.split('\n') if x.strip()]
-        body.append(para(parts[0], sz=22, align='center', after=40))
-        for extra in parts[1:]:
-            body.append(para(extra, sz=18, align='center', after=100, color='555555'))
+        # 서식2: 그림 제목만 그림 아래 가운데, 휴먼명조 11pt. 설명은 본문으로 옮겼다.
+        body.append(para(' '.join(parts), sz=22, align='center', after=100, cap=True))
     i+=1
 if box_open is not None: body.append(box(box_open))
 print("본문 요소", len(body))

@@ -1,0 +1,9 @@
+{
+  "mode": "simulation",
+  "hardware_error": "수집 당시 하드웨어 감지 불가 (b4e9afb 이전)",
+  "state": "자극",
+  "session": null,
+  "n_samples": 30000,
+  "retroactively_labeled": true,
+  "note": "출처 파일 없이 저장소에 들어 있던 파일. 수집 당시 코드는 하드웨어 감지가 깨져 있어(b4e9afb 에서 수정) 항상 시뮬레이션으로 넘어갔고, 측정자도 이 파일들이 실측이 아니라고 확인했다. 실측 데이터가 아니므로 학습·보고서에 쓰면 안 된다."
+}

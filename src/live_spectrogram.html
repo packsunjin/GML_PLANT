@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>식물 실시간 스펙트로그램</title>
+<style>
+:root{--bg:#0b0f12;--panel:#141a1f;--line:#253038;--ink:#e6edf0;--mut:#8fa2ab;--acc:#4fc3c8;--mark:#ff5a5a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:19px;margin:0}
+.stat{font-family:Consolas,monospace;font-size:13px;color:var(--mut)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px}
+button.big{background:var(--mark);border-color:var(--mark);color:#fff;font-size:20px;font-weight:700;padding:14px 34px}
+button.big:active{transform:scale(.97)}
+button.on{border-color:var(--acc);color:var(--acc)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:12px}
+.lab{font-size:13px;color:var(--mut);margin:0 0 6px}
+canvas{display:block;width:100%;background:#000;border-radius:4px}
+.help{font-size:13px;color:var(--mut);line-height:1.6}
+.help b{color:var(--ink)}
+</style></head><body><div class="wrap">
+<header>
+  <h1>식물 실시간 스펙트로그램</h1>
+  <div class="stat" id="stat">연결 중…</div>
+</header>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <button class="big" id="mark">쳤어</button>
+    <div class="row">
+      <span class="lab" style="margin:0">주파수 범위</span>
+      <button id="r10" class="on">0–10 Hz</button>
+      <button id="r125">0–125 Hz</button>
+    </div>
+  </div>
+  <p class="help" style="margin:10px 0 0">식물을 <b>치는 순간 빨간 버튼</b>을 누르세요. 그 시각이 아래 두 그림에 <b style="color:var(--mark)">빨간 선</b>으로 찍히고 파일에도 저장됩니다.</p>
+</div>
+
+<div class="panel">
+  <p class="lab">스펙트로그램 — 가로: 시간(오른쪽이 지금, 최근 2분) · 세로: 주파수 · 밝을수록 셈</p>
+  <canvas id="wf" width="960" height="320"></canvas>
+</div>
+
+<div class="panel">
+  <p class="lab">전압 — 최근 60초, 0.1초 평균 (mV)</p>
+  <canvas id="tr" width="960" height="200"></canvas>
+</div>
+
+<div class="panel help">
+  <b>읽는 법</b> — 60 Hz 근처의 밝은 가로줄은 콘센트 전기(상용전원)가 선에 유도된 것으로, 식물 신호가 아닙니다.
+  식물 반응은 문헌상 <b>수십 초 동안 수십 mV</b> 움직이는 느린 변화라서, 위쪽 그림보다 <b>아래 전압 그림</b>에서 더 잘 보입니다.
+  치는 순간 둘 다 크게 튀면, 식물이 반응한 건지 <b>핀·선이 흔들린 건지</b>는 이 장비로 구분할 수 없습니다.
+</div>
+</div>
+<script>
+const wf=document.getElementById('wf'), g=wf.getContext('2d');
+const tr=document.getElementById('tr'), h=tr.getContext('2d');
+const stat=document.getElementById('stat');
+let since=-1, fmax=10, fstep=0.244, hop=0.25, cols=[], marks=[], trace=[], tdt=0.1, n=0, fs=250;
+const VIS=480;                      // 화면에 보이는 줄 수 (0.25초 × 480 = 2분)
+
+function color(x){                  // 0..1 → 보라 → 파랑 → 초록 → 노랑 (viridis)
+  x=Math.max(0,Math.min(1,x));
+  const s=[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];   // viridis — preprocess.py 의 스펙트로그램 그림과 같은 색
+  const p=x*(s.length-1), i=Math.min(s.length-2,Math.floor(p)), f=p-i;
+  return s[i].map((v,k)=>Math.round(v+(s[i+1][k]-v)*f));
+}
+function drawWF(){
+  const W=wf.width, H=wf.height, nb=Math.max(1,Math.round(fmax/fstep));
+  g.fillStyle='#000'; g.fillRect(0,0,W,H);
+  if(!cols.length) return;
+  const vis=cols.slice(-VIS);
+  const all=[]; vis.forEach(c=>{for(let b=1;b<nb&&b<c.length;b++) all.push(c[b]);});
+  all.sort((a,b)=>a-b);
+  const lo=all[Math.floor(all.length*0.05)]||0, hi=all[Math.floor(all.length*0.995)]||1;
+  const img=g.createImageData(VIS,nb); const off=VIS-vis.length;
+  for(let x=0;x<vis.length;x++){ const c=vis[x];
+    for(let b=0;b<nb;b++){ const v=c[b]===undefined?lo:c[b]; const [r,gg,bb]=color((v-lo)/(hi-lo||1));
+      const p=((nb-1-b)*VIS+(x+off))*4; img.data[p]=r; img.data[p+1]=gg; img.data[p+2]=bb; img.data[p+3]=255; } }
+  const tmp=document.createElement('canvas'); tmp.width=VIS; tmp.height=nb; tmp.getContext('2d').putImageData(img,0,0);
+  g.imageSmoothingEnabled=false; g.drawImage(tmp,0,0,W,H);
+  // 눈금
+  g.fillStyle='rgba(255,255,255,.75)'; g.font='12px Consolas,monospace';
+  const ticks=fmax<=10?[0,2,4,6,8,10]:[0,20,40,60,80,100,120];
+  ticks.forEach(f=>{const y=H-(f/fmax)*H; g.fillRect(0,y,6,1); g.fillText(f+' Hz',8,Math.min(H-3,Math.max(12,y+4)));});
+  // 표시: 열 번호 → 화면 x
+  const lastCol=since, firstCol=lastCol-VIS+1;
+  g.strokeStyle='#ff5a5a'; g.lineWidth=2;
+  marks.forEach(s=>{ const c=Math.floor(s/(hop*fs)); if(c<firstCol||c>lastCol) return;
+    const x=(c-firstCol+0.5)/VIS*W; g.beginPath(); g.moveTo(x,0); g.lineTo(x,H); g.stroke(); });
+}
+function drawTR(){
+  const W=tr.width, H=tr.height; h.fillStyle='#000'; h.fillRect(0,0,W,H);
+  if(trace.length<2) return;
+  let lo=Math.min(...trace), hi=Math.max(...trace); if(hi-lo<2){const m=(hi+lo)/2; lo=m-1; hi=m+1;}
+  const pad=(hi-lo)*0.1; lo-=pad; hi+=pad;
+  const N=600, X=i=>(i+(N-trace.length))/(N-1)*W, Y=v=>H-(v-lo)/(hi-lo)*H;
+  h.strokeStyle='#253038'; h.lineWidth=1; h.fillStyle='#8fa2ab'; h.font='12px Consolas,monospace';
+  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4, y=Y(v); h.beginPath(); h.moveTo(0,y); h.lineTo(W,y); h.stroke(); h.fillText(v.toFixed(0)+' mV',4,y-3);}
+  h.strokeStyle='#4fc3c8'; h.lineWidth=1.6; h.beginPath();
+  trace.forEach((v,i)=>{ i?h.lineTo(X(i),Y(v)):h.moveTo(X(i),Y(v)); }); h.stroke();
+  const endS=n/fs, startS=endS-N*tdt;
+  h.strokeStyle='#ff5a5a'; h.lineWidth=2;
+  marks.forEach(s=>{ const t=s/fs; if(t<startS) return; const x=(t-startS)/(N*tdt)*W; h.beginPath(); h.moveTo(x,0); h.lineTo(x,H); h.stroke(); });
+}
+async function tick(){
+  try{
+    const r=await fetch('/frame?since='+since); const d=await r.json();
+    fstep=d.freq_step; hop=d.hop_s; fs=d.fs; n=d.n; tdt=d.trace_dt; trace=d.trace; marks=d.marks;
+    if(d.cols.length){ cols=cols.concat(d.cols).slice(-VIS); since=d.col0+d.cols.length-1; }
+    const last=trace.length?trace[trace.length-1]:0;
+    stat.textContent='기록 '+(n/fs).toFixed(0)+'초 · 지금 '+last.toFixed(1)+' mV · 표시 '+marks.length+'개';
+    drawWF(); drawTR();
+  }catch(e){ stat.textContent='연결 끊김 — 다시 시도 중'; }
+  setTimeout(tick,250);
+}
+document.getElementById('mark').onclick=async()=>{
+  try{ const r=await fetch('/mark',{method:'POST'}); const d=await r.json();
+    stat.textContent='표시함 — '+d.seconds+'초 (총 '+d.count+'개)'; }catch(e){}
+};
+document.getElementById('r10').onclick=()=>{fmax=10; r10.classList.add('on'); r125.classList.remove('on'); drawWF();};
+document.getElementById('r125').onclick=()=>{fmax=125; r125.classList.add('on'); r10.classList.remove('on'); drawWF();};
+tick();
+</script></body></html>
