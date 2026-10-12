@@ -458,6 +458,17 @@ def run_web(model_path, sim_csv=None, sim_state="정상", host="0.0.0.0", port=5
         resp.headers["Cache-Control"] = "no-store"
         return resp
 
+    @app.route("/live")
+    def live_page():
+        # 실시간 판정 화면(게이지·스펙트로그램·전위). 같은 서버의 /data 를 0.5초마다 읽는다.
+        # 연결이 끊겨도 가짜 신호로 바꾸지 않는다 — 데모는 화면의 버튼으로만 켠다.
+        p = os.path.join(web_dir, "live.html") if web_dir else None
+        if not p or not os.path.isfile(p):
+            return "web/live.html 이 없습니다", 404
+        resp = send_from_directory(os.path.dirname(p), "live.html")
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
     @app.route("/data")
     def data():
         with _lock:

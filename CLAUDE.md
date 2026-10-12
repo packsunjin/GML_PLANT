@@ -655,6 +655,8 @@ src/
   train.py             SVM / RandomForest, 세션 단위 분할·교차검증
   inference.py         RealtimeClassifier. preprocess 와 같은 필터 체인 공유
   web_dashboard.py     Flask. 수집·전처리·학습·판정을 브라우저에서
+                       /live = 실시간 판정 화면(web/live.html, /data 를 0.5초마다 읽음.
+                       연결이 끊겨도 가짜 신호로 바꾸지 않는다 — 데모는 버튼으로만)
   sanity_check.py      분할 누수 검사 + 우연 수준 검사
   bias_check.py        바이어스 노드 점검. 단극으로 절대 전압을 읽는다(0절 ⑩).
                        차동만 보면 입력이 단락됐을 때 무조건 0 이라 못 잡는다
